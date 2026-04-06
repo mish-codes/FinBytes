@@ -1,0 +1,434 @@
+---
+layout: post
+title: "Bond Pricing: Z-Spread, OAS, Binomial Trees, and Spread Duration"
+date: 2026-04-28
+tags: [math, finance, bond-pricing, z-spread, oas, binomial-tree, callable-bonds, spread-duration, cs01, backward-induction, quant-lab]
+categories:
+- Math / Finance
+section: math-finance
+permalink: "/math-finance/bond-pricing/"
+---
+
+<h2>1. Bond Pricing Basics</h2>
+
+<p>A bond is a stream of cash flows: periodic coupons plus the face value returned at maturity. The price is the sum of each cash flow discounted back to today:</p>
+
+<pre><code>P = CF&sub1; / (1 + r&sub1;)&sup1; + CF&sub2; / (1 + r&sub2;)&sup2; + &hellip; + CF_n / (1 + r_n)^n</code></pre>
+
+<p>When the discount rate equals the coupon rate, the bond prices at par (100). When rates rise above the coupon, the bond prices below par (discount). When rates fall below the coupon, it prices above par (premium).</p>
+
+<h3>Worked example: 5% coupon, 3-year bond, flat 5% rate</h3>
+
+<p>Face value = 100. Annual coupon = 5. Discount rate = 5% at every maturity.</p>
+
+<pre><code>Year 1:   5   / (1.05)^1 =   5 / 1.0500 =  4.7619
+Year 2:   5   / (1.05)^2 =   5 / 1.1025 =  4.5351
+Year 3: 105   / (1.05)^3 = 105 / 1.1576 = 90.7029
+
+Price = 4.7619 + 4.5351 + 90.7029 = <strong>100.00</strong></code></pre>
+
+<p>Coupon equals yield, so the bond prices at par. Now change the rate to 6%:</p>
+
+<pre><code>Year 1:   5   / (1.06)^1 =   5 / 1.0600 =  4.7170
+Year 2:   5   / (1.06)^2 =   5 / 1.1236 =  4.4500
+Year 3: 105   / (1.06)^3 = 105 / 1.1910 = 88.1668
+
+Price = 4.7170 + 4.4500 + 88.1668 = <strong>97.33</strong> (discount)</code></pre>
+
+<p>Rates rose 1%, the bond lost about $2.67 per 100 face. That sensitivity to rates is duration in action.</p>
+
+<h2>2. Z-Spread (Zero-Volatility Spread)</h2>
+
+<p>The Z-spread is the <strong>constant spread</strong> added to every point on the spot curve that makes the present value of cash flows equal the market price. Unlike yield-to-maturity (which assumes a flat curve), the Z-spread respects the actual shape of the term structure.</p>
+
+<pre><code>Market Price = CF&sub1; / (1 + s&sub1; + z)^1 + CF&sub2; / (1 + s&sub2; + z)^2 + &hellip; + CF_n / (1 + s_n + z)^n
+
+where s_i = spot rate at maturity i, z = Z-spread (the unknown)</code></pre>
+
+<h3>Worked example: 5% coupon, 5-year bond, price = $98</h3>
+
+<p>Spot curve is flat at 5% (s_i = 0.05 for all i). We solve for z:</p>
+
+<pre><code>98 = 5/(1.05 + z)^1 + 5/(1.05 + z)^2 + 5/(1.05 + z)^3 + 5/(1.05 + z)^4 + 105/(1.05 + z)^5</code></pre>
+
+<p>This is a single-variable equation &mdash; solve by bisection (trial and error with narrowing bounds).</p>
+
+<p><strong>Iteration 1: try z = 0.0050 (50 bps)</strong></p>
+<pre><code>Rate = 0.0550
+Year 1:   5 / 1.0550^1 =  4.7393
+Year 2:   5 / 1.0550^2 =  4.4923
+Year 3:   5 / 1.0550^3 =  4.2581
+Year 4:   5 / 1.0550^4 =  4.0361
+Year 5: 105 / 1.0550^5 = 80.3953
+Sum = <strong>97.92</strong>   (too low &mdash; z is too high)</code></pre>
+
+<p><strong>Iteration 2: try z = 0.0045 (45 bps)</strong></p>
+<pre><code>Rate = 0.0545
+Year 1:   5 / 1.0545^1 =  4.7416
+Year 2:   5 / 1.0545^2 =  4.4963
+Year 3:   5 / 1.0545^3 =  4.2636
+Year 4:   5 / 1.0545^4 =  4.0431
+Year 5: 105 / 1.0545^5 = 80.5375
+Sum = <strong>98.08</strong>   (too high &mdash; z is too low)</code></pre>
+
+<p><strong>Iteration 3: try z = 0.0047 (47 bps)</strong></p>
+<pre><code>Rate = 0.0547
+Year 1:   5 / 1.0547^1 =  4.7407
+Year 2:   5 / 1.0547^2 =  4.4947
+Year 3:   5 / 1.0547^3 =  4.2614
+Year 4:   5 / 1.0547^4 =  4.0403
+Year 5: 105 / 1.0547^5 = 80.4806
+Sum = <strong>98.02</strong>   &asymp; 98 &check;</code></pre>
+
+<p>The Z-spread is approximately <strong>47 basis points</strong>. This is the extra compensation the market demands above the risk-free spot curve &mdash; it captures credit risk, liquidity risk, and any embedded option cost.</p>
+
+<pre><code class="language-python">import numpy as np
+from scipy.optimize import brentq
+
+def z_spread(spot_rates, coupons, face, market_price, maturity):
+    """Solve for the constant spread over the spot curve."""
+    def price_error(z):
+        pv = 0.0
+        for t in range(1, maturity + 1):
+            cf = coupons if t < maturity else coupons + face
+            pv += cf / (1 + spot_rates[t - 1] + z) ** t
+        return pv - market_price
+
+    return brentq(price_error, -0.05, 0.20)  # search between -500bps and +2000bps
+
+# Flat spot curve at 5%, 5-year 5% coupon bond at $98
+spots = [0.05] * 5
+z = z_spread(spots, 5, 100, 98, 5)
+print(f"Z-spread: {z * 10000:.1f} bps")   # &rarr; ~47 bps
+</code></pre>
+
+<h2>3. Callable Bonds</h2>
+
+<p>A <strong>callable bond</strong> gives the issuer the right to redeem the bond early, typically at par (100), after a lockout period. This is an embedded call option that the issuer holds and the bondholder has effectively sold.</p>
+
+<p><strong>Why issuers call:</strong> when rates drop, the issuer can refinance at a lower coupon. If your bond pays 6% and the market is now at 4%, the issuer calls your bond and issues new debt at 4%.</p>
+
+<p><strong>Why bondholders dislike it:</strong> the call caps your upside. In a falling-rate environment, your non-callable bond would appreciate well above par &mdash; but the callable bond gets yanked away at 100 just when it is most valuable to you.</p>
+
+<p>The fundamental pricing relationship:</p>
+
+<pre><code>Price(callable) = Price(non-callable) &minus; Value(call option)
+
+The call option always has non-negative value, so:
+Price(callable) &le; Price(non-callable)   (always)</code></pre>
+
+<h3>Worked example: 6% coupon, 3-year bonds, rates at 5%</h3>
+
+<p><strong>Non-callable bond:</strong></p>
+<pre><code>Year 1:   6 / 1.05^1 =  5.7143
+Year 2:   6 / 1.05^2 =  5.4422
+Year 3: 106 / 1.05^3 = 91.5692
+
+Price(non-callable) = <strong>102.72</strong></code></pre>
+
+<p><strong>Callable at par (100) at any time:</strong> the issuer sees the bond is worth 102.72 but can redeem it at 100. They call immediately. The bondholder gets par + accrued coupon. In practice the callable bond trades near 100&ndash;101, well below the non-callable price.</p>
+
+<p>The difference (102.72 &minus; ~100) is approximately the value of the embedded call option. To price the callable bond precisely, we need a rate model that generates different scenarios &mdash; enter the binomial tree.</p>
+
+<h2>4. Binomial Interest Rate Tree</h2>
+
+<p>The binomial tree models interest rate evolution. At each time step, the short rate either moves up or down with equal (risk-neutral) probability:</p>
+
+<pre><code>r_up   = r &times; e^(+&sigma; &times; &radic;&Delta;t)     (up factor u = e^(&sigma;&radic;&Delta;t))
+r_down = r &times; e^(&minus;&sigma; &times; &radic;&Delta;t)     (down factor d = 1/u)
+Probability of each move: 0.5</code></pre>
+
+<p>The tree <strong>recombines</strong>: an up move followed by a down move lands at the same rate as down-then-up. After N steps you have N+1 nodes (not 2^N), which keeps computation tractable.</p>
+
+<h3>Worked example: 3-step tree, r&sub0; = 5%, &sigma; = 15%, &Delta;t = 1 year</h3>
+
+<pre><code>u = e^(0.15 &times; 1) = e^0.15 = 1.16183
+d = 1 / u            = 1 / 1.16183 = 0.86071</code></pre>
+
+<p>Build each level. At step i, node j (counting from the top) has rate = r&sub0; &times; u^(i &minus; 2j):</p>
+
+<pre><code><strong>Step 0 (today):</strong>
+  r = 5.00%
+
+<strong>Step 1 (year 1):</strong>  2 nodes
+  r_up   = 5.00% &times; 1.16183 = 5.81%
+  r_down = 5.00% &times; 0.86071 = 4.30%
+
+<strong>Step 2 (year 2):</strong>  3 nodes
+  r_uu   = 5.81% &times; 1.16183 = 6.75%
+  r_ud   = 5.81% &times; 0.86071 = 5.00%   (= r_du, recombining)
+  r_dd   = 4.30% &times; 0.86071 = 3.70%
+
+<strong>Step 3 (year 3):</strong>  4 nodes
+  r_uuu  = 6.75% &times; 1.16183 = 7.84%
+  r_uud  = 6.75% &times; 0.86071 = 5.81%
+  r_udd  = 5.00% &times; 0.86071 = 4.30%
+  r_ddd  = 3.70% &times; 0.86071 = 3.19%</code></pre>
+
+<pre><code>Tree diagram (short rates):
+
+                            7.84%
+                  6.75%
+        5.81%             5.81%
+  5.00%         5.00%
+        4.30%             4.30%
+                  3.70%
+                            3.19%
+</code></pre>
+
+<pre><code class="language-python">import numpy as np
+
+def build_rate_tree(r0, sigma, steps, dt=1.0):
+    """Build a recombining binomial rate tree."""
+    u = np.exp(sigma * np.sqrt(dt))
+    tree = []
+    for i in range(steps + 1):
+        level = []
+        for j in range(i + 1):
+            rate = r0 * u ** (i - 2 * j)
+            level.append(rate)
+        tree.append(level)
+    return tree
+
+tree = build_rate_tree(0.05, 0.15, 3)
+for i, level in enumerate(tree):
+    rates = [f"{r*100:.2f}%" for r in level]
+    print(f"Step {i}: {rates}")
+
+# Step 0: ['5.00%']
+# Step 1: ['5.81%', '4.30%']
+# Step 2: ['6.75%', '5.00%', '3.70%']
+# Step 3: ['7.84%', '5.81%', '4.30%', '3.19%']
+</code></pre>
+
+<h2>5. Backward Induction</h2>
+
+<p>To price a bond on the tree, work backwards from maturity. At each node, the bond value is the expected discounted value of the two successor nodes, plus any coupon received at that node.</p>
+
+<pre><code>At maturity (step N):
+  V = face + coupon = 105  (for a 5% coupon bond with 100 face)
+
+At each earlier node:
+  V = coupon + (0.5 &times; V_up + 0.5 &times; V_down) / (1 + r &times; &Delta;t)</code></pre>
+
+<h3>Worked example: price a 3-year, 5% coupon bond on the tree above</h3>
+
+<p><strong>Step 3 (maturity) &mdash; all nodes: V = 105.00</strong></p>
+
+<pre><code>Node(uuu): 105.00    Node(uud): 105.00    Node(udd): 105.00    Node(ddd): 105.00</code></pre>
+
+<p><strong>Step 2 &mdash; discount back one year, add coupon of 5:</strong></p>
+
+<pre><code>Node(uu): rate = 6.75%
+  V = 5 + (0.5 &times; 105.00 + 0.5 &times; 105.00) / 1.0675
+  V = 5 + 105.00 / 1.0675
+  V = 5 + 98.36 = <strong>103.36</strong>
+
+Node(ud): rate = 5.00%
+  V = 5 + (0.5 &times; 105.00 + 0.5 &times; 105.00) / 1.0500
+  V = 5 + 105.00 / 1.0500
+  V = 5 + 100.00 = <strong>105.00</strong>
+
+Node(dd): rate = 3.70%
+  V = 5 + (0.5 &times; 105.00 + 0.5 &times; 105.00) / 1.0370
+  V = 5 + 105.00 / 1.0370
+  V = 5 + 101.25 = <strong>106.25</strong></code></pre>
+
+<p><strong>Step 1 &mdash; discount back again:</strong></p>
+
+<pre><code>Node(u): rate = 5.81%
+  V = 5 + (0.5 &times; 103.36 + 0.5 &times; 105.00) / 1.0581
+  V = 5 + 104.18 / 1.0581
+  V = 5 + 98.47 = <strong>103.47</strong>
+
+Node(d): rate = 4.30%
+  V = 5 + (0.5 &times; 105.00 + 0.5 &times; 106.25) / 1.0430
+  V = 5 + 105.625 / 1.0430
+  V = 5 + 101.31 = <strong>106.31</strong></code></pre>
+
+<p><strong>Step 0 (today):</strong></p>
+
+<pre><code>Node(root): rate = 5.00%
+  V = 5 + (0.5 &times; 103.47 + 0.5 &times; 106.31) / 1.0500
+  V = 5 + 104.89 / 1.0500
+  V = 5 + 99.90 = <strong>104.90</strong></code></pre>
+
+<p>The tree-based price is <strong>104.90</strong>. For comparison, flat-rate pricing at 5% gives exactly 100.00. The difference arises because the tree introduces rate volatility &mdash; the convexity of the discounting function means that averaging over high/low rate scenarios gives a higher bond price than simply using the average rate. This is the <strong>convexity effect</strong>.</p>
+
+<h2>6. Callable Bond on the Tree</h2>
+
+<p>At each node, the issuer decides whether to call. If the bond's continuation value exceeds the call price, the issuer redeems early:</p>
+
+<pre><code>V_callable = min(V_continuation, call_price)
+
+where V_continuation = coupon + (0.5 &times; V_up + 0.5 &times; V_down) / (1 + r)</code></pre>
+
+<h3>Worked example: same 3-year 5% bond, callable at 100</h3>
+
+<p><strong>Step 3 (maturity): V = 105.00 at all nodes</strong> (no call at maturity &mdash; bond matures naturally).</p>
+
+<p><strong>Step 2:</strong></p>
+
+<pre><code>Node(uu): continuation = 103.36, call price = 100
+  103.36 &gt; 100 &rarr; issuer calls &rarr; V = <strong>100.00</strong>
+
+Node(ud): continuation = 105.00, call price = 100
+  105.00 &gt; 100 &rarr; issuer calls &rarr; V = <strong>100.00</strong>
+
+Node(dd): continuation = 106.25, call price = 100
+  106.25 &gt; 100 &rarr; issuer calls &rarr; V = <strong>100.00</strong></code></pre>
+
+<p>The issuer calls at <strong>every</strong> step-2 node because the continuation value exceeds 100 everywhere. (With a higher-volatility tree or steeper curve, some high-rate nodes would not be called.)</p>
+
+<p><strong>Step 1:</strong></p>
+
+<pre><code>Node(u): rate = 5.81%
+  continuation = 5 + (0.5 &times; 100.00 + 0.5 &times; 100.00) / 1.0581
+  continuation = 5 + 100.00 / 1.0581 = 5 + 94.51 = 99.51
+  99.51 &lt; 100 &rarr; issuer does NOT call &rarr; V = <strong>99.51</strong>
+
+Node(d): rate = 4.30%
+  continuation = 5 + (0.5 &times; 100.00 + 0.5 &times; 100.00) / 1.0430
+  continuation = 5 + 100.00 / 1.0430 = 5 + 95.88 = 100.88
+  100.88 &gt; 100 &rarr; issuer calls &rarr; V = <strong>100.00</strong></code></pre>
+
+<p><strong>Step 0:</strong></p>
+
+<pre><code>Node(root): rate = 5.00%
+  continuation = 5 + (0.5 &times; 99.51 + 0.5 &times; 100.00) / 1.0500
+  continuation = 5 + 99.755 / 1.0500 = 5 + 95.00 = 100.00
+  100.00 &le; 100 &rarr; borderline, not called &rarr; V = <strong>100.00</strong></code></pre>
+
+<p>Callable bond price: <strong>100.00</strong>. Non-callable price was 104.90. The difference of <strong>4.90</strong> is the value of the embedded call option. The bondholder effectively sold a call worth $4.90 per 100 face.</p>
+
+<h2>7. OAS (Option-Adjusted Spread)</h2>
+
+<p>The OAS is the constant spread added to <strong>every rate on the tree</strong> such that the model price equals the market price. It removes the option effect, isolating pure credit compensation.</p>
+
+<pre><code>At each node: discount using (r_node + OAS) instead of r_node
+Apply call logic (if callable)
+Solve for OAS such that root value = market price</code></pre>
+
+<p>For a <strong>non-callable</strong> bond, the OAS converges to the Z-spread (both are just a parallel shift of rates). For a <strong>callable</strong> bond:</p>
+
+<pre><code>Z-spread = OAS + option cost (in spread terms)
+OAS &lt; Z-spread   (always, for callable bonds)</code></pre>
+
+<h3>Worked example: callable bond market price = $99</h3>
+
+<p>We need the OAS such that pricing the callable bond on the shifted tree gives $99. The algorithm:</p>
+
+<pre><code>1. Guess OAS = 0.0050 (50 bps)
+2. Shift every rate on the tree by +50 bps
+3. Run backward induction with call logic
+4. If model price &gt; 99 &rarr; OAS too low (need more discounting)
+   If model price &lt; 99 &rarr; OAS too high
+5. Bisect and repeat until convergence</code></pre>
+
+<p>Each iteration is a full backward-induction pass through the tree. The computation is fast (milliseconds for a 50-step tree) but tedious by hand, so in practice you use a solver:</p>
+
+<pre><code class="language-python">from scipy.optimize import brentq
+
+def price_callable_with_oas(rate_tree, oas, coupon, face, call_price):
+    """Price a callable bond on a shifted rate tree via backward induction."""
+    steps = len(rate_tree) - 1
+    # Terminal values
+    values = [face + coupon] * (steps + 1)
+
+    for i in range(steps - 1, -1, -1):
+        new_values = []
+        for j in range(i + 1):
+            r = rate_tree[i][j] + oas
+            continuation = coupon + (0.5 * values[j] + 0.5 * values[j + 1]) / (1 + r)
+            # Issuer calls if continuation > call_price
+            v = min(continuation, call_price) if i > 0 else continuation
+            new_values.append(v)
+        values = new_values
+
+    return values[0]
+
+def solve_oas(rate_tree, coupon, face, call_price, market_price):
+    """Find OAS via root-finding."""
+    def error(oas):
+        return price_callable_with_oas(rate_tree, oas, coupon, face, call_price) - market_price
+    return brentq(error, -0.05, 0.20)
+
+tree = build_rate_tree(0.05, 0.15, 3)
+oas = solve_oas(tree, 5, 100, 100, 99)
+print(f"OAS: {oas * 10000:.1f} bps")
+</code></pre>
+
+<p>The key insight: OAS strips out the embedded option, giving you a clean measure of credit compensation. Two callable bonds with different option structures but the same credit quality should have similar OAS, even though their Z-spreads differ.</p>
+
+<h2>8. Spread Duration (CS01)</h2>
+
+<p>Spread duration measures how much a bond's price changes when its credit spread moves by 1 basis point. It is the credit-spread analogue of interest-rate duration.</p>
+
+<pre><code>CS01 = |P(s + 1bp) &minus; P(s &minus; 1bp)| / 2
+
+where s is the current spread and P(s) is the price at spread s.</code></pre>
+
+<p>CS01 is quoted per 100 face value. To get the dollar P&amp;L impact on a position:</p>
+
+<pre><code>&Delta;P = CS01 &times; &Delta;spread(bps) &times; notional / 100</code></pre>
+
+<h3>Worked example</h3>
+
+<p>A bond at spread = 100 bps. We reprice at 99 bps and 101 bps:</p>
+
+<pre><code>P(99 bps)  = 98.05
+P(101 bps) = 97.95
+
+CS01 = |98.05 &minus; 97.95| / 2 = <strong>0.05 per 100 face</strong></code></pre>
+
+<p>On a $10 million position, a 1 bp spread widening costs:</p>
+
+<pre><code>&Delta;P = 0.05 &times; 1 &times; 10,000,000 / 100 = <strong>$5,000</strong></code></pre>
+
+<p>If spreads widen by 20 bps (a bad day in credit):</p>
+
+<pre><code>&Delta;P = 0.05 &times; 20 &times; 10,000,000 / 100 = <strong>$100,000</strong></code></pre>
+
+<p>Key relationships:</p>
+<ul>
+  <li><strong>Longer maturity &rarr; higher CS01.</strong> More cash flows are affected by the spread shift, so the price is more sensitive.</li>
+  <li><strong>Lower coupon &rarr; higher CS01.</strong> More of the bond's value comes from the final payment, which is furthest out and most affected.</li>
+  <li><strong>Callable bonds have lower CS01</strong> than otherwise-identical non-callable bonds, because the call truncates the expected cash-flow stream.</li>
+</ul>
+
+<h2>9. How It Connects to Portfolio Risk</h2>
+
+<p>CS01 is the bridge between single-bond analytics and portfolio risk management. The P&amp;L from a spread move on a single position is:</p>
+
+<pre><code>&Delta;P_i &asymp; &minus;CS01_i &times; &Delta;spread_i &times; notional_i</code></pre>
+
+<p>For a portfolio of N bonds, the total P&amp;L under a scenario is:</p>
+
+<pre><code>&Delta;P_portfolio = &sum; &minus;CS01_i &times; &Delta;spread_i &times; notional_i</code></pre>
+
+<p>In a Monte Carlo VaR framework (as in QuantLab Exercise 20), you:</p>
+
+<ol>
+  <li><strong>Estimate a covariance matrix</strong> of spread changes across issuers or sectors.</li>
+  <li><strong>Simulate</strong> thousands of correlated spread-change scenarios using Cholesky decomposition.</li>
+  <li><strong>Compute portfolio P&amp;L</strong> for each scenario using the CS01-weighted formula above.</li>
+  <li><strong>Read off VaR</strong> as the 1st or 5th percentile of the P&amp;L distribution.</li>
+</ol>
+
+<pre><code>Example: 3-bond portfolio
+
+Bond A: CS01 = 0.045, notional = $5M
+Bond B: CS01 = 0.082, notional = $8M
+Bond C: CS01 = 0.031, notional = $3M
+
+One simulated scenario: &Delta;spread_A = +12bp, &Delta;spread_B = +8bp, &Delta;spread_C = +15bp
+
+&Delta;P_A = &minus;0.045 &times; 12 &times; 5,000,000 / 100 = &minus;$27,000
+&Delta;P_B = &minus;0.082 &times;  8 &times; 8,000,000 / 100 = &minus;$52,480
+&Delta;P_C = &minus;0.031 &times; 15 &times; 3,000,000 / 100 = &minus;$13,950
+
+Portfolio &Delta;P = &minus;$93,430</code></pre>
+
+<p>Repeat for 10,000 scenarios. Sort the results. The 5th-percentile loss is your 95% VaR. The average of losses beyond that threshold is your Expected Shortfall (CVaR).</p>
+
+<p>This is the full chain: bond pricing &rarr; spread analytics (Z-spread, OAS) &rarr; spread sensitivity (CS01) &rarr; portfolio risk (VaR). Each concept builds on the one before it.</p>

@@ -1,0 +1,470 @@
+---
+layout: post
+title: "Portfolio Risk: VaR, CVaR, Sharpe, and Monte Carlo Simulation"
+date: 2026-04-29
+tags: [math, finance, var, cvar, sharpe-ratio, monte-carlo, cholesky, correlation, portfolio-risk, volatility, quant-lab]
+categories:
+- Math / Finance
+section: math-finance
+permalink: "/math-finance/portfolio-risk/"
+---
+
+<h2>A Complete Walkthrough of Portfolio Risk Metrics</h2>
+
+<p>This post is a self-contained reference for the core risk metrics used in portfolio management and credit risk. Every concept comes with a worked numerical example so you can follow the arithmetic by hand. We cover daily returns, volatility, Value at Risk, Expected Shortfall, the Sharpe ratio, portfolio diversification, Cholesky decomposition, and Monte Carlo credit VaR.</p>
+
+<hr>
+
+<h2>1 &mdash; Daily Returns</h2>
+
+<p><strong>Definition:</strong> A daily return measures how much an asset's price changed in one day, expressed as a fraction (or percentage) of the previous day's price.</p>
+
+<p><strong>Simple return:</strong></p>
+<p style="margin-left:2em;">r<sub>t</sub> = (P<sub>t</sub> &minus; P<sub>t&minus;1</sub>) / P<sub>t&minus;1</sub></p>
+
+<p><strong>Log return:</strong></p>
+<p style="margin-left:2em;">r<sub>t</sub> = ln(P<sub>t</sub> / P<sub>t&minus;1</sub>)</p>
+
+<h3>Worked example</h3>
+
+<p>A stock trades at $100, then $103, then $99.</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Day</th><th>Price</th><th>Simple return</th><th>Log return</th></tr>
+  <tr>
+    <td>0</td><td>$100</td><td>&mdash;</td><td>&mdash;</td>
+  </tr>
+  <tr>
+    <td>1</td>
+    <td>$103</td>
+    <td>(103 &minus; 100) / 100 = <strong>+3.00%</strong></td>
+    <td>ln(103 / 100) = ln(1.03) = <strong>+2.96%</strong></td>
+  </tr>
+  <tr>
+    <td>2</td>
+    <td>$99</td>
+    <td>(99 &minus; 103) / 103 = <strong>&minus;3.88%</strong></td>
+    <td>ln(99 / 103) = ln(0.9612) = <strong>&minus;3.96%</strong></td>
+  </tr>
+</table>
+
+<p><strong>Why log returns?</strong> Two practical reasons:</p>
+<ol>
+  <li><strong>Additive over time.</strong> The two-day log return equals the sum of daily log returns: 2.96% + (&minus;3.96%) = &minus;1.00%, which matches ln(99/100) = &minus;1.005%. Simple returns don't add this way.</li>
+  <li><strong>Symmetric around zero.</strong> A +5% log move up and a &minus;5% log move down are the same magnitude. Simple returns are not: +5% then &minus;5% leaves you at $99.75, not $100.</li>
+</ol>
+
+<hr>
+
+<h2>2 &mdash; Volatility</h2>
+
+<p><strong>Definition:</strong> Volatility is the standard deviation of returns. It measures how much an asset's returns typically deviate from their average.</p>
+
+<p style="margin-left:2em;">&sigma;<sub>daily</sub> = stdev(r<sub>1</sub>, r<sub>2</sub>, &hellip;, r<sub>n</sub>)</p>
+
+<p>To annualize (assuming 252 trading days per year):</p>
+<p style="margin-left:2em;">&sigma;<sub>annual</sub> = &sigma;<sub>daily</sub> &times; &radic;252</p>
+
+<h3>Worked example</h3>
+
+<p>Five daily returns: +1.2%, &minus;0.8%, +0.5%, &minus;1.5%, +0.9%</p>
+
+<p><strong>Step 1 &mdash; Mean:</strong></p>
+<p style="margin-left:2em;">&mu; = (1.2 + (&minus;0.8) + 0.5 + (&minus;1.5) + 0.9) / 5 = 0.3 / 5 = <strong>0.06%</strong></p>
+
+<p><strong>Step 2 &mdash; Deviations from the mean:</strong></p>
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Return</th><th>r &minus; &mu;</th><th>(r &minus; &mu;)&sup2;</th></tr>
+  <tr><td>+1.20%</td><td>+1.14%</td><td>0.012996</td></tr>
+  <tr><td>&minus;0.80%</td><td>&minus;0.86%</td><td>0.007396</td></tr>
+  <tr><td>+0.50%</td><td>+0.44%</td><td>0.001936</td></tr>
+  <tr><td>&minus;1.50%</td><td>&minus;1.56%</td><td>0.024336</td></tr>
+  <tr><td>+0.90%</td><td>+0.84%</td><td>0.007056</td></tr>
+</table>
+
+<p><strong>Step 3 &mdash; Variance</strong> (using sample variance, dividing by n&minus;1 = 4):</p>
+<p style="margin-left:2em;">sum of squared deviations = 0.012996 + 0.007396 + 0.001936 + 0.024336 + 0.007056 = 0.05372</p>
+<p style="margin-left:2em;">variance = 0.05372 / 4 = 0.01343</p>
+
+<p><strong>Step 4 &mdash; Standard deviation:</strong></p>
+<p style="margin-left:2em;">&sigma;<sub>daily</sub> = &radic;0.01343 = <strong>1.05% per day</strong></p>
+
+<p><strong>Step 5 &mdash; Annualize:</strong></p>
+<p style="margin-left:2em;">&sigma;<sub>annual</sub> = 1.05% &times; &radic;252 = 1.05% &times; 15.87 = <strong>16.7% per year</strong></p>
+
+<p><strong>Interpretation:</strong> "This stock typically moves &plusmn;16.7% per year." Higher volatility means more risk (and more opportunity for traders). Lower volatility means more predictable returns.</p>
+
+<hr>
+
+<h2>3 &mdash; Value at Risk (VaR)</h2>
+
+<p><strong>Definition:</strong> VaR answers the question: "What is the maximum loss I can expect at a given confidence level over a given time horizon?" A 95% 1-day VaR of $25K means: "On 95% of days, my loss will be less than $25K."</p>
+
+<h3>Method A &mdash; Historical simulation</h3>
+
+<p>Take observed daily returns, sort them from worst to best, and read off the percentile.</p>
+
+<p><strong>Worked example:</strong> 20 daily returns for a $1M portfolio (in percent):</p>
+
+<pre><code class="language-text">Unsorted:  +0.8  -0.3  +1.2  -1.8  +0.4  -0.6  +0.2  -2.5  +1.0  -0.1
+           +0.6  -1.2  +0.3  -0.5  +1.5  -0.9  +0.7  -1.6  +0.1  -0.4
+
+Sorted (worst to best):
+ 1. -2.50%    (worst)
+ 2. -1.80%
+ 3. -1.60%
+ 4. -1.20%
+ 5. -0.90%
+ 6. -0.60%
+ 7. -0.50%
+ 8. -0.40%
+ 9. -0.30%
+10. -0.10%
+11. +0.10%
+12. +0.20%
+13. +0.30%
+14. +0.40%
+15. +0.60%
+16. +0.70%
+17. +0.80%
+18. +1.00%
+19. +1.20%
+20. +1.50%    (best)
+</code></pre>
+
+<p>For 95% VaR with 20 observations, the 5th percentile is the 1st worst observation (20 &times; 0.05 = 1).</p>
+<p style="margin-left:2em;">VaR (95%, 1-day) = <strong>&minus;2.50%</strong></p>
+<p style="margin-left:2em;">In dollar terms: $1,000,000 &times; 2.50% = <strong>$25,000</strong></p>
+
+<p>Meaning: on 95% of days, this portfolio loses less than $25,000.</p>
+
+<h3>Method B &mdash; Parametric VaR (normal assumption)</h3>
+
+<p>If returns are normally distributed with mean &mu; and standard deviation &sigma;:</p>
+<p style="margin-left:2em;">VaR = &minus;&mu; + z &times; &sigma;</p>
+
+<p>where z is the standard normal quantile (z = 1.645 for 95%, z = 2.326 for 99%).</p>
+
+<p><strong>Worked example:</strong> Portfolio value = $1,000,000, daily vol = 1.5%, assume &mu; &asymp; 0:</p>
+<p style="margin-left:2em;">VaR (95%) = $1,000,000 &times; 1.645 &times; 0.015 = <strong>$24,675</strong></p>
+<p style="margin-left:2em;">VaR (99%) = $1,000,000 &times; 2.326 &times; 0.015 = <strong>$34,890</strong></p>
+
+<p><strong>Key limitation:</strong> VaR tells you the threshold but nothing about what happens beyond it. If you breach VaR, your loss could be $25K or $250K &mdash; VaR does not distinguish between the two. This is why we need CVaR.</p>
+
+<hr>
+
+<h2>4 &mdash; CVaR (Conditional VaR / Expected Shortfall)</h2>
+
+<p><strong>Definition:</strong> CVaR (also called Expected Shortfall, ES) answers: "If I do have a loss worse than VaR, what is the average loss?" It captures the severity of tail events, not just the threshold.</p>
+
+<h3>Worked example</h3>
+
+<p>Using the same 20 sorted returns from Section 3:</p>
+
+<p>At 95% confidence with 20 observations, the VaR threshold is the 1st worst return (&minus;2.50%). CVaR is the average of all returns at or below that threshold.</p>
+
+<p>With only one observation in the tail (the 1st), CVaR equals that single value:</p>
+<p style="margin-left:2em;">CVaR (95%) = <strong>&minus;2.50%</strong> = <strong>$25,000</strong></p>
+
+<p>For a richer example, consider 90% VaR (10th percentile = 2nd worst observation):</p>
+<p style="margin-left:2em;">VaR (90%) = &minus;1.80% (the 2nd worst return)</p>
+<p style="margin-left:2em;">CVaR (90%) = average of the 2 worst returns = (&minus;2.50% + &minus;1.80%) / 2 = <strong>&minus;2.15%</strong></p>
+<p style="margin-left:2em;">In dollars: $1,000,000 &times; 2.15% = <strong>$21,500</strong></p>
+
+<p>Compare: VaR (90%) said $18,000; CVaR (90%) says the average tail loss is $21,500 &mdash; worse, as expected.</p>
+
+<p><strong>Why regulators prefer CVaR:</strong></p>
+<ul>
+  <li>Basel III (specifically the Fundamental Review of the Trading Book, FRTB) replaced VaR with Expected Shortfall as the primary market risk measure.</li>
+  <li>CVaR is a <em>coherent</em> risk measure (it satisfies sub-additivity: diversification always helps). VaR is not coherent.</li>
+  <li>CVaR is always &ge; VaR by definition &mdash; it averages the tail, which is always at least as bad as the threshold.</li>
+</ul>
+
+<hr>
+
+<h2>5 &mdash; Sharpe Ratio</h2>
+
+<p><strong>Definition:</strong> The Sharpe ratio measures risk-adjusted return &mdash; how much excess return you earn per unit of risk.</p>
+
+<p style="margin-left:2em;">Sharpe = (R<sub>portfolio</sub> &minus; R<sub>risk-free</sub>) / &sigma;<sub>portfolio</sub></p>
+
+<h3>Worked example</h3>
+
+<p>A portfolio returned 12% over the past year. The risk-free rate (e.g., 1-year Treasury) is 4%. The portfolio's annualized volatility is 20%.</p>
+
+<p style="margin-left:2em;">Sharpe = (12% &minus; 4%) / 20% = 8% / 20% = <strong>0.40</strong></p>
+
+<p><strong>Interpretation:</strong> For every 1% of risk (volatility) taken, the portfolio earned 0.40% of excess return above the risk-free rate.</p>
+
+<p><strong>Rules of thumb:</strong></p>
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Sharpe ratio</th><th>Assessment</th></tr>
+  <tr><td>&lt; 0.5</td><td>Poor &mdash; not enough return for the risk taken</td></tr>
+  <tr><td>0.5 &ndash; 1.0</td><td>Decent &mdash; acceptable risk-adjusted performance</td></tr>
+  <tr><td>1.0 &ndash; 2.0</td><td>Good &mdash; strong risk-adjusted returns</td></tr>
+  <tr><td>&gt; 2.0</td><td>Exceptional &mdash; rare outside short time windows</td></tr>
+</table>
+
+<p><strong>Limitations:</strong></p>
+<ul>
+  <li>Assumes returns are normally distributed. Fat tails make the Sharpe misleading.</li>
+  <li>Penalizes upside volatility the same as downside. A fund that occasionally has large gains gets a lower Sharpe even though those gains are desirable. (The Sortino ratio fixes this by using only downside deviation.)</li>
+  <li>Sensitive to the time period chosen. Annualizing monthly Sharpe by multiplying by &radic;12 assumes i.i.d. returns.</li>
+</ul>
+
+<hr>
+
+<h2>6 &mdash; Portfolio Weights and Diversification</h2>
+
+<p><strong>Weight</strong> = the fraction of total portfolio value in each asset. Weights must sum to 1.0 (100%).</p>
+
+<p><strong>Portfolio return:</strong></p>
+<p style="margin-left:2em;">R<sub>portfolio</sub> = w<sub>1</sub> &times; R<sub>1</sub> + w<sub>2</sub> &times; R<sub>2</sub> + &hellip;</p>
+
+<p><strong>Portfolio variance</strong> (the key insight &mdash; correlation matters):</p>
+<p style="margin-left:2em;">&sigma;<sub>p</sub>&sup2; = w<sub>1</sub>&sup2;&sigma;<sub>1</sub>&sup2; + w<sub>2</sub>&sup2;&sigma;<sub>2</sub>&sup2; + 2 w<sub>1</sub> w<sub>2</sub> &rho; &sigma;<sub>1</sub> &sigma;<sub>2</sub></p>
+
+<h3>Worked example</h3>
+
+<p>A $100,000 portfolio: 60% stocks (w<sub>1</sub> = 0.60) and 40% bonds (w<sub>2</sub> = 0.40).</p>
+<ul>
+  <li>&sigma;<sub>stocks</sub> = 20% (annual)</li>
+  <li>&sigma;<sub>bonds</sub> = 5% (annual)</li>
+  <li>&rho;<sub>stocks,bonds</sub> = 0.2 (low positive correlation)</li>
+</ul>
+
+<p><strong>Step 1 &mdash; Compute each term:</strong></p>
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Term</th><th>Formula</th><th>Value</th></tr>
+  <tr><td>Stocks variance</td><td>w<sub>1</sub>&sup2; &times; &sigma;<sub>1</sub>&sup2; = 0.60&sup2; &times; 0.20&sup2;</td><td>0.36 &times; 0.04 = 0.0144</td></tr>
+  <tr><td>Bonds variance</td><td>w<sub>2</sub>&sup2; &times; &sigma;<sub>2</sub>&sup2; = 0.40&sup2; &times; 0.05&sup2;</td><td>0.16 &times; 0.0025 = 0.0004</td></tr>
+  <tr><td>Cross term</td><td>2 &times; w<sub>1</sub> &times; w<sub>2</sub> &times; &rho; &times; &sigma;<sub>1</sub> &times; &sigma;<sub>2</sub></td><td>2 &times; 0.60 &times; 0.40 &times; 0.2 &times; 0.20 &times; 0.05 = 0.00192</td></tr>
+</table>
+
+<p><strong>Step 2 &mdash; Portfolio variance and volatility:</strong></p>
+<p style="margin-left:2em;">&sigma;<sub>p</sub>&sup2; = 0.0144 + 0.0004 + 0.00192 = 0.01672</p>
+<p style="margin-left:2em;">&sigma;<sub>p</sub> = &radic;0.01672 = <strong>12.93%</strong></p>
+
+<p><strong>Step 3 &mdash; Compare to the naive weighted average:</strong></p>
+<p style="margin-left:2em;">Naive: 0.60 &times; 20% + 0.40 &times; 5% = 12% + 2% = 14%</p>
+<p style="margin-left:2em;">Actual portfolio vol: 12.93%</p>
+<p style="margin-left:2em;"><strong>Diversification benefit: 14% &minus; 12.93% = 1.07% saved</strong></p>
+
+<p>Because stocks and bonds are not perfectly correlated (&rho; &lt; 1), the portfolio is less risky than the weighted average of individual risks. This is the mathematical basis of diversification. If &rho; = 1.0, the benefit disappears and &sigma;<sub>p</sub> = 14% exactly.</p>
+
+<hr>
+
+<h2>7 &mdash; Cholesky Decomposition for Correlated Simulation</h2>
+
+<p><strong>The problem:</strong> Monte Carlo simulation needs random draws for each risk factor, but risk factors are correlated (e.g., credit spreads of two bonds in the same sector). Drawing independent random numbers ignores this correlation.</p>
+
+<p><strong>The solution:</strong> Cholesky factorization. Given a correlation (or covariance) matrix &Sigma;, find a lower-triangular matrix L such that &Sigma; = L L<sup>T</sup>. Then multiply independent standard normal draws by L to produce correlated draws.</p>
+
+<h3>Worked example (2&times;2)</h3>
+
+<p><strong>Correlation matrix:</strong></p>
+<pre><code class="language-text">&Sigma; = | 1.0   0.6 |
+      | 0.6   1.0 |
+</code></pre>
+
+<p><strong>Step 1 &mdash; Find L (lower-triangular):</strong></p>
+<p style="margin-left:2em;">L<sub>11</sub> = &radic;&Sigma;<sub>11</sub> = &radic;1.0 = <strong>1.0</strong></p>
+<p style="margin-left:2em;">L<sub>21</sub> = &Sigma;<sub>21</sub> / L<sub>11</sub> = 0.6 / 1.0 = <strong>0.6</strong></p>
+<p style="margin-left:2em;">L<sub>22</sub> = &radic;(&Sigma;<sub>22</sub> &minus; L<sub>21</sub>&sup2;) = &radic;(1.0 &minus; 0.36) = &radic;0.64 = <strong>0.8</strong></p>
+
+<pre><code class="language-text">L = | 1.0   0.0 |
+    | 0.6   0.8 |
+</code></pre>
+
+<p><strong>Step 2 &mdash; Verify:</strong> L &times; L<sup>T</sup> should equal &Sigma;.</p>
+<pre><code class="language-text">L &times; L^T = | 1.0&times;1.0 + 0.0&times;0.0   1.0&times;0.6 + 0.0&times;0.8 |   =   | 1.0   0.6 |
+            | 0.6&times;1.0 + 0.8&times;0.0   0.6&times;0.6 + 0.8&times;0.8 |       | 0.6   1.0 |   &#x2713;
+</code></pre>
+
+<p><strong>Step 3 &mdash; Generate correlated draws.</strong> Start with independent standard normal draws Z = [0.5, &minus;0.3].</p>
+<p style="margin-left:2em;">Correlated draws X = L &times; Z (matrix-vector multiply):</p>
+<p style="margin-left:2em;">X<sub>1</sub> = 1.0 &times; 0.5 + 0.0 &times; (&minus;0.3) = <strong>0.50</strong></p>
+<p style="margin-left:2em;">X<sub>2</sub> = 0.6 &times; 0.5 + 0.8 &times; (&minus;0.3) = 0.30 &minus; 0.24 = <strong>0.06</strong></p>
+
+<p>The output [0.50, 0.06] is a pair of correlated draws. X<sub>1</sub> is strongly positive, so X<sub>2</sub> is pulled slightly positive too (because &rho; = 0.6). If the correlation were zero, X<sub>2</sub> would have stayed at &minus;0.3.</p>
+
+<hr>
+
+<h2>8 &mdash; Monte Carlo Credit VaR</h2>
+
+<p><strong>The full process:</strong></p>
+<ol>
+  <li>Define portfolio positions with notionals, CS01 sensitivities, and spread volatilities.</li>
+  <li>Build a correlation matrix for the credit spreads.</li>
+  <li>For each simulation path: draw correlated standard normals &rarr; scale by spread vol to get spread changes &rarr; compute P&amp;L via CS01.</li>
+  <li>Collect all simulated P&amp;Ls and take the percentile.</li>
+</ol>
+
+<h3>Worked example &mdash; 2-position portfolio</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Position</th><th>Notional</th><th>CS01 (%/bp)</th><th>Spread vol (bps/day)</th></tr>
+  <tr><td>Bond A</td><td>$500,000</td><td>0.045</td><td>50</td></tr>
+  <tr><td>Bond B</td><td>$300,000</td><td>0.080</td><td>80</td></tr>
+</table>
+
+<p>Correlation between A and B spreads: &rho; = 0.6</p>
+
+<p><strong>Cholesky factor</strong> (same as Section 7): L = [[1.0, 0.0], [0.6, 0.8]]</p>
+
+<p><strong>P&amp;L formula for each position:</strong></p>
+<p style="margin-left:2em;">P&amp;L<sub>i</sub> = &minus;Notional<sub>i</sub> &times; CS01<sub>i</sub> &times; &Delta;spread<sub>i</sub></p>
+<p style="margin-left:2em;">where &Delta;spread<sub>i</sub> = vol<sub>i</sub> &times; X<sub>i</sub> (correlated shock, in bps)</p>
+<p style="margin-left:2em;">The negative sign: a spread widening (positive &Delta;spread) causes a loss.</p>
+
+<p><strong>5 simulated paths</strong> (using a fixed seed for reproducibility):</p>
+
+<pre><code class="language-python">import numpy as np
+
+np.random.seed(42)
+L = np.array([[1.0, 0.0], [0.6, 0.8]])
+notional = np.array([500_000, 300_000])
+cs01     = np.array([0.045, 0.080])       # percent per bp, i.e. 0.045% = 0.00045
+spread_vol = np.array([50, 80])           # bps per day
+
+n_paths = 5
+Z = np.random.standard_normal((n_paths, 2))  # independent draws
+X = Z @ L.T                                   # correlated draws
+
+for i in range(n_paths):
+    ds = spread_vol * X[i]                     # spread change in bps
+    pnl = -notional * (cs01 / 100) * ds        # P&L in dollars
+    total = pnl.sum()
+    print(f"Path {i+1}: Z={Z[i].round(2)}, X={X[i].round(2)}, "
+          f"dS={ds.round(1)} bps, P&L_A=${pnl[0]:+,.0f}, "
+          f"P&L_B=${pnl[1]:+,.0f}, Total=${total:+,.0f}")
+</code></pre>
+
+<p><strong>Path-by-path results:</strong></p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Path</th><th>Z (independent)</th><th>X (correlated)</th><th>&Delta;S<sub>A</sub> (bps)</th><th>&Delta;S<sub>B</sub> (bps)</th><th>P&amp;L A</th><th>P&amp;L B</th><th>Total P&amp;L</th></tr>
+  <tr><td>1</td><td>[+0.50, &minus;0.14]</td><td>[+0.50, +0.19]</td><td>+24.8</td><td>+14.9</td><td>&minus;$5,580</td><td>&minus;$3,576</td><td><strong>&minus;$9,156</strong></td></tr>
+  <tr><td>2</td><td>[+0.65, +0.53]</td><td>[+0.65, +0.81]</td><td>+32.4</td><td>+65.1</td><td>&minus;$7,290</td><td>&minus;$15,624</td><td><strong>&minus;$22,914</strong></td></tr>
+  <tr><td>3</td><td>[&minus;0.47, &minus;0.46]</td><td>[&minus;0.47, &minus;0.65]</td><td>&minus;23.3</td><td>&minus;52.0</td><td>+$5,243</td><td>+$12,480</td><td><strong>+$17,723</strong></td></tr>
+  <tr><td>4</td><td>[+1.52, &minus;0.23]</td><td>[+1.52, +0.73]</td><td>+76.2</td><td>+58.2</td><td>&minus;$17,145</td><td>&minus;$13,968</td><td><strong>&minus;$31,113</strong></td></tr>
+  <tr><td>5</td><td>[&minus;0.23, +0.54]</td><td>[&minus;0.23, +0.29]</td><td>&minus;11.7</td><td>+23.5</td><td>+$2,633</td><td>&minus;$5,640</td><td><strong>&minus;$3,007</strong></td></tr>
+</table>
+
+<p><strong>Sort by total P&amp;L (worst to best):</strong></p>
+<ol>
+  <li>&minus;$31,113 (Path 4) &larr; worst</li>
+  <li>&minus;$22,914 (Path 2)</li>
+  <li>&minus;$9,156 (Path 1)</li>
+  <li>&minus;$3,007 (Path 5)</li>
+  <li>+$17,723 (Path 3) &larr; best</li>
+</ol>
+
+<p>With only 5 paths, the 95th-percentile VaR is simply the worst: <strong>VaR (95%) = $31,113</strong>. In practice you would run 10,000+ paths for a stable estimate.</p>
+
+<p><strong>Why correlation matters:</strong> In Path 4, Z<sub>1</sub> was strongly positive (+1.52), and because &rho; = 0.6, the correlated draw for B was also pushed positive (+0.73), causing both positions to lose simultaneously. If the correlation were zero, the same independent draws would have given &Delta;S<sub>B</sub> = 80 &times; (&minus;0.23) = &minus;18.4 bps (a gain), partially offsetting the loss on A. High correlation means positions lose together in the tail &mdash; diversification benefit shrinks.</p>
+
+<h3>Scaling to production</h3>
+
+<pre><code class="language-python">def monte_carlo_credit_var(notional, cs01, spread_vol, corr_matrix,
+                           n_paths=10_000, confidence=0.95, seed=None):
+    """
+    Monte Carlo VaR for a credit portfolio.
+
+    Parameters
+    ----------
+    notional   : array of notional amounts ($)
+    cs01       : array of CS01 values (% per bp, e.g. 0.045)
+    spread_vol : array of daily spread volatilities (bps)
+    corr_matrix: correlation matrix (n x n)
+    n_paths    : number of simulation paths
+    confidence : VaR confidence level (e.g. 0.95)
+    seed       : random seed for reproducibility
+
+    Returns
+    -------
+    var  : VaR at the given confidence level ($, positive number)
+    cvar : CVaR (Expected Shortfall) at the same level ($)
+    pnls : array of all simulated total P&Ls
+    """
+    rng = np.random.default_rng(seed)
+    n = len(notional)
+    L = np.linalg.cholesky(corr_matrix)
+
+    Z = rng.standard_normal((n_paths, n))
+    X = Z @ L.T                                   # correlated shocks
+    dS = spread_vol * X                            # spread changes (bps)
+    pnl = -(notional * cs01 / 100) * dS            # P&L per position
+    total_pnl = pnl.sum(axis=1)                    # total P&L per path
+
+    var_threshold = np.percentile(total_pnl, (1 - confidence) * 100)
+    cvar = total_pnl[total_pnl <= var_threshold].mean()
+
+    return -var_threshold, -cvar, total_pnl
+</code></pre>
+
+<hr>
+
+<h2>9 &mdash; How It All Connects</h2>
+
+<p>The nine concepts above form two interlocking pipelines:</p>
+
+<p><strong>Pipeline 1 &mdash; Equity / general portfolio risk:</strong></p>
+<pre><code class="language-text">Prices  &rarr;  Returns  &rarr;  Volatility  &rarr;  VaR / CVaR  &rarr;  Sharpe ratio
+                              &uarr;
+                    Portfolio weights + correlation
+                    (diversification reduces vol)
+</code></pre>
+
+<p><strong>Pipeline 2 &mdash; Credit risk (Monte Carlo):</strong></p>
+<pre><code class="language-text">CS01 sensitivities  &rarr;  Correlation matrix  &rarr;  Cholesky L
+                                                       &darr;
+Independent draws Z  &rarr;  Correlated shocks X = LZ  &rarr;  Spread changes &Delta;S
+                                                               &darr;
+                                              P&amp;L = -Notional &times; CS01 &times; &Delta;S
+                                                               &darr;
+                                                     Sort &rarr; VaR / CVaR
+</code></pre>
+
+<p><strong>The common thread:</strong></p>
+<ul>
+  <li><strong>Returns</strong> (Section 1) feed into <strong>volatility</strong> (Section 2), which feeds into <strong>VaR/CVaR</strong> (Sections 3-4) and <strong>Sharpe</strong> (Section 5).</li>
+  <li><strong>Portfolio weights</strong> (Section 6) and <strong>correlation</strong> determine whether diversification reduces risk.</li>
+  <li><strong>Cholesky decomposition</strong> (Section 7) is the engine that introduces correlation into <strong>Monte Carlo simulation</strong> (Section 8).</li>
+  <li>The end product is always the same: a dollar-denominated risk number (VaR or CVaR) that tells the portfolio manager, the risk committee, or the regulator how much capital is at stake.</li>
+</ul>
+
+<h3>Quick Python summary &mdash; all metrics in one block</h3>
+
+<pre><code class="language-python">import numpy as np
+
+# --- Sample data ---
+returns = np.array([0.012, -0.008, 0.005, -0.015, 0.009,
+                    0.003, -0.004, 0.011, -0.007, 0.002])
+
+# Volatility
+vol_daily  = returns.std(ddof=1)
+vol_annual = vol_daily * np.sqrt(252)
+
+# VaR (historical, 90% with 10 observations)
+var_90 = -np.percentile(returns, 10)              # positive number = loss
+
+# CVaR
+threshold = np.percentile(returns, 10)
+cvar_90 = -returns[returns <= threshold].mean()
+
+# Sharpe (annualized, assuming daily returns)
+mean_annual = returns.mean() * 252
+rf = 0.04                                         # 4% annual risk-free
+sharpe = (mean_annual - rf) / vol_annual
+
+print(f"Daily vol:    {vol_daily:.4%}")
+print(f"Annual vol:   {vol_annual:.2%}")
+print(f"VaR (90%):    {var_90:.4%}")
+print(f"CVaR (90%):   {cvar_90:.4%}")
+print(f"Sharpe ratio: {sharpe:.2f}")
+</code></pre>
+
+<hr>
+
+<p><em>This reference is part of the <a href="https://github.com/MishCodesFinBytes/quant-lab">QuantLab</a> project. The Monte Carlo credit VaR implementation draws from Exercise 20 (portfolio credit VaR with correlated simulation). For an earlier introduction to VaR and CVaR in Python, see the <a href="/2023/03/30/mastering-risk-metrics-in-python-a-guide-to-var-and-conditional-var/">2023 risk metrics post</a>.</em></p>

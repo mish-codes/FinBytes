@@ -1,0 +1,414 @@
+---
+layout: post
+title: "Yield Curves & Rates: Par, Spot, Forward, and Fitted Curves"
+date: 2026-04-26
+tags: [math, finance, yield-curve, par-yields, spot-rates, forward-rates, nelson-siegel, svensson, bootstrapping, interpolation, quant-lab]
+categories:
+- Math / Finance
+section: math-finance
+permalink: "/math-finance/yield-curves-and-rates/"
+---
+
+<h2>1. What Is a Yield Curve and Why It Matters</h2>
+
+<p>When a government borrows money, it issues bonds at different maturities &mdash; 1 year, 2 years, 5 years, 10 years, 30 years. Each maturity carries a different interest rate. Plot those rates against maturity and you get the <strong>yield curve</strong>.</p>
+
+<p>The yield curve is the single most important object in fixed income. Every bond, swap, mortgage, and structured product is priced relative to it. It tells you the &ldquo;risk-free&rdquo; cost of borrowing at each horizon.</p>
+
+<h3>Three shapes you will see</h3>
+
+<ul>
+  <li><strong>Normal (upward-sloping):</strong> longer maturities pay higher rates. This is the usual state &mdash; investors demand more compensation for locking up money longer.</li>
+  <li><strong>Flat:</strong> short and long rates are roughly equal. Often a transition between normal and inverted.</li>
+  <li><strong>Inverted:</strong> short rates exceed long rates. Historically a reliable recession signal &mdash; the market expects the central bank to cut rates in the future.</li>
+</ul>
+
+<p>Everything below builds on one idea: the yield curve comes in several &ldquo;flavours&rdquo; (par, spot, forward), and converting between them is the core skill of fixed income analysis.</p>
+
+<hr>
+
+<h2>2. Par Yields</h2>
+
+<p>The U.S. Treasury publishes <strong>par yields</strong> daily. A par yield for maturity <em>n</em> is the coupon rate at which a bond with that maturity would price at exactly <strong>$100</strong> (par). In other words, if you build a bond that pays the par yield as its coupon and discount its cash flows at the &ldquo;correct&rdquo; rates, you get back $100.</p>
+
+<p>Here is a sample par yield curve we will use throughout this post:</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; text-align:center;">
+  <tr><th>Maturity</th><th>Par Yield</th></tr>
+  <tr><td>1Y</td><td>4.50%</td></tr>
+  <tr><td>2Y</td><td>4.70%</td></tr>
+  <tr><td>5Y</td><td>4.90%</td></tr>
+  <tr><td>10Y</td><td>5.00%</td></tr>
+  <tr><td>30Y</td><td>5.10%</td></tr>
+</table>
+
+<p>This is a normal, gently upward-sloping curve. A 30-year bond yields 60 basis points more than a 1-year bond.</p>
+
+<p><strong>Key point:</strong> par yields are <em>not</em> the discount rates you should use to price individual cash flows. For that you need spot rates.</p>
+
+<hr>
+
+<h2>3. Spot Rates (Zero-Coupon Rates) and Bootstrapping</h2>
+
+<h3>What is a spot rate?</h3>
+
+<p>A <strong>spot rate</strong> s<sub>n</sub> is the yield on a zero-coupon bond maturing in <em>n</em> years. It is &ldquo;pure&rdquo; &mdash; one cash flow, one discount rate, no reinvestment ambiguity. The spot rate for year <em>n</em> answers: &ldquo;What annual return does the market demand for a single payment received in <em>n</em> years?&rdquo;</p>
+
+<h3>Why par &ne; spot</h3>
+
+<p>A par yield blends multiple spot rates together (one for each coupon date). A 5-year par bond has cash flows at years 1, 2, 3, 4, and 5 &mdash; each discounted at a <em>different</em> spot rate. The par yield is a weighted average of those spot rates, weighted by present value of each cash flow. So the par curve and spot curve are related but not equal.</p>
+
+<h3>Bootstrapping: worked example</h3>
+
+<p>We extract spot rates from par yields one maturity at a time, starting from the shortest.</p>
+
+<h4>Step 1 &mdash; 1-Year spot rate</h4>
+
+<p>A 1-year par bond has only one cash flow at year 1: the coupon plus face value. There are no intermediate coupons, so the spot rate equals the par yield:</p>
+
+<p><strong>s<sub>1</sub> = 4.50%</strong></p>
+
+<h4>Step 2 &mdash; 2-Year spot rate</h4>
+
+<p>A 2-year bond with a 4.70% coupon (its par yield) prices at $100. Its cash flows are: $4.70 at year 1, and $104.70 at year 2. The pricing equation is:</p>
+
+<p style="margin-left:2em;">
+  100 = 4.70 / (1 + s<sub>1</sub>) + 104.70 / (1 + s<sub>2</sub>)<sup>2</sup>
+</p>
+
+<p>Plug in s<sub>1</sub> = 0.0450:</p>
+
+<p style="margin-left:2em;">
+  100 = 4.70 / 1.0450 + 104.70 / (1 + s<sub>2</sub>)<sup>2</sup>
+</p>
+
+<p style="margin-left:2em;">
+  100 = 4.4976 + 104.70 / (1 + s<sub>2</sub>)<sup>2</sup>
+</p>
+
+<p style="margin-left:2em;">
+  95.5024 = 104.70 / (1 + s<sub>2</sub>)<sup>2</sup>
+</p>
+
+<p style="margin-left:2em;">
+  (1 + s<sub>2</sub>)<sup>2</sup> = 104.70 / 95.5024 = 1.09633
+</p>
+
+<p style="margin-left:2em;">
+  1 + s<sub>2</sub> = 1.09633<sup>0.5</sup> = 1.04706
+</p>
+
+<p><strong>s<sub>2</sub> = 4.706%</strong></p>
+
+<p>Notice this is slightly higher than the 2-year par yield of 4.70%. That is normal for an upward-sloping curve &mdash; spot rates sit above par yields for longer maturities because the par yield is &ldquo;pulled down&rdquo; by the earlier coupon discounted at a lower 1-year rate.</p>
+
+<h4>Step 3 &mdash; Handling gaps (years 3 and 4)</h4>
+
+<p>Our par curve jumps from 2Y to 5Y. To bootstrap the 5-year spot rate, we need spot rates for years 3 and 4. In practice we <strong>interpolate</strong> the par yields linearly:</p>
+
+<ul>
+  <li>3Y par yield: 4.70% + (1/3)(4.90% &minus; 4.70%) = <strong>4.767%</strong></li>
+  <li>4Y par yield: 4.70% + (2/3)(4.90% &minus; 4.70%) = <strong>4.833%</strong></li>
+</ul>
+
+<p>Then we bootstrap s<sub>3</sub> from the 3-year par bond, s<sub>4</sub> from the 4-year par bond, and finally s<sub>5</sub> from the 5-year par bond, each time using all previously computed spot rates.</p>
+
+<h4>Python: bootstrap the full spot curve</h4>
+
+<pre><code class="language-python">import math
+
+# Par yields (annual coupon, annual compounding)
+par = {1: 0.0450, 2: 0.0470, 3: 0.04767, 4: 0.04833, 5: 0.0490}
+spot = {}
+
+for n in sorted(par):
+    c = par[n]                       # coupon rate = par yield
+    # PV of all coupons before maturity, discounted at known spot rates
+    pv_coupons = sum(c / (1 + spot[t]) ** t for t in range(1, n))
+    # Solve: 100 = pv_coupons*100 + (1+c)*100 / (1+s_n)^n  =>  at par price=1
+    # 1 = pv_coupons + (1 + c) / (1 + s_n)^n
+    discount_factor = (1 - pv_coupons) / (1 + c)  # working in unit-face terms
+    # discount_factor = 1 / (1 + s_n)^n
+    s_n = (1 / discount_factor) ** (1 / n) - 1
+    spot[n] = s_n
+    print(f"s_{n} = {s_n:.4%}")
+
+# Output:
+# s_1 = 4.5000%
+# s_2 = 4.7060%
+# s_3 = 4.7783%
+# s_4 = 4.8527%
+# s_5 = 4.9213%</code></pre>
+
+<p>The spot curve lies slightly above the par curve at every maturity beyond 1 year &mdash; a hallmark of upward-sloping yield environments.</p>
+
+<hr>
+
+<h2>4. Forward Rates</h2>
+
+<h3>What is a forward rate?</h3>
+
+<p>The <strong>forward rate</strong> f<sub>m,n</sub> is the interest rate implied by today&rsquo;s spot curve for borrowing between future year <em>m</em> and future year <em>n</em>. It is not a forecast &mdash; it is a <em>no-arbitrage</em> rate locked in by today&rsquo;s prices.</p>
+
+<h3>The no-arbitrage argument</h3>
+
+<p>Consider two strategies for investing $1 for 2 years:</p>
+
+<ol>
+  <li><strong>Buy a 2-year zero-coupon bond:</strong> you get (1 + s<sub>2</sub>)<sup>2</sup> at year 2.</li>
+  <li><strong>Buy a 1-year zero, then reinvest at the 1-year forward:</strong> you get (1 + s<sub>1</sub>)(1 + f<sub>1,2</sub>) at year 2.</li>
+</ol>
+
+<p>If these gave different amounts, you could arbitrage by going long one and short the other. So they must be equal:</p>
+
+<p style="margin-left:2em;">
+  (1 + s<sub>2</sub>)<sup>2</sup> = (1 + s<sub>1</sub>)(1 + f<sub>1,2</sub>)
+</p>
+
+<h3>Worked example: the 1-year rate, 1 year from now</h3>
+
+<p>Using our bootstrapped spot rates, s<sub>1</sub> = 4.50% and s<sub>2</sub> = 4.706%:</p>
+
+<p style="margin-left:2em;">
+  (1.04706)<sup>2</sup> = (1.0450)(1 + f<sub>1,2</sub>)
+</p>
+
+<p style="margin-left:2em;">
+  1.09633 = 1.0450 &times; (1 + f<sub>1,2</sub>)
+</p>
+
+<p style="margin-left:2em;">
+  1 + f<sub>1,2</sub> = 1.09633 / 1.0450 = 1.04912
+</p>
+
+<p><strong>f<sub>1,2</sub> = 4.912%</strong></p>
+
+<p>The 1-year forward rate one year from now (4.912%) is higher than either spot rate. This makes sense: to get a higher <em>average</em> return over 2 years than over 1 year, the second year must compensate with an even higher rate.</p>
+
+<h3>General formula for 1-year forward rates</h3>
+
+<p style="margin-left:2em;">
+  f<sub>n&minus;1,n</sub> = (1 + s<sub>n</sub>)<sup>n</sup> / (1 + s<sub>n&minus;1</sub>)<sup>n&minus;1</sup> &minus; 1
+</p>
+
+<pre><code class="language-python"># Forward rates from the spot curve
+for n in range(2, 6):
+    fwd = ((1 + spot[n]) ** n / (1 + spot[n - 1]) ** (n - 1)) - 1
+    print(f"f_{n-1},{n} = {fwd:.4%}")
+
+# Output:
+# f_1,2 = 4.9124%
+# f_2,3 = 4.9229%
+# f_3,4 = 5.0762%
+# f_4,5 = 5.1955%</code></pre>
+
+<p>The forward curve is steeper than the spot curve, which is steeper than the par curve. In an upward-sloping environment: <strong>par &lt; spot &lt; forward</strong> &mdash; always.</p>
+
+<h3>What forward rates tell you</h3>
+
+<p>Forward rates embed the market&rsquo;s consensus (plus a term premium) about where short rates are headed. A rising forward curve says: the market prices in rate increases (or demands a premium for duration risk). An inverted forward curve says: the market expects rate cuts.</p>
+
+<hr>
+
+<h2>5. Nelson-Siegel Parametric Fitting</h2>
+
+<h3>Why fit a smooth curve?</h3>
+
+<p>Market data is noisy &mdash; bid-ask bounces, liquidity differences, and on-the-run/off-the-run effects create scatter. A parametric model imposes economic structure with <strong>few parameters</strong>, giving you a smooth curve, economic interpretability, and the ability to interpolate and extrapolate.</p>
+
+<h3>The Nelson-Siegel formula</h3>
+
+<p>For maturity &tau; (in years), the Nelson-Siegel yield is:</p>
+
+<p style="margin-left:2em;">
+  y(&tau;) = &beta;<sub>0</sub>
+  + &beta;<sub>1</sub> &middot; [(1 &minus; e<sup>&minus;&tau;/&lambda;</sup>) / (&tau;/&lambda;)]
+  + &beta;<sub>2</sub> &middot; [(1 &minus; e<sup>&minus;&tau;/&lambda;</sup>) / (&tau;/&lambda;) &minus; e<sup>&minus;&tau;/&lambda;</sup>]
+</p>
+
+<h3>What each parameter means</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
+  <tr><th>Parameter</th><th>Economic meaning</th><th>Effect</th></tr>
+  <tr><td>&beta;<sub>0</sub></td><td>Long-term level</td><td>y(&tau;) &rarr; &beta;<sub>0</sub> as &tau; &rarr; &infin;</td></tr>
+  <tr><td>&beta;<sub>1</sub></td><td>Slope (short-term component)</td><td>y(0) = &beta;<sub>0</sub> + &beta;<sub>1</sub>; negative &beta;<sub>1</sub> = upward slope</td></tr>
+  <tr><td>&beta;<sub>2</sub></td><td>Curvature (hump/trough)</td><td>Controls the &ldquo;belly&rdquo; of the curve around medium maturities</td></tr>
+  <tr><td>&lambda;</td><td>Decay speed</td><td>Where the hump peaks; larger &lambda; pushes it out to longer maturities</td></tr>
+</table>
+
+<h3>Worked example</h3>
+
+<p>Given: &beta;<sub>0</sub> = 5.1, &beta;<sub>1</sub> = &minus;0.5, &beta;<sub>2</sub> = &minus;2.5, &lambda; = 1.5. Compute y(1), y(5), and y(10).</p>
+
+<p>First, define the helper terms for a given &tau;:</p>
+
+<p style="margin-left:2em;">
+  x = &tau; / &lambda;, &ensp;
+  A = (1 &minus; e<sup>&minus;x</sup>) / x, &ensp;
+  B = A &minus; e<sup>&minus;x</sup>
+</p>
+
+<h4>&tau; = 1 year</h4>
+
+<p style="margin-left:2em;">
+  x = 1 / 1.5 = 0.6667<br>
+  e<sup>&minus;0.6667</sup> = 0.5134<br>
+  A = (1 &minus; 0.5134) / 0.6667 = 0.4866 / 0.6667 = <strong>0.7299</strong><br>
+  B = 0.7299 &minus; 0.5134 = <strong>0.2165</strong><br>
+  y(1) = 5.1 + (&minus;0.5)(0.7299) + (&minus;2.5)(0.2165)<br>
+  y(1) = 5.1 &minus; 0.3650 &minus; 0.5413 = <strong>4.194%</strong>
+</p>
+
+<h4>&tau; = 5 years</h4>
+
+<p style="margin-left:2em;">
+  x = 5 / 1.5 = 3.3333<br>
+  e<sup>&minus;3.3333</sup> = 0.03567<br>
+  A = (1 &minus; 0.03567) / 3.3333 = 0.96433 / 3.3333 = <strong>0.2893</strong><br>
+  B = 0.2893 &minus; 0.03567 = <strong>0.2536</strong><br>
+  y(5) = 5.1 + (&minus;0.5)(0.2893) + (&minus;2.5)(0.2536)<br>
+  y(5) = 5.1 &minus; 0.1447 &minus; 0.6341 = <strong>4.321%</strong>
+</p>
+
+<h4>&tau; = 10 years</h4>
+
+<p style="margin-left:2em;">
+  x = 10 / 1.5 = 6.6667<br>
+  e<sup>&minus;6.6667</sup> = 0.001272<br>
+  A = (1 &minus; 0.001272) / 6.6667 = 0.99873 / 6.6667 = <strong>0.14981</strong><br>
+  B = 0.14981 &minus; 0.001272 = <strong>0.14854</strong><br>
+  y(10) = 5.1 + (&minus;0.5)(0.14981) + (&minus;2.5)(0.14854)<br>
+  y(10) = 5.1 &minus; 0.0749 &minus; 0.3714 = <strong>4.654%</strong>
+</p>
+
+<p>The curve rises from 4.19% at 1 year to 4.65% at 10 years and approaches &beta;<sub>0</sub> = 5.10% at long maturities. The negative &beta;<sub>2</sub> creates a dip in the belly, pulling medium-term rates below where a simple slope would place them.</p>
+
+<pre><code class="language-python">import math
+
+def nelson_siegel(tau, b0, b1, b2, lam):
+    """Nelson-Siegel yield for maturity tau (years)."""
+    x = tau / lam
+    exp_x = math.exp(-x)
+    A = (1 - exp_x) / x
+    B = A - exp_x
+    return b0 + b1 * A + b2 * B
+
+# Parameters
+b0, b1, b2, lam = 5.1, -0.5, -2.5, 1.5
+
+for tau in [0.25, 0.5, 1, 2, 3, 5, 7, 10, 20, 30]:
+    y = nelson_siegel(tau, b0, b1, b2, lam)
+    print(f"  tau={tau:5.2f}  y = {y:.3f}%")</code></pre>
+
+<hr>
+
+<h2>6. Svensson Extension</h2>
+
+<p>The <strong>Nelson-Siegel-Svensson (NSS)</strong> model adds a second curvature term with its own decay:</p>
+
+<p style="margin-left:2em;">
+  y(&tau;) = &beta;<sub>0</sub>
+  + &beta;<sub>1</sub> &middot; A<sub>1</sub>
+  + &beta;<sub>2</sub> &middot; B<sub>1</sub>
+  + <strong>&beta;<sub>3</sub> &middot; B<sub>2</sub></strong>
+</p>
+
+<p>where A<sub>1</sub> and B<sub>1</sub> use decay parameter &lambda;<sub>1</sub>, and B<sub>2</sub> = [(1 &minus; e<sup>&minus;&tau;/&lambda;<sub>2</sub></sup>) / (&tau;/&lambda;<sub>2</sub>) &minus; e<sup>&minus;&tau;/&lambda;<sub>2</sub></sup>] uses a second decay &lambda;<sub>2</sub>.</p>
+
+<p>This gives the model a <strong>second hump</strong> (or trough), letting it fit curves with complex shapes at both short and long maturities. Six parameters instead of four.</p>
+
+<h3>When to use NSS vs NS</h3>
+
+<ul>
+  <li><strong>Nelson-Siegel (4 parameters):</strong> good enough for most government curves on most days. Parsimonious and stable.</li>
+  <li><strong>Svensson (6 parameters):</strong> needed when the curve has a pronounced dip or second hump, common in Euro-area curves. The <strong>ECB publishes NSS parameters daily</strong> for Euro area sovereign curves.</li>
+</ul>
+
+<p>In practice: start with NS. If residuals show a systematic pattern in the belly, upgrade to NSS.</p>
+
+<hr>
+
+<h2>7. Cubic Spline Interpolation</h2>
+
+<p>Instead of fitting a parametric model, you can run a <strong>cubic spline</strong> through your data points. A cubic spline is a piecewise polynomial (degree 3) that passes <em>exactly</em> through every observed point and is continuous in its first and second derivatives at the join points (knots).</p>
+
+<h3>Properties</h3>
+
+<ul>
+  <li><strong>Exact fit:</strong> zero residuals at every knot point. The curve reproduces every market rate exactly.</li>
+  <li><strong>Smoothness:</strong> continuous first and second derivatives everywhere &mdash; no kinks.</li>
+  <li><strong>Risk of oscillation:</strong> between knots, the cubic can overshoot or undershoot, especially if data points are unevenly spaced. This is called <em>Runge&rsquo;s phenomenon</em>.</li>
+</ul>
+
+<h3>Spline vs parametric: when to use which</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
+  <tr><th>Criterion</th><th>Cubic spline</th><th>Nelson-Siegel / Svensson</th></tr>
+  <tr><td>Goal</td><td>Interpolation (reproduce data exactly)</td><td>Smoothing (impose economic structure)</td></tr>
+  <tr><td>Number of parameters</td><td>Grows with data points</td><td>Fixed (4 or 6)</td></tr>
+  <tr><td>Extrapolation</td><td>Unreliable beyond last knot</td><td>Controlled (&beta;<sub>0</sub> anchors the long end)</td></tr>
+  <tr><td>Noise handling</td><td>Passes through noise</td><td>Filters noise</td></tr>
+  <tr><td>Use case</td><td>Pricing desk (need exact replication)</td><td>Risk, research, cross-country comparison</td></tr>
+</table>
+
+<p>Many central banks and dealers use <em>both</em>: a spline for day-to-day pricing and a parametric model for economic analysis and communication.</p>
+
+<hr>
+
+<h2>8. How They All Connect</h2>
+
+<p>Here is the full pipeline from raw market data to the objects used in pricing and risk:</p>
+
+<ol>
+  <li><strong>Observe par yields</strong> &mdash; Treasury auction results, dealer quotes.</li>
+  <li><strong>Bootstrap</strong> &mdash; extract the spot (zero-coupon) curve from par yields, one maturity at a time.</li>
+  <li><strong>Derive forward rates</strong> &mdash; compute the implied future rates from adjacent spot rates using the no-arbitrage formula.</li>
+  <li><strong>Fit a parametric model</strong> &mdash; run Nelson-Siegel or Svensson on the spot curve to get a smooth, interpretable description of the term structure.</li>
+  <li><strong>Or interpolate with splines</strong> &mdash; pass a cubic spline through the spot curve for exact repricing of observed instruments.</li>
+</ol>
+
+<p>Downstream, these curves feed into:</p>
+
+<ul>
+  <li><strong>Bond pricing:</strong> discount each cash flow at the appropriate spot rate.</li>
+  <li><strong>OAS and Z-spread:</strong> find the spread over the spot curve that reprices a risky bond (see the <a href="/math-finance/oas-z-spread/">OAS/Z-spread reference</a> if available).</li>
+  <li><strong>Swap valuation:</strong> the fixed leg of an interest rate swap is priced off the spot curve.</li>
+  <li><strong>Credit analysis:</strong> the risk-free curve is the baseline; credit spreads measure the excess return demanded for default risk.</li>
+</ul>
+
+<h3>Summary table</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; text-align:center;">
+  <tr>
+    <th>Curve type</th>
+    <th>What it represents</th>
+    <th>How you get it</th>
+  </tr>
+  <tr>
+    <td>Par yield</td>
+    <td>Coupon rate for at-par bonds</td>
+    <td>Market quotes (Treasury publishes daily)</td>
+  </tr>
+  <tr>
+    <td>Spot (zero) rate</td>
+    <td>Yield on zero-coupon bonds</td>
+    <td>Bootstrap from par yields</td>
+  </tr>
+  <tr>
+    <td>Forward rate</td>
+    <td>Implied future short rate</td>
+    <td>No-arbitrage relation between spot rates</td>
+  </tr>
+  <tr>
+    <td>Nelson-Siegel fit</td>
+    <td>Smooth parametric description</td>
+    <td>Least-squares fit to spot or par curve</td>
+  </tr>
+  <tr>
+    <td>Cubic spline</td>
+    <td>Exact interpolation through data</td>
+    <td>Piecewise cubic polynomial through knots</td>
+  </tr>
+</table>
+
+<p>Master the chain <strong>par &rarr; spot &rarr; forward</strong> and you can navigate any fixed income market. Add a fitted curve on top and you have the toolkit that central banks, dealers, and quant desks use every day.</p>

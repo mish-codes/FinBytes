@@ -1,0 +1,399 @@
+---
+layout: post
+title: "Credit Risk Fundamentals: Spreads, CDS, Default Probabilities, and Expected Loss"
+date: 2026-04-27
+tags: [math, finance, credit-risk, credit-spreads, cds, hazard-rate, default-probability, survival-curve, expected-loss, recovery-rate, quant-lab]
+categories:
+- Math / Finance
+section: math-finance
+permalink: "/math-finance/credit-risk/"
+---
+
+<p>This post is a self-contained reference on credit risk quantification &mdash; the chain that starts with an observable bond spread and ends with a dollar-denominated expected loss. Every formula gets a worked numerical example you can verify by hand or in Python.</p>
+
+<h2>1 &mdash; Credit Spreads</h2>
+
+<h3>Definition</h3>
+
+<p>A credit spread is the difference between the yield on a corporate bond and the yield on a risk-free government bond of the same maturity:</p>
+
+<pre><code>credit spread = y_corporate &minus; y_risk-free</code></pre>
+
+<p>Measured in <strong>basis points</strong> (bps). 1% = 100 bps.</p>
+
+<p>The spread compensates investors for three things:</p>
+<ul>
+  <li><strong>Default risk</strong> &mdash; the chance the issuer fails to pay.</li>
+  <li><strong>Liquidity premium</strong> &mdash; corporate bonds trade less frequently than Treasuries, so investors demand extra yield for the inconvenience of selling.</li>
+  <li><strong>Supply and demand</strong> &mdash; new issuance, index rebalancing, and risk-appetite shifts all move spreads independently of fundamentals.</li>
+</ul>
+
+<h3>Spread hierarchy by rating</h3>
+
+<p>Typical ranges in normal markets:</p>
+
+<ul>
+  <li><strong>AAA</strong>: 50&ndash;80 bps. Minimal credit risk priced in.</li>
+  <li><strong>BBB</strong>: 120&ndash;200 bps. Lowest investment-grade bucket; sensitive to the business cycle.</li>
+  <li><strong>BB</strong>: 300&ndash;500 bps. Top of high yield; jumps sharply in downturns.</li>
+  <li><strong>B and below</strong>: 500+ bps. Distressed territory in a crisis can exceed 1000 bps.</li>
+</ul>
+
+<p>These ranges are observable in the <strong>ICE BofA index family</strong> on FRED: <code>BAMLC0A1CAAA</code> (AAA), <code>BAMLC0A4CBBB</code> (BBB), <code>BAMLH0A1HYBB</code> (BB), <code>BAMLH0A2HYB</code> (B). Daily updates, free data, excellent for backtesting.</p>
+
+<h3>Worked example</h3>
+
+<pre><code>Ford 5Y bond yield:    5.50%
+5Y Treasury yield:     4.00%
+Credit spread:         5.50% &minus; 4.00% = 1.50% = 150 bps</code></pre>
+
+<p>Interpretation: investors demand 150 basis points of extra annual yield to hold Ford debt instead of a Treasury. If Treasuries stay flat but the Ford spread widens to 200 bps, the bond price falls &mdash; the market is pricing in higher default risk (or lower liquidity, or both). Spread <strong>tightening</strong> is the reverse: falling spreads mean improving credit conditions or rising risk appetite.</p>
+
+<h2>2 &mdash; Credit Default Swaps (CDS)</h2>
+
+<h3>What it is</h3>
+
+<p>A CDS is an insurance contract on a bond. Two counterparties:</p>
+<ul>
+  <li><strong>Protection buyer</strong>: pays a periodic premium (the "CDS spread") to the seller.</li>
+  <li><strong>Protection seller</strong>: if the reference entity defaults, pays the buyer the loss amount (par minus recovery value).</li>
+</ul>
+
+<p>No bond changes hands (it's a derivative). The CDS spread is therefore a <strong>cleaner</strong> measure of default risk than the bond spread &mdash; it strips out coupon effects, callability, and most liquidity noise.</p>
+
+<h3>CDS Big Bang (2009)</h3>
+
+<p>Before 2009, every CDS had a bespoke coupon equal to the market spread at trade time. After the ISDA "Big Bang" standardisation:</p>
+<ul>
+  <li>Fixed coupons: <strong>100 bps</strong> (investment grade) or <strong>500 bps</strong> (high yield).</li>
+  <li>Any difference between the market spread and the fixed coupon is settled as an <strong>upfront payment</strong> at trade inception.</li>
+  <li>Standardised quarterly payment dates (Mar 20, Jun 20, Sep 20, Dec 20).</li>
+</ul>
+
+<p>This made CDS fungible and clearable &mdash; essential for the post-crisis push toward central clearing.</p>
+
+<h3>Worked example</h3>
+
+<p>5-year CDS on Company X, notional $10,000,000, CDS spread = 150 bps, recovery assumption = 40%.</p>
+
+<pre><code>Annual premium   = $10,000,000 &times; (150 / 10,000)
+                 = $10,000,000 &times; 0.0150
+                 = $150,000 per year
+
+Quarterly premium = $150,000 / 4 = $37,500
+
+If default occurs:
+  Seller pays = Notional &times; (1 &minus; Recovery)
+              = $10,000,000 &times; (1 &minus; 0.40)
+              = $10,000,000 &times; 0.60
+              = $6,000,000</code></pre>
+
+<p>The protection buyer pays $37,500 every quarter for up to 5 years ($750,000 total if no default). In exchange, they are insured against a $6,000,000 loss. Whether that trade is "worth it" depends on the actual probability of default &mdash; which is what the hazard-rate model extracts.</p>
+
+<h2>3 &mdash; Recovery Rates and Loss Given Default</h2>
+
+<h3>What recovery means</h3>
+
+<p>Recovery rate (R) is the fraction of par value bondholders get back after a default &mdash; through asset liquidation, restructuring, or legal settlement. <strong>Loss Given Default</strong> (LGD) is the complement:</p>
+
+<pre><code>LGD = 1 &minus; R</code></pre>
+
+<h3>Standard assumptions by seniority</h3>
+
+<table>
+  <tr><th>Seniority</th><th>Typical Recovery</th><th>LGD</th></tr>
+  <tr><td>Senior secured</td><td>~60%</td><td>40%</td></tr>
+  <tr><td>Senior unsecured</td><td>~40%</td><td>60%</td></tr>
+  <tr><td>Subordinated</td><td>~20%</td><td>80%</td></tr>
+</table>
+
+<h3>Why 40% is the magic number</h3>
+
+<p>ISDA's standard CDS contract assumes <strong>40% recovery</strong> for senior unsecured debt. This is the default input for CDS pricing worldwide. It's not arbitrary &mdash; Moody's long-run average recovery for senior unsecured bonds is roughly 37&ndash;42%, depending on the measurement period and the weighting method (issuer-weighted vs. volume-weighted). The convention simplifies the market: everyone prices off the same R, so the CDS spread is a direct apples-to-apples comparison across issuers.</p>
+
+<p>If you believe actual recovery will be higher than 40%, the CDS is cheap (you're paying a premium based on a loss that's overstated). If you think recovery will be lower, the CDS is expensive. Recovery-rate views are a distinct axis of credit trading.</p>
+
+<h2>4 &mdash; Hazard Rate Model</h2>
+
+<h3>Setup</h3>
+
+<p>The hazard rate &lambda; (lambda) is the <strong>instantaneous probability of default</strong> at time t, conditional on having survived to t. Under the constant-hazard assumption, default follows an exponential process &mdash; the same math as radioactive decay.</p>
+
+<h3>Key formulas</h3>
+
+<pre><code>Survival probability:   S(T) = exp(&minus;&lambda;T)
+Default probability:    PD(T) = 1 &minus; exp(&minus;&lambda;T)
+CDS spread relation:    s &asymp; &lambda; &times; (1 &minus; R)
+Inversion:              &lambda; &asymp; s / (1 &minus; R)</code></pre>
+
+<p>Intuition for the CDS relation: per unit time, the protection seller expects to pay out &lambda; &times; (1 &minus; R) &mdash; the probability of default times the loss given default. The premium the buyer pays must equal this expected payout for the trade to be fair. Observe the premium, invert for &lambda;.</p>
+
+<h3>Full worked example</h3>
+
+<p>Given: CDS spread s = 150 bps, recovery R = 40%.</p>
+
+<pre><code>Step 1: Convert spread to decimal
+  s = 150 / 10,000 = 0.0150
+
+Step 2: Compute LGD
+  LGD = 1 &minus; R = 1 &minus; 0.40 = 0.60
+
+Step 3: Solve for hazard rate
+  &lambda; = s / LGD = 0.0150 / 0.60 = 0.025  (2.5% annual hazard rate)
+
+Step 4: Survival probabilities
+  S(1) = exp(&minus;0.025 &times; 1) = exp(&minus;0.025) = 0.9753  &rarr; 97.53%
+  S(2) = exp(&minus;0.025 &times; 2) = exp(&minus;0.050) = 0.9512  &rarr; 95.12%
+  S(3) = exp(&minus;0.025 &times; 3) = exp(&minus;0.075) = 0.9277  &rarr; 92.77%
+  S(5) = exp(&minus;0.025 &times; 5) = exp(&minus;0.125) = 0.8825  &rarr; 88.25%
+
+Step 5: Default probabilities
+  PD(1) = 1 &minus; S(1) = 1 &minus; 0.9753 = 0.0247  &rarr; 2.47%
+  PD(2) = 1 &minus; S(2) = 1 &minus; 0.9512 = 0.0488  &rarr; 4.88%
+  PD(3) = 1 &minus; S(3) = 1 &minus; 0.9277 = 0.0723  &rarr; 7.23%
+  PD(5) = 1 &minus; S(5) = 1 &minus; 0.8825 = 0.1175  &rarr; 11.75%</code></pre>
+
+<p>Key observation: a 2.5% annual hazard doesn't sound alarming, but over 5 years it compounds to an 11.75% cumulative default probability. Time is the multiplier.</p>
+
+<h3>Python implementation</h3>
+
+<pre><code class="language-python">import math
+
+def hazard_from_cds(spread_bps: float, recovery: float = 0.40) -> float:
+    """Implied constant hazard rate from CDS spread."""
+    return (spread_bps / 10_000) / (1 - recovery)
+
+def survival_prob(lam: float, t: float) -> float:
+    """Survival probability under constant hazard."""
+    return math.exp(-lam * t)
+
+def default_prob(lam: float, t: float) -> float:
+    """Cumulative default probability under constant hazard."""
+    return 1 - math.exp(-lam * t)
+
+# Example: 150 bps CDS, 40% recovery
+lam = hazard_from_cds(150)          # 0.025
+for t in [1, 2, 3, 5]:
+    s = survival_prob(lam, t)
+    d = default_prob(lam, t)
+    print(f"T={t}Y  S={s:.4f}  PD={d:.4f}")
+
+# Output:
+# T=1Y  S=0.9753  PD=0.0247
+# T=2Y  S=0.9512  PD=0.0488
+# T=3Y  S=0.9277  PD=0.0723
+# T=5Y  S=0.8825  PD=0.1175</code></pre>
+
+<h2>5 &mdash; Piecewise Hazard Rates</h2>
+
+<h3>Why constant &lambda; is too simple</h3>
+
+<p>CDS contracts trade at multiple tenors (1Y, 3Y, 5Y, 7Y, 10Y), and the spreads are generally <em>not</em> flat across tenors. A 1Y CDS at 80 bps and a 5Y CDS at 150 bps imply that the market sees default risk increasing over time. A single constant &lambda; can't capture that shape.</p>
+
+<p>The fix: <strong>piecewise-constant hazard rates</strong>. Assume &lambda; is constant within each interval [T<sub>i-1</sub>, T<sub>i</sub>] but can jump between intervals. Bootstrap from the short end outward, just like you would with a yield curve.</p>
+
+<h3>Worked example</h3>
+
+<p>CDS term structure: {1Y: 80 bps, 3Y: 120 bps, 5Y: 150 bps}. Recovery R = 40%, so LGD = 0.60.</p>
+
+<pre><code>Step 1: Average hazard rate implied by each tenor
+  &lambda;_avg(0&ndash;1Y) = (80 / 10,000) / 0.60  = 0.008 / 0.60 = 0.01333
+  &lambda;_avg(0&ndash;3Y) = (120 / 10,000) / 0.60 = 0.012 / 0.60 = 0.02000
+  &lambda;_avg(0&ndash;5Y) = (150 / 10,000) / 0.60 = 0.015 / 0.60 = 0.02500
+
+Step 2: Cumulative hazard at each tenor
+  &Lambda;(1) = &lambda;_avg(0&ndash;1) &times; 1 = 0.01333
+  &Lambda;(3) = &lambda;_avg(0&ndash;3) &times; 3 = 0.06000
+  &Lambda;(5) = &lambda;_avg(0&ndash;5) &times; 5 = 0.12500
+
+Step 3: Strip out interval hazard rates (forward hazards)
+  &lambda;(0&ndash;1Y) = 0.01333  (direct from Step 1)
+  &lambda;(1&ndash;3Y) = (&Lambda;(3) &minus; &Lambda;(1)) / (3 &minus; 1)
+           = (0.06000 &minus; 0.01333) / 2
+           = 0.04667 / 2
+           = 0.02333
+  &lambda;(3&ndash;5Y) = (&Lambda;(5) &minus; &Lambda;(3)) / (5 &minus; 3)
+           = (0.12500 &minus; 0.06000) / 2
+           = 0.06500 / 2
+           = 0.03250
+
+Step 4: Interpretation
+  0&ndash;1Y:  &lambda; = 1.33%   (low near-term risk)
+  1&ndash;3Y:  &lambda; = 2.33%   (rising)
+  3&ndash;5Y:  &lambda; = 3.25%   (highest)
+  Risk is back-loaded: the market prices more danger in years 3&ndash;5.</code></pre>
+
+<h3>Python implementation</h3>
+
+<pre><code class="language-python">import math
+
+def bootstrap_piecewise_hazards(
+    tenors: list[float],
+    spreads_bps: list[float],
+    recovery: float = 0.40,
+) -> list[dict]:
+    """Bootstrap piecewise-constant hazard rates from a CDS curve."""
+    lgd = 1 - recovery
+    results = []
+    prev_cum_hazard = 0.0
+    prev_tenor = 0.0
+
+    for tenor, spread in zip(tenors, spreads_bps):
+        avg_hazard = (spread / 10_000) / lgd
+        cum_hazard = avg_hazard * tenor
+        interval_hazard = (cum_hazard - prev_cum_hazard) / (tenor - prev_tenor)
+        results.append({
+            "interval": f"{prev_tenor:.0f}-{tenor:.0f}Y",
+            "lambda": round(interval_hazard, 5),
+            "cum_hazard": round(cum_hazard, 5),
+            "survival": round(math.exp(-cum_hazard), 4),
+        })
+        prev_cum_hazard = cum_hazard
+        prev_tenor = tenor
+
+    return results
+
+# Example
+curve = bootstrap_piecewise_hazards([1, 3, 5], [80, 120, 150])
+for row in curve:
+    print(row)
+
+# Output:
+# {'interval': '0-1Y', 'lambda': 0.01333, 'cum_hazard': 0.01333, 'survival': 0.9868}
+# {'interval': '1-3Y', 'lambda': 0.02333, 'cum_hazard': 0.06,    'survival': 0.9418}
+# {'interval': '3-5Y', 'lambda': 0.0325,  'cum_hazard': 0.125,   'survival': 0.8825}</code></pre>
+
+<h2>6 &mdash; Survival Curves</h2>
+
+<h3>What a survival curve shows</h3>
+
+<p>S(T) plotted against T starts at 1.0 (the entity is alive today) and decreases monotonically. The shape encodes the risk profile:</p>
+
+<ul>
+  <li><strong>Convex curve</strong> (drops steeply early, flattens later): front-loaded risk. The market thinks danger is near-term &mdash; typical for distressed issuers.</li>
+  <li><strong>Concave curve</strong> (drops slowly early, steepens later): back-loaded risk. Near-term looks safe, but long-term uncertainty is high &mdash; typical for a BBB company in a late-cycle economy.</li>
+  <li><strong>Linear curve</strong>: roughly constant hazard rate. Risk is evenly distributed over time.</li>
+</ul>
+
+<h3>Worked example: survival values from the piecewise model</h3>
+
+<p>Using the hazard rates from Section 5:</p>
+
+<pre><code>T = 0:  S(0) = 1.0000   (alive today, by definition)
+T = 1:  S(1) = exp(&minus;0.01333)           = 0.9868
+T = 2:  S(2) = exp(&minus;0.01333 &minus; 0.02333) = exp(&minus;0.03667) = 0.9640
+T = 3:  S(3) = exp(&minus;0.06000)             = 0.9418
+T = 4:  S(4) = exp(&minus;0.06000 &minus; 0.03250) = exp(&minus;0.09250) = 0.9117
+T = 5:  S(5) = exp(&minus;0.12500)             = 0.8825</code></pre>
+
+<p>Verification: S(2) uses the interval 1&ndash;3Y hazard rate (&lambda; = 0.02333) for one year beyond T=1.  Cumulative hazard at T=2 is 0.01333 + 0.02333 &times; 1 = 0.03667.</p>
+
+<p>This curve is concave &mdash; the drop from T=3 to T=5 (0.9418 &rarr; 0.8825, a 5.93 pp decline over 2 years) is steeper than the drop from T=0 to T=2 (1.0000 &rarr; 0.9640, a 3.60 pp decline over 2 years). Consistent with the back-loaded risk we identified in the piecewise hazards.</p>
+
+<h2>7 &mdash; Expected Loss</h2>
+
+<h3>Formula</h3>
+
+<pre><code>Expected Loss = PD &times; LGD &times; EAD</code></pre>
+
+<p>Where:</p>
+<ul>
+  <li><strong>PD</strong>: probability of default over the horizon.</li>
+  <li><strong>LGD</strong>: loss given default (1 &minus; recovery rate).</li>
+  <li><strong>EAD</strong>: exposure at default &mdash; how much is at risk when default happens.</li>
+</ul>
+
+<h3>Worked example</h3>
+
+<p>A bank holds $1,000,000 in senior unsecured bonds of Company X. The 5Y CDS spread is 150 bps. Recovery assumption: 40%.</p>
+
+<pre><code>Step 1: Hazard rate (from Section 4)
+  &lambda; = 0.025
+
+Step 2: 5-year default probability
+  PD(5) = 1 &minus; exp(&minus;0.025 &times; 5) = 1 &minus; 0.8825 = 0.1175  (11.75%)
+
+Step 3: Loss given default
+  LGD = 1 &minus; 0.40 = 0.60  (60%)
+
+Step 4: Exposure at default
+  EAD = $1,000,000
+
+Step 5: Expected loss
+  EL = PD &times; LGD &times; EAD
+     = 0.1175 &times; 0.60 &times; $1,000,000
+     = $70,500</code></pre>
+
+<p>The bank should expect to lose $70,500 on this position over 5 years, on average. This number drives several things:</p>
+
+<ul>
+  <li><strong>Loan loss reserves</strong>: the bank must set aside capital to absorb expected losses (IFRS 9 / CECL accounting standards).</li>
+  <li><strong>Credit limits</strong>: the expected loss per counterparty feeds into concentration risk thresholds.</li>
+  <li><strong>Pricing</strong>: the loan's interest rate must cover EL plus a return on the regulatory capital tied up by the exposure.</li>
+</ul>
+
+<h3>Basel connection</h3>
+
+<p>Under Basel II/III, the same three inputs &mdash; PD, LGD, EAD &mdash; determine <strong>regulatory capital</strong>. Banks using the Internal Ratings-Based (IRB) approach estimate PD from their own models, and the Basel formula computes a capital requirement that covers both expected and unexpected losses at the 99.9th percentile. The chain is identical: spread &rarr; hazard rate &rarr; PD &rarr; capital.</p>
+
+<h3>Python implementation</h3>
+
+<pre><code class="language-python">import math
+
+def expected_loss(
+    spread_bps: float,
+    recovery: float,
+    horizon_years: float,
+    exposure: float,
+) -> dict:
+    """Compute expected loss from CDS spread, recovery, horizon, and exposure."""
+    lam = (spread_bps / 10_000) / (1 - recovery)
+    pd = 1 - math.exp(-lam * horizon_years)
+    lgd = 1 - recovery
+    el = pd * lgd * exposure
+    return {
+        "hazard_rate": round(lam, 5),
+        "pd": round(pd, 4),
+        "lgd": round(lgd, 2),
+        "ead": exposure,
+        "expected_loss": round(el, 2),
+    }
+
+result = expected_loss(spread_bps=150, recovery=0.40, horizon_years=5, exposure=1_000_000)
+print(result)
+
+# Output:
+# {'hazard_rate': 0.025, 'pd': 0.1175, 'lgd': 0.6, 'ead': 1000000, 'expected_loss': 70500.0}</code></pre>
+
+<h2>8 &mdash; How It All Connects</h2>
+
+<p>The entire credit risk quantification chain:</p>
+
+<pre><code>Bond yield &minus; Treasury yield
+         &darr;
+   Credit spread (bps)
+         &darr;
+  &asymp; CDS spread (cleaner, no liquidity/coupon noise)
+         &darr;
+   &lambda; = spread / (1 &minus; R)        [hazard rate]
+         &darr;
+   S(T) = exp(&minus;&lambda;T)              [survival curve]
+   PD(T) = 1 &minus; S(T)               [default probability]
+         &darr;
+   EL = PD &times; LGD &times; EAD          [expected loss in dollars]
+         &darr;
+   Regulatory capital, loan pricing, portfolio risk</code></pre>
+
+<p>Each step transforms one observable (the yield, the spread) into something more useful downstream. The math is not complicated &mdash; it's exponentials and multiplication &mdash; but the chain matters because it connects what bond traders see on a screen to what a bank's risk department reports to regulators.</p>
+
+<h3>Caveats and where to go deeper</h3>
+
+<ul>
+  <li><strong>Constant vs. piecewise &lambda;</strong>: the constant-hazard model is a useful approximation. For real pricing, you bootstrap a piecewise hazard curve from the full CDS term structure (Section 5).</li>
+  <li><strong>The s &asymp; &lambda;(1&minus;R) shortcut</strong>: this ignores discounting, accrual-on-default, and the timing of premium payments. A full CDS pricer matches the present value of the premium leg to the protection leg under the risk-neutral measure.</li>
+  <li><strong>Recovery is not fixed</strong>: 40% is a convention, not a law. Actual recoveries vary by issuer, seniority, economic conditions, and jurisdiction.</li>
+  <li><strong>CDS &ne; bond spread</strong>: the CDS-bond basis (CDS spread minus bond spread) can be positive or negative, driven by funding costs, counterparty risk, and supply/demand in each market.</li>
+  <li><strong>Correlation matters for portfolios</strong>: expected loss for a single name is straightforward. For a portfolio, you need a model of default correlation &mdash; that's where copulas and Monte Carlo simulation enter (see the portfolio credit VaR exercise in QuantLab).</li>
+</ul>
+
+<p>The formulas in this post are the foundation. Everything in credit risk &mdash; from pricing a single CDS to running a portfolio VaR simulation &mdash; builds on this chain.</p>
