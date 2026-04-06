@@ -1,0 +1,107 @@
+---
+layout: post
+title: "Monte Carlo Credit VaR: Correlated Spreads and Portfolio Risk"
+date: 2026-04-15
+tags: [monte-carlo, var, credit-risk, cholesky, spread-duration, correlation, portfolio-risk, quant-lab, python]
+categories:
+- Credit Risk
+- Quantitative Finance
+permalink: "/2026/04/15/integration-testing-credit-var/"
+---
+
+<h2>From Single-Name Risk to Portfolio Risk</h2>
+
+<p>Everything up to this point has been single-name or single-curve work: what's the default probability for this issuer, what's the spread on this bond, what's the OAS on this callable. Exercise 20 shifts to <strong>portfolio risk</strong> &mdash; how much can I lose across a book of credit positions when spreads move together.</p>
+
+<p>The answer requires three ingredients: a model for how spreads move (correlated shocks), a measure of how much each position's price changes when its spread moves (spread duration), and a simulation framework that puts them together (Monte Carlo VaR).</p>
+
+<h2>Cholesky Decomposition: Making Shocks Correlated</h2>
+
+<p>Monte Carlo starts with independent random draws. But credit spreads don't move independently &mdash; when the market sells off, BBB industrials and BBB utilities both widen, just not by the same amount. The correlation structure matters because it determines how much diversification you actually get.</p>
+
+<p>The standard technique is <strong>Cholesky decomposition</strong>. Given a correlation matrix &Sigma;, you find the lower-triangular matrix L such that LL<sup>T</sup> = &Sigma;. Then:</p>
+
+<pre><code>independent draws:   Z ~ N(0, I)
+correlated draws:    X = Z @ L^T   → X ~ N(0, Σ)</code></pre>
+
+<pre><code class="language-python">def generate_correlated_spread_shocks(correlation_matrix, num_simulations, seed=None):
+    rng = np.random.default_rng(seed)
+    n = correlation_matrix.shape[0]
+    L = cholesky(correlation_matrix, lower=True)
+    Z = rng.standard_normal((num_simulations, n))
+    return Z @ L.T
+</code></pre>
+
+<p>The test verifies this works: generate 10,000 draws with target correlation 0.8, measure the realised correlation, and check it's within 0.05 of the target. With 10K samples the sampling error is small enough to make the test reliable.</p>
+
+<h3>Why correlation drives portfolio VaR</h3>
+
+<p>Two positions with correlation 0.2 partially offset each other &mdash; when one widens, the other might not. Two positions with correlation 0.9 tend to widen together, so the tail losses compound. Same positions, same individual risks, but the portfolio VaR can differ by 30-50% depending on the correlation assumption. This is why getting the correlation matrix right matters more than getting any individual spread volatility right.</p>
+
+<h2>Spread Duration: CS01</h2>
+
+<p>Spread duration (also called CS01 or credit spread sensitivity) measures how much a bond's price changes per 1 bp spread move. It's the credit analogue of modified duration for interest rates:</p>
+
+<pre><code>&Delta;P &asymp; &minus;SD &times; &Delta;spread &times; notional</code></pre>
+
+<p>We compute it via central finite difference: bump the spread up 1 bp, bump it down 1 bp, take the price difference:</p>
+
+<pre><code class="language-python">def spread_duration(price, coupon, maturity_years, spread_bps, face=100.0, bump_bps=1.0):
+    price_up = _price_at_spread(spread_bps + bump_bps)
+    price_down = _price_at_spread(spread_bps - bump_bps)
+    return abs((price_up - price_down) / (2 * bump_bps))
+</code></pre>
+
+<p>Longer-maturity bonds have higher spread duration (more cash flows further out, more sensitive to discounting changes). A 10-year bond with CS01 of 0.08 loses $0.08 per $100 face per 1 bp widening. On a $50M position, a 100 bp widening costs $4M. That's why portfolio risk managers care about this number.</p>
+
+<h2>Monte Carlo VaR: Putting It Together</h2>
+
+<p>The full simulation:</p>
+
+<ol>
+  <li>Generate N paths of correlated standard-normal shocks (Cholesky).</li>
+  <li>Scale each shock by the position's spread volatility to get spread changes in bps.</li>
+  <li>For each position and each path: P&amp;L = &minus;CS01 &times; &Delta;spread &times; quantity &times; face/100.</li>
+  <li>Sum across positions to get portfolio P&amp;L per path.</li>
+  <li>VaR = 5th percentile of the P&amp;L distribution (for 95% confidence).</li>
+</ol>
+
+<pre><code class="language-python">def portfolio_credit_var(positions, correlation_matrix, spread_volatilities,
+                         confidence=0.95, num_simulations=10000, seed=None):
+    shocks = generate_correlated_spread_shocks(correlation_matrix, num_simulations, seed)
+    spread_changes = shocks * spread_volatilities
+
+    durations = [spread_duration(p["price"], p["coupon"], ...) for p in positions]
+
+    pnl = np.zeros(num_simulations)
+    for i, pos in enumerate(positions):
+        pnl += -durations[i] * spread_changes[:, i] * pos["quantity"] * pos["face"] / 100
+
+    return float(np.percentile(pnl, (1 - confidence) * 100))
+</code></pre>
+
+<p>The test suite verifies two key properties: VaR is negative (it's a loss measure), and higher correlation produces worse (more negative) VaR. Both are economic invariants &mdash; if either breaks, the model is wrong.</p>
+
+<h2>Limitations and What Production Would Need</h2>
+
+<p>This is a teaching implementation. A production credit VaR engine would add:</p>
+
+<ul>
+  <li><strong>Full revaluation</strong> instead of the duration approximation. For large spread moves, the linear approximation breaks down (convexity). Full reval reprices every bond on every path.</li>
+  <li><strong>Historical or GARCH volatilities</strong> rather than assumed constants. Spread vol is time-varying and clusters during crises.</li>
+  <li><strong>Stressed correlation</strong>. Correlations increase during selloffs (the "correlation breakdown" problem). Using calm-period correlations underestimates tail risk.</li>
+  <li><strong>Default simulation</strong>. This model only captures spread risk (mark-to-market losses from spread widening). A full credit VaR model also simulates actual defaults, which cause jump-to-default losses.</li>
+  <li><strong>Convergence testing</strong>. 10K simulations is enough for a 95% VaR estimate but noisy for 99% or 99.9%. Production systems run 100K-1M paths and report confidence intervals around the VaR estimate.</li>
+</ul>
+
+<h2>Integration Testing (AWS Side)</h2>
+
+<p>The other half of this exercise is about testing distributed AWS services end-to-end. The pattern: use moto to stand up fake S3 + SQS + SNS, push data through the full pipeline (ingest &rarr; queue &rarr; compute &rarr; alert), and assert that the right outputs appear at each stage. This validates that the components actually work together, not just individually.</p>
+
+<p>The key insight: integration tests are expensive (slow, complex setup, brittle) so you want <em>few</em> of them covering the critical paths, backed by <em>many</em> fast unit tests covering the business logic. The testing pyramid applies to AWS services exactly as it does to any other code.</p>
+
+<h2>What's Next</h2>
+
+<p>All 20 numbered exercises are complete. Next: <strong>Capstone A</strong> assembles exercises 09-14 into a bond pricing engine, and <strong>Capstone B</strong> assembles 15-20 into a credit risk platform that imports A.</p>
+
+<p>Full code: <a href="https://github.com/MishCodesFinBytes/QuantLab/tree/master/exercises/20-integration-testing-var">exercises/20-integration-testing-var</a>. 7 tests, all green.</p>
