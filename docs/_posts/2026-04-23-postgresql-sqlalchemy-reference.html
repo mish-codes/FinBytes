@@ -1,0 +1,318 @@
+---
+layout: post
+title: "PostgreSQL & SQLAlchemy Reference: Async Database for Financial Data"
+date: 2026-04-23
+tags: [postgresql, sqlalchemy, alembic, database, async, python, reference, infrastructure, quant-lab]
+section: infrastructure
+permalink: "/misc/postgresql-sqlalchemy/"
+---
+
+<h2>The Stack</h2>
+
+<p>PostgreSQL is the database. SQLAlchemy is the Python ORM that maps Python classes to database tables. Alembic handles schema migrations (adding columns, creating tables) without dropping data. All three work together, and understanding how they connect saves hours of debugging.</p>
+
+<p>In QuantLab, this stack was introduced in <strong>Exercise 08 (PostgreSQL + SQLAlchemy)</strong>, used in <strong>Exercise 11 (RDS Yield Schema)</strong> for AWS deployment, and became the persistence layer for the Stock Risk Scanner.</p>
+
+<h2>SQLAlchemy 2.0 Mapped Types</h2>
+
+<p>SQLAlchemy 2.0 introduced <code>Mapped</code> type annotations, replacing the older <code>Column()</code> style. Here is the actual scan record model from the scanner:</p>
+
+<pre><code class="language-python">from datetime import datetime, UTC
+from typing import Optional
+from sqlalchemy import String, Float, DateTime
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+class ScanRecord(Base):
+    __tablename__ = "scan_records"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tickers: Mapped[str] = mapped_column(String(200))
+    weights: Mapped[str] = mapped_column(String(200))
+    period: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(20))
+    var_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    cvar_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    max_drawdown_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    volatility_pct: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    sharpe_ratio: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    narrative: Mapped[Optional[str]] = mapped_column(String(2000), nullable=True)
+    error_message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+    completed_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+</code></pre>
+
+<p>Key patterns: <code>Mapped[str]</code> means the column is NOT NULL. <code>Mapped[Optional[float]]</code> means it is nullable. The type annotation drives both Python type checking and database schema generation.</p>
+
+<h2>Async Engine and Session</h2>
+
+<p>The scanner uses async SQLAlchemy throughout. The setup happens in the FastAPI lifespan:</p>
+
+<pre><code class="language-python">from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///scanner.db")
+
+engine = create_async_engine(DATABASE_URL)
+session_factory = async_sessionmaker(engine, expire_on_commit=False)
+</code></pre>
+
+<p>The connection URL determines the driver:</p>
+
+<ul>
+  <li><code>sqlite+aiosqlite:///scanner.db</code> &mdash; local SQLite with async driver (development, tests)</li>
+  <li><code>postgresql+asyncpg://user:pass@host:5432/dbname</code> &mdash; PostgreSQL with asyncpg (production)</li>
+</ul>
+
+<p><code>expire_on_commit=False</code> means you can still access attributes on a model instance after committing. Without it, accessing <code>record.id</code> after commit triggers a lazy load, which fails in async context.</p>
+
+<h2>CRUD Operations</h2>
+
+<p>The scanner's database layer shows the four core operations:</p>
+
+<h3>Create</h3>
+
+<pre><code class="language-python">async def create_pending_scan(session: AsyncSession, request: ScanRequest) -> ScanRecord:
+    record = ScanRecord(
+        tickers=",".join(request.tickers),
+        weights=",".join(str(w) for w in request.weights),
+        period=request.period,
+        status="pending",
+    )
+    session.add(record)
+    await session.commit()
+    await session.refresh(record)  # reload to get the auto-generated id
+    return record
+</code></pre>
+
+<h3>Read (by primary key)</h3>
+
+<pre><code class="language-python">async def get_scan(session: AsyncSession, scan_id: int) -> ScanRecord | None:
+    return await session.get(ScanRecord, scan_id)
+</code></pre>
+
+<h3>Read (query with filters)</h3>
+
+<pre><code class="language-python">from sqlalchemy import select
+
+async def get_recent_scans(session: AsyncSession, limit: int = 10) -> list[ScanRecord]:
+    stmt = (
+        select(ScanRecord)
+        .where(ScanRecord.status == "complete")
+        .order_by(ScanRecord.created_at.desc(), ScanRecord.id.desc())
+        .limit(limit)
+    )
+    result = await session.execute(stmt)
+    return list(result.scalars().all())
+</code></pre>
+
+<h3>Update</h3>
+
+<pre><code class="language-python">async def complete_scan(session: AsyncSession, scan_id: int, result: ScanResult) -> None:
+    record = await session.get(ScanRecord, scan_id)
+    if record is None:
+        raise ValueError(f"Scan record {scan_id} not found")
+    record.status = "complete"
+    record.var_pct = result.metrics.var_pct
+    record.cvar_pct = result.metrics.cvar_pct
+    record.max_drawdown_pct = result.metrics.max_drawdown_pct
+    record.volatility_pct = result.metrics.volatility_pct
+    record.sharpe_ratio = result.metrics.sharpe_ratio
+    record.narrative = result.narrative
+    record.completed_at = datetime.now(UTC)
+    await session.commit()
+</code></pre>
+
+<h3>Delete</h3>
+
+<pre><code class="language-python">async def delete_scan(session: AsyncSession, scan_id: int) -> None:
+    record = await session.get(ScanRecord, scan_id)
+    if record:
+        await session.delete(record)
+        await session.commit()
+</code></pre>
+
+<h2>Alembic Migrations</h2>
+
+<p>Alembic tracks schema changes as versioned migration files. Instead of dropping and recreating tables, you apply incremental changes.</p>
+
+<h3>Setup</h3>
+
+<pre><code class="language-bash"># Initialize Alembic in the project
+alembic init alembic
+
+# Edit alembic.ini to set sqlalchemy.url
+# Or better: set it dynamically in alembic/env.py
+</code></pre>
+
+<h3>Create a Migration</h3>
+
+<pre><code class="language-bash"># Auto-generate from model changes
+alembic revision --autogenerate -m "create scan_records table"
+
+# This creates a file like:
+# alembic/versions/002878ddee4c_create_scan_records_table.py
+</code></pre>
+
+<p>The generated migration from the scanner:</p>
+
+<pre><code class="language-python">def upgrade() -> None:
+    op.create_table('scan_records',
+        sa.Column('id', sa.Integer(), nullable=False),
+        sa.Column('tickers', sa.String(length=200), nullable=False),
+        sa.Column('weights', sa.String(length=200), nullable=False),
+        sa.Column('period', sa.String(length=10), nullable=False),
+        sa.Column('status', sa.String(length=20), nullable=False),
+        sa.Column('var_pct', sa.Float(), nullable=True),
+        sa.Column('cvar_pct', sa.Float(), nullable=True),
+        sa.Column('max_drawdown_pct', sa.Float(), nullable=True),
+        sa.Column('volatility_pct', sa.Float(), nullable=True),
+        sa.Column('sharpe_ratio', sa.Float(), nullable=True),
+        sa.Column('narrative', sa.String(length=2000), nullable=True),
+        sa.Column('error_message', sa.String(length=500), nullable=True),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+        sa.Column('completed_at', sa.DateTime(timezone=True), nullable=True),
+        sa.PrimaryKeyConstraint('id')
+    )
+
+def downgrade() -> None:
+    op.drop_table('scan_records')
+</code></pre>
+
+<h3>Apply and Rollback</h3>
+
+<pre><code class="language-bash"># Apply all pending migrations
+alembic upgrade head
+
+# Rollback one version
+alembic downgrade -1
+
+# See current version
+alembic current
+
+# See migration history
+alembic history --verbose
+</code></pre>
+
+<h2>Testing with In-Memory SQLite</h2>
+
+<p>The scanner tests use SQLite in-memory instead of a real PostgreSQL instance. This makes tests fast and isolated:</p>
+
+<pre><code class="language-python">@pytest.fixture
+async def app():
+    from src.scanner.db_models import Base
+    from src.scanner.main import create_app
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    app = create_app()
+    app.state.session_factory = factory
+    yield app
+    await engine.dispose()
+</code></pre>
+
+<p>The trick: <code>Base.metadata.create_all</code> creates all tables from the ORM models, bypassing Alembic entirely. This is fine for tests because you always want a fresh schema. In production, always use Alembic migrations.</p>
+
+<h2>Docker Compose for Local PostgreSQL</h2>
+
+<p>The scanner's <code>docker-compose.yml</code> runs both the API and PostgreSQL locally:</p>
+
+<pre><code class="language-yaml">services:
+  scanner:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  db:
+    image: postgres:16
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+volumes:
+  pgdata:
+</code></pre>
+
+<p>The <code>.env</code> file contains:</p>
+
+<pre><code class="language-bash">POSTGRES_USER=scanner
+POSTGRES_PASSWORD=localdev
+POSTGRES_DB=scanner
+DATABASE_URL=postgresql+asyncpg://scanner:localdev@db:5432/scanner
+</code></pre>
+
+<pre><code class="language-bash"># Start everything
+docker compose up -d
+
+# Check logs
+docker compose logs -f scanner
+
+# Tear down (keeps data in volume)
+docker compose down
+
+# Tear down and delete data
+docker compose down -v
+</code></pre>
+
+<h2>RDS on AWS</h2>
+
+<p>For Exercise 11, we deployed PostgreSQL on RDS. The key differences from local Docker:</p>
+
+<ul>
+  <li><strong>Security groups:</strong> You must allow inbound traffic on port 5432 from your IP (for local development) or from the Lambda/EC2 security group (for production).</li>
+  <li><strong>Connection string:</strong> <code>postgresql+asyncpg://admin:password@quant-lab-yields.xxxxxx.us-east-1.rds.amazonaws.com:5432/yields</code></li>
+  <li><strong>SSL:</strong> RDS requires SSL by default. Add <code>?ssl=require</code> to the connection string or configure via <code>connect_args</code>.</li>
+</ul>
+
+<pre><code class="language-bash"># Connect via psql for debugging
+psql "host=quant-lab-yields.xxxxxx.us-east-1.rds.amazonaws.com \
+      port=5432 dbname=yields user=admin sslmode=require"
+</code></pre>
+
+<h2>The Yield Schema (Exercise 11)</h2>
+
+<p>The yield curve exercise used a different schema from the scanner, showing how SQLAlchemy models map to financial data:</p>
+
+<pre><code class="language-python">class YieldObservation(Base):
+    __tablename__ = "yield_observations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    observation_date: Mapped[date] = mapped_column(Date, index=True)
+    maturity_label: Mapped[str] = mapped_column(String(5))   # "1M", "2Y", "10Y"
+    yield_pct: Mapped[float] = mapped_column(Float)
+    curve_type: Mapped[str] = mapped_column(String(10))       # "par", "spot", "forward"
+    source: Mapped[str] = mapped_column(String(20))           # "FRED"
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(UTC)
+    )
+</code></pre>
+
+<h3>Things That Tripped Me Up</h3>
+
+<ul>
+  <li><strong>expire_on_commit:</strong> Without <code>expire_on_commit=False</code>, accessing any attribute on a model after <code>await session.commit()</code> triggers a lazy load. In async context, this raises <code>MissingGreenlet</code> error. Always set it to False for async sessions.</li>
+  <li><strong>session.refresh() after commit:</strong> After inserting a new record, the auto-generated <code>id</code> is not available in Python until you call <code>await session.refresh(record)</code>. Without it, <code>record.id</code> is <code>None</code>.</li>
+  <li><strong>Alembic autogenerate is not perfect:</strong> It does not detect column type changes (e.g., String(100) to String(200)). It does not detect renamed columns. Always review generated migrations before applying.</li>
+  <li><strong>SQLite vs PostgreSQL differences:</strong> SQLite ignores String length limits, has no native ARRAY type, and handles datetime differently. Tests pass on SQLite but can fail on PostgreSQL. Test against real PostgreSQL before deploying.</li>
+  <li><strong>Connection pool exhaustion:</strong> If you open sessions but do not close them (missing <code>async with</code> or forgotten <code>await session.close()</code>), the connection pool fills up and new requests hang. The <code>async with factory() as session</code> pattern prevents this.</li>
+  <li><strong>Alembic with async:</strong> The default <code>alembic/env.py</code> uses synchronous connections. For async engines, you need to modify <code>env.py</code> to use <code>run_async</code>. The Alembic docs have a recipe for this, but it is easy to miss.</li>
+  <li><strong>RDS auto-restart:</strong> Stopped RDS instances restart after 7 days. You cannot prevent this. Either delete the instance when done, or set a recurring reminder to stop it again.</li>
+</ul>

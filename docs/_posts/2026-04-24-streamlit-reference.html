@@ -1,0 +1,266 @@
+---
+layout: post
+title: "Streamlit Reference: Python-Only Dashboards"
+date: 2026-04-24
+tags: [streamlit, dashboard, python, deployment, reference, infrastructure, quant-lab]
+section: infrastructure
+permalink: "/misc/streamlit/"
+---
+
+<h2>Why Streamlit Over React</h2>
+
+<p>The QuantLab scanner needed a frontend. The options were: build a React app (requires JavaScript, npm, webpack, a separate hosting service), or use Streamlit (pure Python, free hosting on Streamlit Cloud, built-in charting). For a data-focused dashboard built by a Python developer, Streamlit wins on every dimension that matters.</p>
+
+<p>Trade-offs: Streamlit reruns the entire script on every interaction. You cannot build complex SPAs. The styling options are limited. But for a portfolio risk scanner dashboard, none of that matters.</p>
+
+<h2>Basic Layout</h2>
+
+<p>A Streamlit app is a single Python script. Streamlit reads it top to bottom and renders each call as a UI element:</p>
+
+<pre><code class="language-python">import streamlit as st
+
+st.set_page_config(
+    page_title="FinBytes QuantLabs",
+    page_icon="chart_with_upwards_trend",
+    layout="wide",
+)
+
+st.title("Stock Risk Scanner")
+st.markdown("Analyze portfolio risk metrics for any combination of tickers.")
+</code></pre>
+
+<h3>Columns</h3>
+
+<pre><code class="language-python">col1, col2, col3, col4 = st.columns(4)
+col1.metric("VaR (95%)", f"{var_pct:.2f}%")
+col2.metric("CVaR (95%)", f"{cvar_pct:.2f}%")
+col3.metric("Max Drawdown", f"{max_dd:.2f}%")
+col4.metric("Sharpe Ratio", f"{sharpe:.2f}")
+</code></pre>
+
+<h3>Charts</h3>
+
+<pre><code class="language-python">import plotly.express as px
+
+fig = px.line(df, x="date", y="cumulative_return", title="Cumulative Returns")
+st.plotly_chart(fig, use_container_width=True)
+</code></pre>
+
+<h3>User Input</h3>
+
+<pre><code class="language-python"># Text input
+tickers_input = st.text_input("Tickers (comma-separated)", "AAPL, MSFT, GOOGL")
+
+# Slider
+confidence = st.slider("Confidence Level", 90, 99, 95)
+
+# Selectbox
+period = st.selectbox("Period", ["6mo", "1y", "2y", "5y"], index=1)
+
+# Button
+if st.button("Run Scan"):
+    # trigger the scan
+    pass
+</code></pre>
+
+<h2>Session State</h2>
+
+<p>Because Streamlit reruns the entire script on every interaction, you lose all local variables. Session state persists data across reruns:</p>
+
+<pre><code class="language-python"># Initialize (only runs once)
+if "scan_count" not in st.session_state:
+    st.session_state.scan_count = 0
+    st.session_state.scan_reset_time = datetime.now()
+
+# Update
+st.session_state.scan_count += 1
+
+# Read
+st.write(f"Scans this session: {st.session_state.scan_count}")
+</code></pre>
+
+<p>The scanner dashboard uses session state for rate limiting (maximum scans per minute) and caching the latest scan result so it does not disappear when the user interacts with a widget.</p>
+
+<h2>Secrets Management</h2>
+
+<p>Streamlit Cloud has built-in secrets management. You define secrets in the Streamlit Cloud dashboard, and access them in code:</p>
+
+<pre><code class="language-python"># Access a secret
+API_URL = st.secrets.get("API_URL", "http://localhost:8000")
+</code></pre>
+
+<p>For local development, create a <code>.streamlit/secrets.toml</code> file:</p>
+
+<pre><code class="language-toml"># .streamlit/secrets.toml (add to .gitignore!)
+API_URL = "http://localhost:8000"
+</code></pre>
+
+<p>In CI/CD tests, you can create the file on the fly:</p>
+
+<pre><code class="language-bash">echo 'API_URL = "http://localhost:8000"' > .streamlit/secrets.toml
+</code></pre>
+
+<h2>Multi-Page Apps</h2>
+
+<p>Streamlit supports multiple pages by placing Python files in a <code>pages/</code> directory. The filename determines the page order and title:</p>
+
+<pre><code class="language-text">dashboard/
+    app.py                        # home page (System Health)
+    pages/
+        1_Stock_Risk_Scanner.py   # main scanner page
+        99_Admin.py               # admin page
+    lib/
+        api_client.py
+        charts.py
+    assets/
+        logo.png
+    requirements.txt
+</code></pre>
+
+<p>The number prefix controls ordering in the sidebar. The underscore in the filename becomes a space in the page title. <code>1_Stock_Risk_Scanner.py</code> appears as "Stock Risk Scanner".</p>
+
+<p>You can customize the sidebar navigation with explicit page links:</p>
+
+<pre><code class="language-python"># In app.py (or any page)
+st.sidebar.page_link("pages/1_Stock_Risk_Scanner.py", label="Stock Risk Scanner", icon="chart_with_upwards_trend")
+st.sidebar.page_link("app.py", label="System Health", icon="stethoscope")
+</code></pre>
+
+<h2>Sidebar</h2>
+
+<p>The scanner dashboard uses a shared sidebar across all pages for branding and navigation:</p>
+
+<pre><code class="language-python">from pathlib import Path
+
+HERE = Path(__file__).parent
+
+st.sidebar.image(str(HERE / "assets" / "logo.png"), width=180)
+st.sidebar.title("FinBytes QuantLabs")
+st.sidebar.markdown("**Built by** [Manisha](https://mishcodesfinbytes.github.io/FinBytes/)")
+st.sidebar.markdown("---")
+
+st.sidebar.markdown("### Projects")
+st.sidebar.page_link("pages/1_Stock_Risk_Scanner.py", label="Stock Risk Scanner")
+st.sidebar.markdown("*More coming soon...*")
+
+st.sidebar.markdown("---")
+st.sidebar.markdown(
+    "**Built with:** Python, FastAPI, SQLAlchemy, "
+    "Docker, Claude API, Streamlit"
+)
+st.sidebar.markdown(
+    "[GitHub Repo](https://github.com/MishCodesFinBytes/QuantLab) · "
+    "[Blog](https://mishcodesfinbytes.github.io/FinBytes/quant-lab/stock-risk-scanner/)"
+)
+</code></pre>
+
+<h2>Calling External APIs</h2>
+
+<p>The dashboard calls the FastAPI scanner backend using the <code>requests</code> library. The polling pattern for background scans:</p>
+
+<pre><code class="language-python">import requests
+import time
+
+def submit_scan(api_url: str, tickers: list, weights: list, period: str) -> dict:
+    resp = requests.post(
+        f"{api_url}/api/scan",
+        json={"tickers": tickers, "weights": weights, "period": period},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    return resp.json()  # {"id": 42, "status": "pending"}
+
+
+def poll_scan(api_url: str, scan_id: int, max_wait: int = 60) -> dict:
+    for _ in range(max_wait):
+        resp = requests.get(f"{api_url}/api/scans/{scan_id}", timeout=10)
+        data = resp.json()
+        if data["status"] in ("complete", "failed"):
+            return data
+        time.sleep(1)
+    raise TimeoutError(f"Scan {scan_id} did not complete in {max_wait}s")
+</code></pre>
+
+<h2>Deployment to Streamlit Cloud</h2>
+
+<p>Deployment is free and takes under five minutes:</p>
+
+<ol>
+  <li>Push your code to a public GitHub repository.</li>
+  <li>Go to <a href="https://share.streamlit.io">share.streamlit.io</a> and sign in with GitHub.</li>
+  <li>Select the repo, branch, and the main file (<code>dashboard/app.py</code>).</li>
+  <li>Add secrets in the Streamlit Cloud dashboard (Settings &rarr; Secrets).</li>
+  <li>Click Deploy.</li>
+</ol>
+
+<p>Streamlit Cloud watches the branch and auto-redeploys on every push. The free tier gives you one public app with reasonable resources.</p>
+
+<pre><code class="language-text"># requirements.txt — Streamlit Cloud installs these automatically
+streamlit>=1.30
+requests>=2.31
+plotly>=5.18
+pandas>=2.1
+numpy>=1.26
+yfinance>=0.2
+</code></pre>
+
+<h2>Health Checks and Status Display</h2>
+
+<p>The scanner dashboard's home page shows system health by querying GitHub Actions and the API:</p>
+
+<pre><code class="language-python">st.title("System Health")
+
+# Check API health
+try:
+    r = requests.get(f"{API_URL}/health", timeout=5)
+    if r.status_code == 200:
+        st.success("API: Connected")
+    else:
+        st.error(f"API: Status {r.status_code}")
+except requests.exceptions.ConnectionError:
+    st.error("API: Unreachable")
+
+# Check GitHub CI status
+try:
+    r = requests.get(
+        f"https://api.github.com/repos/{GITHUB_REPO}/actions/runs",
+        params={"per_page": 3},
+        timeout=10,
+    )
+    runs = r.json().get("workflow_runs", [])
+    if runs:
+        latest = runs[0]
+        if latest.get("conclusion") == "success":
+            st.success(f"CI: Passing ({latest['name']})")
+        else:
+            st.warning(f"CI: {latest.get('conclusion', 'running')}")
+except Exception:
+    st.warning("CI: Could not reach GitHub API")
+</code></pre>
+
+<h2>Running Locally</h2>
+
+<pre><code class="language-bash"># Install dependencies
+pip install -r requirements.txt
+
+# Create local secrets
+mkdir -p .streamlit
+echo 'API_URL = "http://localhost:8000"' > .streamlit/secrets.toml
+
+# Run the app
+streamlit run app.py
+
+# Opens browser at http://localhost:8501
+</code></pre>
+
+<h3>Things That Tripped Me Up</h3>
+
+<ul>
+  <li><strong>Full script rerun:</strong> Every button click, slider move, or text input change reruns the entire script top to bottom. If you have an expensive API call at the top level, it fires on every interaction. Wrap expensive calls in <code>@st.cache_data</code> or guard them with <code>if st.button()</code>.</li>
+  <li><strong>st.cache_data vs st.cache_resource:</strong> Use <code>@st.cache_data</code> for data (DataFrames, API responses). Use <code>@st.cache_resource</code> for connections (database engines, HTTP clients). Mixing them up causes serialization errors.</li>
+  <li><strong>Button state is ephemeral:</strong> <code>st.button()</code> returns True only on the click event, then False on the next rerun. If you need to remember that a button was clicked, store the state in <code>st.session_state</code>.</li>
+  <li><strong>File paths on Streamlit Cloud:</strong> <code>__file__</code> resolves differently on Cloud vs local. Use <code>Path(__file__).parent</code> for relative paths to assets, not hardcoded paths.</li>
+  <li><strong>Secrets format:</strong> <code>.streamlit/secrets.toml</code> uses TOML, not JSON or YAML. String values need quotes. Nested sections use <code>[section]</code> headers. If the format is wrong, Streamlit silently returns empty values instead of raising an error.</li>
+  <li><strong>Sleep in Streamlit blocks everything:</strong> <code>time.sleep(1)</code> in a polling loop freezes the entire UI. Use <code>st.spinner()</code> to show a loading indicator, and keep the total wait time reasonable.</li>
+  <li><strong>Auto-deploy surprises:</strong> Streamlit Cloud redeploys on every push to the tracked branch. If you push broken code, the live app goes down immediately. Use a separate branch for development and only merge to the tracked branch when ready.</li>
+</ul>
