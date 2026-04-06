@@ -250,7 +250,7 @@ int main() {
     }
 
     // POST
-    json order = {{"ticker", "AAPL"}, {"quantity", 100}, {"side", "buy"}};
+{% raw %}    json order = {{"ticker", "AAPL"}, {"quantity", 100}, {"side", "buy"}};{% endraw %}
     auto post_res = cli.Post("/orders", order.dump(), "application/json");
     if (!post_res || post_res-&gt;status &gt;= 400) {
         printf("Error: %d\n", post_res ? post_res-&gt;status : -1);
