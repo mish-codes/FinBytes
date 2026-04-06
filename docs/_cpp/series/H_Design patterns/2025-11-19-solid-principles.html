@@ -159,3 +159,209 @@ public:
 };</code></pre>
   <div class="cpp-note">C++ gives you two open/closed strategies: runtime polymorphism (virtual functions, testable, flexible) and compile-time polymorphism (templates, zero overhead). Use runtime when the model is chosen at runtime. Use templates when it is fixed at compile time and performance matters.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust SOLID examples</h3>
+  <h4>S &mdash; Single Responsibility</h4>
+  <pre><code class="language-rust">struct Pricer;
+struct TradeRepository;
+struct PricingLogger;
+
+impl Pricer          { fn price(&self, trade: &Trade) -> f64 { todo!() } }
+impl TradeRepository { fn save(&self, trade: &Trade)         { todo!() } }
+impl PricingLogger   { fn log(&self, result: f64)            { todo!() } }</code></pre>
+
+  <h4>O &mdash; Open/Closed</h4>
+  <pre><code class="language-rust">trait PricingModel {
+    fn price(&self, trade: &Trade) -> f64;
+}
+
+struct BlackScholes;
+struct MonteCarlo;
+
+impl PricingModel for BlackScholes {
+    fn price(&self, trade: &Trade) -> f64 { todo!() }
+}
+impl PricingModel for MonteCarlo {
+    fn price(&self, trade: &Trade) -> f64 { todo!() }
+}
+
+// Add Binomial without touching existing code
+struct Binomial;
+impl PricingModel for Binomial {
+    fn price(&self, trade: &Trade) -> f64 { todo!() }
+}</code></pre>
+
+  <h4>D &mdash; Dependency Inversion</h4>
+  <pre><code class="language-rust">trait PositionStore {
+    fn get_positions(&self, portfolio_id: &str) -> Vec&lt;Position&gt;;
+}
+
+struct RiskEngine&lt;S: PositionStore&gt; {
+    store: S,  // generic over any store implementation
+}
+
+impl&lt;S: PositionStore&gt; RiskEngine&lt;S&gt; {
+    fn new(store: S) -> Self { Self { store } }
+}</code></pre>
+
+  <h4>I &mdash; Interface Segregation</h4>
+  <pre><code class="language-rust">// Separate traits instead of one fat trait
+trait SpotFeed { fn get_spot(&self, sym: &str) -> f64; }
+trait VolFeed  { fn get_vol(&self, sym: &str)  -> f64; }
+
+struct Pricer&lt;S: SpotFeed, V: VolFeed&gt; {
+    spots: S,
+    vols: V,
+}</code></pre>
+  <div class="cpp-note">Rust enforces DIP at compile time through trait bounds. There is no runtime cost &mdash; the compiler monomorphises each generic into concrete code. You can also use <code>dyn Trait</code> for runtime polymorphism when you need it, similar to C++ virtual dispatch.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go SOLID examples</h3>
+  <h4>S &mdash; Single Responsibility</h4>
+  <pre><code class="language-go">type Pricer struct{}
+func (p *Pricer) Price(t Trade) float64 { return 0 }
+
+type TradeRepository struct{}
+func (r *TradeRepository) Save(t Trade) {}
+
+type PricingLogger struct{}
+func (l *PricingLogger) Log(result float64) {}</code></pre>
+
+  <h4>O &mdash; Open/Closed</h4>
+  <pre><code class="language-go">type PricingModel interface {
+    Price(trade Trade) float64
+}
+
+type BlackScholes struct{}
+func (bs BlackScholes) Price(t Trade) float64 { return 0 }
+
+type MonteCarlo struct{}
+func (mc MonteCarlo) Price(t Trade) float64 { return 0 }
+
+// Add Binomial — no existing code touched
+type Binomial struct{}
+func (b Binomial) Price(t Trade) float64 { return 0 }</code></pre>
+
+  <h4>D &mdash; Dependency Inversion</h4>
+  <pre><code class="language-go">type PositionStore interface {
+    GetPositions(portfolioID string) []Position
+}
+
+type RiskEngine struct {
+    store PositionStore  // accepts any implementation
+}
+
+func NewRiskEngine(store PositionStore) *RiskEngine {
+    return &RiskEngine{store: store}
+}</code></pre>
+
+  <h4>I &mdash; Interface Segregation</h4>
+  <pre><code class="language-go">// Go interfaces are implicitly satisfied — no "implements" keyword
+type SpotFeed interface { GetSpot(sym string) float64 }
+type VolFeed  interface { GetVol(sym string)  float64 }
+
+type Pricer struct {
+    spots SpotFeed
+    vols  VolFeed
+}</code></pre>
+  <div class="cpp-note">Go interfaces are satisfied implicitly &mdash; any type that has the right methods automatically implements the interface. This makes Interface Segregation natural: small interfaces are cheap to define and easy to satisfy. The Go proverb is "the bigger the interface, the weaker the abstraction."</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript SOLID examples</h3>
+  <h4>S &mdash; Single Responsibility</h4>
+  <pre><code class="language-typescript">class Pricer          { price(trade: Trade): number { return 0; } }
+class TradeRepository { save(trade: Trade): void    { /* ... */ } }
+class PricingLogger   { log(result: number): void   { /* ... */ } }</code></pre>
+
+  <h4>O &mdash; Open/Closed</h4>
+  <pre><code class="language-typescript">interface PricingModel {
+  price(trade: Trade): number;
+}
+
+class BlackScholes implements PricingModel {
+  price(trade: Trade): number { /* ... */ return 0; }
+}
+
+class MonteCarlo implements PricingModel {
+  price(trade: Trade): number { /* ... */ return 0; }
+}
+
+class Pricer {
+  constructor(private model: PricingModel) {}
+  price(trade: Trade): number { return this.model.price(trade); }
+}</code></pre>
+
+  <h4>D &mdash; Dependency Inversion</h4>
+  <pre><code class="language-typescript">interface PositionStore {
+  getPositions(portfolioId: string): Position[];
+}
+
+class RiskEngine {
+  constructor(private store: PositionStore) {}
+}</code></pre>
+
+  <h4>I &mdash; Interface Segregation</h4>
+  <pre><code class="language-typescript">interface SpotFeed { getSpot(sym: string): number; }
+interface VolFeed  { getVol(sym: string):  number; }
+
+class Pricer {
+  constructor(private spots: SpotFeed, private vols: VolFeed) {}
+}</code></pre>
+  <div class="cpp-note">TypeScript interfaces are structural (like Go), not nominal (like C#/Java). Any object with the right shape satisfies the interface &mdash; no <code>implements</code> keyword required. This makes ISP natural but means you need to be careful: a typo in a method name silently creates a non-conforming type instead of a compile error.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>SOLID across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Abstraction style</td>
+      <td>ABC / Protocol</td><td>interface</td><td>virtual / template</td><td>trait / generic</td><td>interface (implicit)</td><td>interface (structural)</td>
+    </tr>
+    <tr>
+      <td>Compile-time safety</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Verbosity</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Runtime overhead</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>ISP ergonomics</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>DIP testing ease</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust</strong> enforces SOLID at compile time more strictly than any other language here. Trait bounds are checked before your code runs. The cost: more verbose type signatures and occasional fights with the borrow checker when interfaces involve references.</li>
+    <li><strong>Go</strong> makes ISP the most natural &mdash; small, implicit interfaces are idiomatic. But Go lacks generics for most DIP patterns (pre-1.18), and even with generics the syntax is clunky compared to Rust or C++ templates.</li>
+    <li><strong>TypeScript</strong> has the best DX for testing (structural typing = easy mocks) but the weakest runtime guarantees &mdash; interfaces are erased at runtime, so a wrong type at a system boundary won't be caught until it blows up.</li>
+    <li><strong>Python</strong> is the fastest to prototype with but relies on discipline rather than the compiler. <code>Protocol</code> (PEP 544) gives you structural typing like Go/TS, but only if you run a type checker.</li>
+    <li><strong>C++</strong> uniquely offers compile-time polymorphism (templates) alongside runtime polymorphism (virtual). No other language in this list gives you zero-cost abstraction at the SOLID level.</li>
+    <li><strong>C#</strong> is the most balanced &mdash; strong typing, good IDE support, readable syntax. The enterprise standard for a reason.</li>
+  </ul>
+
+  <h4>When to pick what</h4>
+  <ul>
+    <li><strong>Prototyping / data science:</strong> Python</li>
+    <li><strong>Enterprise backend / microservices:</strong> C# or Go</li>
+    <li><strong>Systems / embedded / zero-cost:</strong> Rust or C++</li>
+    <li><strong>High-concurrency services:</strong> Go or Rust</li>
+    <li><strong>Full-stack with shared types:</strong> TypeScript</li>
+    <li><strong>Hot pricing loop (millions/sec):</strong> C++ templates or Rust generics</li>
+  </ul>
+</div>
