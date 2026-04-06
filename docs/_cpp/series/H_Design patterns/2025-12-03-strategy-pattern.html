@@ -124,5 +124,218 @@ public:
 };
 
 StaticPricer&lt;BlackScholesStrategy&gt; fast_pricer;</code></pre>
-  <div class="cpp-note">For batch pricing millions of options, the template strategy avoids a virtual dispatch per call - typically a 5-15ns saving that adds up. For one-at-a-time requests, virtual dispatch is fine and the flexibility is worth more than the nanoseconds.</div>
+  <div class="cpp-note">For batch pricing millions of options, the template strategy avoids a virtual dispatch per call &mdash; typically a 5-15ns saving that adds up. For one-at-a-time requests, virtual dispatch is fine and the flexibility is worth more than the nanoseconds.</div>
+</div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust strategy pattern</h3>
+  <pre><code class="language-rust">use std::f64::consts::PI;
+
+struct OptionTrade { s: f64, k: f64, t: f64, r: f64, sigma: f64, is_call: bool }
+
+trait PricingStrategy {
+    fn price(&self, trade: &OptionTrade) -> f64;
+}
+
+struct BlackScholesStrategy;
+
+impl BlackScholesStrategy {
+    fn ncdf(x: f64) -> f64 { 0.5 * (1.0 + libm::erf(x / (2.0_f64).sqrt())) }
+}
+
+impl PricingStrategy for BlackScholesStrategy {
+    fn price(&self, t: &OptionTrade) -> f64 {
+        let d1 = ((t.s / t.k).ln() + (t.r + 0.5 * t.sigma.powi(2)) * t.t)
+                  / (t.sigma * t.t.sqrt());
+        let d2 = d1 - t.sigma * t.t.sqrt();
+        if t.is_call {
+            t.s * Self::ncdf(d1) - t.k * (-t.r * t.t).exp() * Self::ncdf(d2)
+        } else {
+            t.k * (-t.r * t.t).exp() * Self::ncdf(-d2) - t.s * Self::ncdf(-d1)
+        }
+    }
+}
+
+struct IntrinsicStrategy;
+impl PricingStrategy for IntrinsicStrategy {
+    fn price(&self, t: &OptionTrade) -> f64 {
+        if t.is_call { (t.s - t.k).max(0.0) } else { (t.k - t.s).max(0.0) }
+    }
+}
+
+// Runtime dispatch (dyn Trait)
+struct DynamicPricer {
+    strategy: Box&lt;dyn PricingStrategy&gt;,
+}
+impl DynamicPricer {
+    fn new(s: Box&lt;dyn PricingStrategy&gt;) -> Self { Self { strategy: s } }
+    fn price(&self, t: &OptionTrade) -> f64 { self.strategy.price(t) }
+}
+
+// Compile-time dispatch (generic — zero cost)
+struct StaticPricer&lt;S: PricingStrategy&gt; { strategy: S }
+impl&lt;S: PricingStrategy&gt; StaticPricer&lt;S&gt; {
+    fn price(&self, t: &OptionTrade) -> f64 { self.strategy.price(t) }
+}</code></pre>
+  <div class="cpp-note">Rust mirrors C++'s dual approach: <code>Box&lt;dyn Trait&gt;</code> for runtime dispatch (like <code>unique_ptr&lt;Interface&gt;</code>) and generics for compile-time dispatch (like templates). Unlike C++, the compiler enforces that you handle ownership correctly &mdash; <code>Box</code> is the only owner, no accidental dangling pointers.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go strategy pattern</h3>
+  <pre><code class="language-go">package main
+
+import "math"
+
+type OptionTrade struct {
+    S, K, T, R, Sigma float64
+    IsCall            bool
+}
+
+type PricingStrategy interface {
+    Price(trade OptionTrade) float64
+}
+
+type BlackScholesStrategy struct{}
+
+func ncdf(x float64) float64 { return 0.5 * math.Erfc(-x/math.Sqrt2) }
+
+func (bs BlackScholesStrategy) Price(t OptionTrade) float64 {
+    d1 := (math.Log(t.S/t.K) + (t.R+0.5*t.Sigma*t.Sigma)*t.T) /
+          (t.Sigma * math.Sqrt(t.T))
+    d2 := d1 - t.Sigma*math.Sqrt(t.T)
+    if t.IsCall {
+        return t.S*ncdf(d1) - t.K*math.Exp(-t.R*t.T)*ncdf(d2)
+    }
+    return t.K*math.Exp(-t.R*t.T)*ncdf(-d2) - t.S*ncdf(-d1)
+}
+
+type IntrinsicStrategy struct{}
+
+func (is IntrinsicStrategy) Price(t OptionTrade) float64 {
+    if t.IsCall { return math.Max(t.S-t.K, 0) }
+    return math.Max(t.K-t.S, 0)
+}
+
+type OptionPricer struct {
+    strategy PricingStrategy
+}
+
+func NewOptionPricer(s PricingStrategy) *OptionPricer {
+    return &OptionPricer{strategy: s}
+}
+
+func (p *OptionPricer) SetStrategy(s PricingStrategy) { p.strategy = s }
+
+func (p *OptionPricer) Price(t OptionTrade) float64 {
+    return p.strategy.Price(t)
+}
+
+// Go also supports function-as-strategy
+type PriceFunc func(OptionTrade) float64
+
+func (f PriceFunc) Price(t OptionTrade) float64 { return f(t) }
+
+// Use: NewOptionPricer(PriceFunc(func(t OptionTrade) float64 { return 5.0 }))</code></pre>
+  <div class="cpp-note">Go only has runtime dispatch &mdash; there are no generics-based strategies like C++ templates or Rust generics. The <code>PriceFunc</code> adapter at the bottom is idiomatic Go: it lets any plain function satisfy the <code>PricingStrategy</code> interface, similar to C#'s <code>Func&lt;T&gt;</code>.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript strategy pattern</h3>
+  <pre><code class="language-typescript">interface OptionTrade {
+  S: number; K: number; T: number; r: number; sigma: number; isCall: boolean;
+}
+
+interface PricingStrategy {
+  price(trade: OptionTrade): number;
+}
+
+class BlackScholesStrategy implements PricingStrategy {
+  private ncdf(x: number): number {
+    // Abramowitz & Stegun approximation
+    const a1 = 0.254829592, a2 = -0.284496736, a3 = 1.421413741;
+    const a4 = -1.453152027, a5 = 1.061405429, p = 0.3275911;
+    const sign = x < 0 ? -1 : 1;
+    const t = 1 / (1 + p * Math.abs(x));
+    const y = 1 - ((((a5*t + a4)*t + a3)*t + a2)*t + a1)*t * Math.exp(-x*x/2);
+    return 0.5 * (1 + sign * y);
+  }
+
+  price(t: OptionTrade): number {
+    const d1 = (Math.log(t.S/t.K) + (t.r + 0.5*t.sigma**2)*t.T) /
+               (t.sigma * Math.sqrt(t.T));
+    const d2 = d1 - t.sigma * Math.sqrt(t.T);
+    return t.isCall
+      ? t.S * this.ncdf(d1) - t.K * Math.exp(-t.r*t.T) * this.ncdf(d2)
+      : t.K * Math.exp(-t.r*t.T) * this.ncdf(-d2) - t.S * this.ncdf(-d1);
+  }
+}
+
+class IntrinsicStrategy implements PricingStrategy {
+  price(t: OptionTrade): number {
+    return t.isCall ? Math.max(t.S - t.K, 0) : Math.max(t.K - t.S, 0);
+  }
+}
+
+class OptionPricer {
+  constructor(private strategy: PricingStrategy) {}
+  setStrategy(s: PricingStrategy): void { this.strategy = s; }
+  price(trade: OptionTrade): number { return this.strategy.price(trade); }
+}
+
+// Function-as-strategy — TypeScript's first-class functions make this natural
+type PriceFn = (trade: OptionTrade) => number;
+
+const flatPrice: PriceFn = (_t) => 5.0;</code></pre>
+  <div class="cpp-note">TypeScript's structural typing means you don't actually need the <code>implements PricingStrategy</code> keyword &mdash; any object with a <code>price(trade: OptionTrade): number</code> method satisfies the interface. The explicit <code>implements</code> is optional documentation that gives you a compile error if you drift.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Strategy pattern across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Runtime dispatch</td>
+      <td>ABC / duck typing</td><td>interface</td><td>virtual</td><td>Box&lt;dyn Trait&gt;</td><td>interface</td><td>interface (structural)</td>
+    </tr>
+    <tr>
+      <td>Compile-time dispatch</td>
+      <td>&mdash;</td><td>&mdash;</td><td>template</td><td>generic + trait bound</td><td>&mdash;</td><td>&mdash;</td>
+    </tr>
+    <tr>
+      <td>Function-as-strategy</td>
+      <td>&#10003; (first-class)</td><td>&#10003; (Func&lt;T&gt;)</td><td>&#10003; (std::function)</td><td>&#10003; (Fn trait)</td><td>&#10003; (adapter type)</td><td>&#10003; (first-class)</td>
+    </tr>
+    <tr>
+      <td>Swap at runtime</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Hot-loop performance</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Boilerplate</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Compile-time strategy is a C++ and Rust exclusive.</strong> Only these two languages let you eliminate virtual dispatch entirely via templates/generics. For a pricing engine doing millions of valuations per second, this is the difference between 5ns and 20ns per call &mdash; which adds up to seconds over a batch.</li>
+    <li><strong>Python and TypeScript are the most concise</strong> &mdash; first-class functions mean you can often skip the class entirely and pass a plain function. The downside: no compile-time check that your function signature matches the expected strategy interface (Python) or that it matches at runtime (TypeScript &mdash; interfaces are erased).</li>
+    <li><strong>Go's adapter pattern is elegant.</strong> The <code>PriceFunc</code> type that wraps a plain function into an interface implementation is a uniquely Go idiom. The standard library uses this everywhere (<code>http.HandlerFunc</code>).</li>
+    <li><strong>Rust ownership adds friction.</strong> Swapping strategies at runtime with <code>Box&lt;dyn Trait&gt;</code> is slightly more ceremony than other languages because ownership must be transferred explicitly. The payoff: no accidental shared mutable state between the old and new strategy.</li>
+    <li><strong>C# is the pragmatic middle ground.</strong> Strong typing, clean interface syntax, lambda support for lightweight strategies, and runtime performance that's good enough for most use cases (JIT-compiled, not interpreted).</li>
+  </ul>
+
+  <h4>Decision guide for the Strategy pattern</h4>
+  <ul>
+    <li><strong>Strategy chosen at startup, never changes:</strong> C++ template or Rust generic (zero-cost)</li>
+    <li><strong>Strategy changes based on user input or config:</strong> any language's runtime dispatch works; pick by team expertise</li>
+    <li><strong>Quick prototype or notebook:</strong> Python function-as-strategy (skip the class)</li>
+    <li><strong>Millions of calls per second:</strong> C++ template or Rust generic; benchmark virtual dispatch first &mdash; it may be fast enough</li>
+    <li><strong>Microservice with strategy per endpoint:</strong> Go or C# (clean DI, easy testing)</li>
+  </ul>
 </div>
