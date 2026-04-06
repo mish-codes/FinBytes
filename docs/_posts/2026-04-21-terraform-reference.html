@@ -1,0 +1,272 @@
+---
+layout: post
+title: "Terraform Reference: Infrastructure as Code for Quant Systems"
+date: 2026-04-21
+tags: [terraform, iac, aws, devops, reference, infrastructure, quant-lab]
+section: infrastructure
+permalink: "/misc/terraform/"
+---
+
+<h2>Why Terraform</h2>
+
+<p>Clicking through the AWS console is fine for learning, but it does not scale. You forget what you changed, you cannot review changes before applying them, and you cannot tear everything down cleanly. Terraform solves this: you declare what infrastructure you want in <code>.tf</code> files, and Terraform figures out how to create, update, or destroy it.</p>
+
+<p>In QuantLab, we introduced Terraform in <strong>Exercise 14 (Nelson-Siegel Curve Fitting)</strong> and extended it in <strong>Exercise 18 (Advanced Terraform, Default Probabilities)</strong>.</p>
+
+<h2>The Core Workflow</h2>
+
+<p>Every Terraform session follows the same four commands:</p>
+
+<pre><code class="language-bash"># 1. Initialize — downloads provider plugins, sets up backend
+terraform init
+
+# 2. Plan — shows what will change, creates nothing
+terraform plan
+
+# 3. Apply — creates/updates resources (prompts for confirmation)
+terraform apply
+
+# 4. Destroy — tears everything down
+terraform destroy
+</code></pre>
+
+<p><code>plan</code> is the safety net. Always read the plan output before typing "yes" on apply. It shows exactly which resources will be created (+), changed (~), or destroyed (-).</p>
+
+<h2>HCL Syntax Basics</h2>
+
+<p>Terraform uses HCL (HashiCorp Configuration Language). It looks like JSON but with less punctuation:</p>
+
+<pre><code class="language-hcl"># Provider block — which cloud and region
+provider "aws" {
+  region  = var.aws_region
+  profile = var.aws_profile
+}
+
+# Resource block — one piece of infrastructure
+resource "aws_lambda_function" "curve_fitting" {
+  function_name = "${var.project_name}-curve-fitting"
+  runtime       = "python3.11"
+  handler       = "handler.lambda_handler"
+  role          = var.lambda_role_arn
+  timeout       = 60
+  memory_size   = 512
+
+  filename         = "${path.module}/../src/deployment.zip"
+  source_code_hash = filebase64sha256("${path.module}/../src/deployment.zip")
+}
+</code></pre>
+
+<p>The pattern is always <code>resource "TYPE" "LOCAL_NAME" { ... }</code>. The type determines which API Terraform calls. The local name is how you reference it elsewhere in your config.</p>
+
+<h2>Resources vs Data Sources</h2>
+
+<p><strong>Resources</strong> are things Terraform creates and manages. <strong>Data sources</strong> are things that already exist and you just want to read.</p>
+
+<pre><code class="language-hcl"># Resource — Terraform creates this
+resource "aws_apigatewayv2_api" "curves" {
+  name          = "${var.project_name}-curves-http"
+  protocol_type = "HTTP"
+}
+
+# Data source — Terraform reads this (it already exists)
+data "aws_iam_role" "lambda_role" {
+  name = "quant-lab-lambda-role"
+}
+
+# Reference the data source
+resource "aws_lambda_function" "example" {
+  role = data.aws_iam_role.lambda_role.arn
+  # ...
+}
+</code></pre>
+
+<h2>Variables and Outputs</h2>
+
+<p>Variables go in <code>variables.tf</code>. Outputs go in <code>outputs.tf</code>. This separation is convention, not requirement.</p>
+
+<pre><code class="language-hcl"># variables.tf
+variable "aws_region" {
+  description = "AWS region for all resources"
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "project_name" {
+  description = "Prefix for resource names"
+  type        = string
+  default     = "quant-lab"
+}
+
+variable "lambda_role_arn" {
+  description = "ARN of the IAM role for Lambda"
+  type        = string
+  # No default — must be provided at plan/apply time
+}
+</code></pre>
+
+<pre><code class="language-hcl"># outputs.tf
+output "api_url" {
+  description = "Base URL of the HTTP API"
+  value       = "${aws_apigatewayv2_api.curves.api_endpoint}/dev"
+}
+
+output "lambda_function_name" {
+  value = aws_lambda_function.curve_fitting.function_name
+}
+</code></pre>
+
+<p>Pass variables at apply time:</p>
+
+<pre><code class="language-bash">terraform apply -var="lambda_role_arn=arn:aws:iam::123456789:role/quant-lab-lambda-role"
+
+# Or use a .tfvars file (do NOT commit secrets)
+terraform apply -var-file="dev.tfvars"
+</code></pre>
+
+<h2>State Management</h2>
+
+<p>Terraform tracks what it has created in a <strong>state file</strong> (<code>terraform.tfstate</code>). This is how it knows the difference between "create new" and "update existing".</p>
+
+<h3>Local State</h3>
+
+<p>By default, state is a JSON file on your local disk. Fine for learning, dangerous for teams (two people applying at once can corrupt state).</p>
+
+<h3>Remote State (S3)</h3>
+
+<pre><code class="language-hcl"># In the terraform block
+terraform {
+  backend "s3" {
+    bucket = "finbytes-quant-lab-tfstate"
+    key    = "exercises/14-curve-fitting/terraform.tfstate"
+    region = "us-east-1"
+  }
+}
+</code></pre>
+
+<p>Remote state means your team can collaborate safely, and you cannot accidentally delete the state file. The S3 bucket must already exist before you run <code>terraform init</code>.</p>
+
+<h2>The source_code_hash Trick</h2>
+
+<p>Lambda functions are deployed from a zip file. But Terraform only updates the function if something in the config changes. If you rebuild the zip with new code but the Terraform config is identical, Terraform skips the update.</p>
+
+<p>The fix: <code>source_code_hash</code>. It computes a hash of the zip file. When the code changes, the hash changes, and Terraform knows to re-deploy.</p>
+
+<pre><code class="language-hcl">resource "aws_lambda_function" "curve_fitting" {
+  filename         = "${path.module}/../src/deployment.zip"
+  source_code_hash = filebase64sha256("${path.module}/../src/deployment.zip")
+  # ...
+}
+</code></pre>
+
+<p>Without this line, you would need to taint the resource manually (<code>terraform taint aws_lambda_function.curve_fitting</code>) to force a re-deploy.</p>
+
+<h2>Scoping Blast Radius</h2>
+
+<p>In QuantLab, we had resources created manually in earlier exercises (the S3 bucket, the IAM role, the REST API). We deliberately kept those <em>outside</em> Terraform's state. The rule from Exercise 14:</p>
+
+<blockquote>
+<p>This config only manages resources that did not exist before. The existing S3 bucket, the shared IAM role, and the existing REST API were created manually in earlier exercises and stay outside Terraform's state.</p>
+</blockquote>
+
+<p>This is a real-world pattern. You do not need to import everything into Terraform on day one. Start with new resources, and import old ones later if you choose.</p>
+
+<h2>HTTP API vs REST API in Terraform</h2>
+
+<p>We created an HTTP API (v2) for the curve-fitting endpoint because it is simpler and cheaper than the REST API (v1) used in earlier exercises:</p>
+
+<pre><code class="language-hcl">resource "aws_apigatewayv2_api" "curves" {
+  name          = "${var.project_name}-curves-http"
+  protocol_type = "HTTP"
+  description   = "HTTP API for curve fitting endpoints"
+}
+
+resource "aws_apigatewayv2_stage" "dev" {
+  api_id      = aws_apigatewayv2_api.curves.id
+  name        = "dev"
+  auto_deploy = true
+}
+
+resource "aws_apigatewayv2_integration" "curve_fitting" {
+  api_id                 = aws_apigatewayv2_api.curves.id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.curve_fitting.invoke_arn
+  payload_format_version = "2.0"
+}
+
+resource "aws_apigatewayv2_route" "fit" {
+  api_id    = aws_apigatewayv2_api.curves.id
+  route_key = "POST /curves/fit"
+  target    = "integrations/${aws_apigatewayv2_integration.curve_fitting.id}"
+}
+
+# Permission for API Gateway to invoke Lambda
+resource "aws_lambda_permission" "apigw" {
+  statement_id  = "AllowAPIGWInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.curve_fitting.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.curves.execution_arn}/*/*"
+}
+</code></pre>
+
+<h2>The Docker Packaging Story</h2>
+
+<p>The curve-fitting Lambda used scipy and numpy for Nelson-Siegel optimization. The standard zip deployment hit the 50 MB limit. The solution was Docker container deployment:</p>
+
+<pre><code class="language-dockerfile">FROM public.ecr.aws/lambda/python:3.11
+COPY requirements.txt .
+RUN pip install -r requirements.txt
+COPY src/ ${LAMBDA_TASK_ROOT}/
+CMD ["handler.lambda_handler"]
+</code></pre>
+
+<pre><code class="language-bash"># Build and push to ECR
+docker build -t quant-lab-curve-fitting .
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+docker tag quant-lab-curve-fitting:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/quant-lab-curve-fitting:latest
+docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/quant-lab-curve-fitting:latest
+</code></pre>
+
+<p>In Terraform, you reference the ECR image instead of a zip file:</p>
+
+<pre><code class="language-hcl">resource "aws_lambda_function" "curve_fitting" {
+  function_name = "${var.project_name}-curve-fitting"
+  package_type  = "Image"
+  image_uri     = "${aws_ecr_repository.curve_fitting.repository_url}:latest"
+  role          = var.lambda_role_arn
+  timeout       = 60
+  memory_size   = 512
+}
+</code></pre>
+
+<h2>Useful Commands Beyond the Basics</h2>
+
+<pre><code class="language-bash"># Show current state
+terraform show
+
+# List all resources in state
+terraform state list
+
+# Remove a resource from state (does NOT delete the resource)
+terraform state rm aws_lambda_function.curve_fitting
+
+# Import an existing resource into state
+terraform import aws_s3_bucket.data finbytes-quant-lab-data
+
+# Format all .tf files
+terraform fmt -recursive
+
+# Validate syntax without accessing cloud APIs
+terraform validate
+</code></pre>
+
+<h3>Things That Tripped Me Up</h3>
+
+<ul>
+  <li><strong>State file contains secrets:</strong> <code>terraform.tfstate</code> stores connection strings, passwords, and ARNs in plain text. Never commit it to git. Add <code>*.tfstate</code> and <code>*.tfstate.backup</code> to <code>.gitignore</code>.</li>
+  <li><strong>Backend changes require reinit:</strong> If you switch from local to S3 backend, you must run <code>terraform init -migrate-state</code>. Running just <code>terraform init</code> will error or silently start with empty state.</li>
+  <li><strong>Destroy is real:</strong> <code>terraform destroy</code> deletes real resources with real data. There is no undo. Always run <code>terraform plan -destroy</code> first to see what will be removed.</li>
+  <li><strong>Provider version pinning:</strong> Without <code>version = "~&gt; 5.0"</code> in the provider block, Terraform downloads the latest version. A major version bump can break your config. Always pin.</li>
+  <li><strong>Lambda permission ordering:</strong> If you create a Lambda + API Gateway route but forget the <code>aws_lambda_permission</code> resource, the API returns 500 errors. The Lambda exists and works when invoked directly, but API Gateway is not allowed to call it.</li>
+  <li><strong>zip changes are invisible:</strong> If you forget <code>source_code_hash</code>, Terraform will not re-deploy your Lambda even after you rebuild the zip. You will be debugging "why didn't my code change?" for an hour.</li>
+</ul>

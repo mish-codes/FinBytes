@@ -1,0 +1,287 @@
+---
+layout: post
+title: "FastAPI Reference: Async APIs for Financial Data"
+date: 2026-04-22
+tags: [fastapi, python, api, uvicorn, pydantic, async, reference, infrastructure, quant-lab]
+section: infrastructure
+permalink: "/misc/fastapi/"
+---
+
+<h2>Why FastAPI</h2>
+
+<p>FastAPI is a Python web framework that gives you automatic request validation (via Pydantic), auto-generated API docs (at <code>/docs</code>), and async support out of the box. For the QuantLab scanner, it meant we could define a Pydantic model for the request, and FastAPI would reject malformed input with a 422 error before our code even ran.</p>
+
+<p>FastAPI was introduced in <strong>Exercise 03</strong> and became the backbone of the Stock Risk Scanner API.</p>
+
+<h2>The Server Stack</h2>
+
+<p>Understanding the layers matters when debugging:</p>
+
+<ul>
+  <li><strong>ASGI</strong> (Asynchronous Server Gateway Interface) &mdash; the Python standard that connects a web server to your application. Think of it as a protocol, not software.</li>
+  <li><strong>uvicorn</strong> &mdash; a single-process ASGI server. Great for development. Runs one event loop, handles async natively.</li>
+  <li><strong>gunicorn</strong> &mdash; a multi-process WSGI/ASGI server. For production, you run gunicorn with uvicorn workers: <code>gunicorn -w 4 -k uvicorn.workers.UvicornWorker</code>.</li>
+  <li><strong>FastAPI</strong> &mdash; your application, which implements the ASGI interface.</li>
+</ul>
+
+<pre><code class="language-bash"># Development (auto-reload on code changes)
+uvicorn src.scanner.main:app --reload --port 8000
+
+# Production (4 worker processes)
+gunicorn src.scanner.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+
+# Docker CMD (from the scanner Dockerfile)
+CMD ["uvicorn", "src.scanner.main:app", "--host", "0.0.0.0", "--port", "8000"]
+</code></pre>
+
+<h2>Route Decorators</h2>
+
+<p>Routes are defined with decorators on the app (or a router):</p>
+
+<pre><code class="language-python">from fastapi import FastAPI
+
+app = FastAPI(title="Stock Risk Scanner")
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@app.post("/api/scan", status_code=202)
+async def create_scan(request: ScanRequest):
+    # ...
+    return {"id": scan_id, "status": "pending"}
+
+@app.get("/api/scans/{scan_id}")
+async def read_scan(scan_id: int):
+    # scan_id is automatically parsed as int from the URL path
+    # ...
+
+@app.get("/api/scans")
+async def list_scans(limit: int = 10):
+    # limit is a query parameter: /api/scans?limit=5
+    # ...
+</code></pre>
+
+<p>Path parameters go in the URL template (<code>{scan_id}</code>). Query parameters are function arguments with defaults. FastAPI infers which is which from the route definition.</p>
+
+<h2>Request and Response Models (Pydantic)</h2>
+
+<p>The scanner uses Pydantic models to validate input. If the request body does not match the model, FastAPI returns a 422 with detailed error messages automatically.</p>
+
+<pre><code class="language-python">from pydantic import BaseModel, field_validator, model_validator
+
+
+class ScanRequest(BaseModel):
+    tickers: list[str]
+    weights: list[float]
+    period: str = "1y"
+
+    @field_validator("tickers")
+    @classmethod
+    def uppercase_tickers(cls, v: list[str]) -> list[str]:
+        return [t.upper() for t in v]
+
+    @model_validator(mode="after")
+    def validate_lengths_and_weights(self) -> "ScanRequest":
+        if len(self.tickers) != len(self.weights):
+            raise ValueError(
+                f"tickers length ({len(self.tickers)}) must match "
+                f"weights length ({len(self.weights)})"
+            )
+        if abs(sum(self.weights) - 1.0) > 0.01:
+            raise ValueError(
+                f"weights must sum to 1.0 (got {sum(self.weights):.4f})"
+            )
+        return self
+
+
+class RiskMetrics(BaseModel):
+    var_pct: float
+    cvar_pct: float
+    max_drawdown_pct: float
+    volatility_pct: float
+    sharpe_ratio: float
+
+
+class ScanResult(BaseModel):
+    tickers: list[str]
+    weights: list[float]
+    metrics: RiskMetrics
+    narrative: str
+    generated_at: datetime
+</code></pre>
+
+<p>This is the actual code from the scanner. The <code>@field_validator</code> normalizes ticker symbols to uppercase. The <code>@model_validator</code> ensures the tickers and weights arrays have the same length and that weights sum to 1.0.</p>
+
+<h2>Status Codes We Used</h2>
+
+<ul>
+  <li><strong>200</strong> &mdash; OK. Default for GET routes. Used for health checks and scan retrieval.</li>
+  <li><strong>201</strong> &mdash; Created. Use when a resource is created synchronously (we did not use this; scans are async).</li>
+  <li><strong>202</strong> &mdash; Accepted. The scan request is accepted and processing will happen in the background. The scanner's <code>POST /api/scan</code> returns 202.</li>
+  <li><strong>204</strong> &mdash; No Content. Use for successful DELETE operations where there is nothing to return.</li>
+  <li><strong>404</strong> &mdash; Not Found. Returned when a scan ID does not exist.</li>
+  <li><strong>409</strong> &mdash; Conflict. Use when a resource already exists (e.g., duplicate ticker in a watchlist).</li>
+  <li><strong>422</strong> &mdash; Unprocessable Entity. FastAPI returns this automatically when Pydantic validation fails.</li>
+</ul>
+
+<h2>The Async Background Task Pattern</h2>
+
+<p>The scanner uses HTTP 202 (Accepted) to immediately return a scan ID, then processes the scan in the background. The client polls for results:</p>
+
+<pre><code class="language-python">import asyncio
+from fastapi import Request
+
+@app.post("/api/scan", status_code=202)
+async def create_scan(
+    request: ScanRequest,
+    session: AsyncSession = Depends(get_session),
+    http_request: Request = None,
+):
+    record = await create_pending_scan(session, request)
+    asyncio.ensure_future(
+        _run_scan(record.id, request, http_request.app.state.session_factory)
+    )
+    return {"id": record.id, "status": "pending"}
+
+
+async def _run_scan(scan_id: int, request: ScanRequest, session_factory):
+    async with session_factory() as session:
+        try:
+            result = scan(request)
+            await complete_scan(session, scan_id, result)
+        except Exception as e:
+            await fail_scan(session, scan_id, str(e))
+</code></pre>
+
+<p>The client flow: POST to create, receive ID, GET <code>/api/scans/{id}</code> in a loop until status is "complete" or "failed".</p>
+
+<h2>Dependency Injection</h2>
+
+<p>FastAPI's <code>Depends()</code> is how you share database sessions, auth, and other cross-cutting concerns across routes:</p>
+
+<pre><code class="language-python">from fastapi import Depends, Request
+from sqlalchemy.ext.asyncio import AsyncSession
+
+
+async def get_session(request: Request) -> AsyncSession:
+    factory = request.app.state.session_factory
+    async with factory() as session:
+        yield session
+
+
+@app.get("/api/scans/{scan_id}")
+async def read_scan(scan_id: int, session: AsyncSession = Depends(get_session)):
+    record = await get_scan(session, scan_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Scan not found")
+    return _record_to_dict(record)
+</code></pre>
+
+<p>The <code>yield</code> in <code>get_session</code> makes it a context manager dependency. The session is created before the route runs and disposed after. FastAPI handles the lifecycle automatically.</p>
+
+<h2>CORS Middleware</h2>
+
+<p>The scanner API is called from a Streamlit dashboard on a different domain. Without CORS headers, the browser blocks the request:</p>
+
+<pre><code class="language-python">from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://mishcodesfinbytes.github.io",
+        "https://finbytes.streamlit.app",
+        "http://localhost:8501",
+    ],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+</code></pre>
+
+<h2>Testing with TestClient / AsyncClient</h2>
+
+<p>FastAPI integrates with httpx for async testing. The pattern from the scanner test suite:</p>
+
+<pre><code class="language-python">import pytest
+from httpx import AsyncClient, ASGITransport
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+
+@pytest.fixture
+async def app():
+    from src.scanner.db_models import Base
+    from src.scanner.main import create_app
+
+    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    app = create_app()
+    app.state.session_factory = factory
+    yield app
+    await engine.dispose()
+
+@pytest.fixture
+async def client(app):
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        yield client
+
+class TestCreateScan:
+    async def test_returns_pending(self, client):
+        resp = await client.post(
+            "/api/scan",
+            json={"tickers": ["AAPL", "MSFT"], "weights": [0.6, 0.4]},
+        )
+        assert resp.status_code == 202
+        data = resp.json()
+        assert data["status"] == "pending"
+        assert "id" in data
+</code></pre>
+
+<p>Key points: the test uses an in-memory SQLite database (no real PostgreSQL needed), and the <code>ASGITransport</code> means no actual HTTP server is started.</p>
+
+<h2>Auto-Generated Docs</h2>
+
+<p>FastAPI automatically generates interactive API documentation at two endpoints:</p>
+
+<ul>
+  <li><code>/docs</code> &mdash; Swagger UI. Interactive, lets you try endpoints from the browser.</li>
+  <li><code>/redoc</code> &mdash; ReDoc. Read-only, cleaner layout for documentation.</li>
+</ul>
+
+<p>Both are generated from your Pydantic models and route decorators. No extra configuration needed. This was genuinely useful during development &mdash; you can test endpoints without Postman or curl.</p>
+
+<h2>Lifespan Events</h2>
+
+<p>The scanner uses FastAPI's lifespan context manager to set up and tear down the database engine:</p>
+
+<pre><code class="language-python">from contextlib import asynccontextmanager
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    engine = create_async_engine(DATABASE_URL)
+    app.state.session_factory = async_sessionmaker(engine, expire_on_commit=False)
+
+    # Auto-create tables on startup
+    from src.scanner.db_models import Base
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+    yield  # app runs here
+
+    await engine.dispose()
+
+app = FastAPI(title="Stock Risk Scanner", lifespan=lifespan)
+</code></pre>
+
+<h3>Things That Tripped Me Up</h3>
+
+<ul>
+  <li><strong>422 vs 400:</strong> FastAPI returns 422 for validation errors, not 400. Some frontend libraries expect 400. If your client is not handling 422, you will think the API is broken when it is actually rejecting bad input correctly.</li>
+  <li><strong>Sync vs async routes:</strong> FastAPI runs sync functions (<code>def</code>) in a thread pool and async functions (<code>async def</code>) on the event loop. If you define <code>async def</code> but call blocking code (like <code>time.sleep</code> or synchronous DB queries), you block the entire event loop.</li>
+  <li><strong>Depends() in background tasks:</strong> Dependency injection runs during the request lifecycle. Background tasks run after the response is sent, so injected sessions may be closed. The scanner works around this by passing the session factory to the background task, not a session.</li>
+  <li><strong>Order of middleware:</strong> Middleware is applied in reverse order of how you add it. If CORS middleware is added after authentication middleware, CORS preflight requests fail because auth rejects them first.</li>
+  <li><strong>TestClient vs AsyncClient:</strong> FastAPI's <code>TestClient</code> (from Starlette) is synchronous. For async endpoints with async database access, use <code>httpx.AsyncClient</code> with <code>ASGITransport</code> instead.</li>
+  <li><strong>Pydantic V1 vs V2:</strong> FastAPI 0.100+ uses Pydantic V2. The validator decorators changed from <code>@validator</code> to <code>@field_validator</code> and from <code>@root_validator</code> to <code>@model_validator</code>. Old tutorials will show the V1 syntax, which still works but raises deprecation warnings.</li>
+</ul>
