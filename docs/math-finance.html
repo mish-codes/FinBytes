@@ -19,11 +19,39 @@ permalink: /math-finance/
 <p class="mf-lede">The mathematical and financial concepts behind the code. Each page walks through the theory with worked numerical examples you can follow with a calculator, then shows the Python implementation.</p>
 
 <div class="mf-section">
+  <div class="mf-hdr">Foundations</div>
+  <ul class="mf-list">
+    <li>
+      <a href="{{ "/math-finance/dcf-time-value/" | relative_url }}">Discounted Cash Flow &amp; Time Value of Money</a>
+      <span class="mf-desc">Present value, future value, discount factors, NPV, IRR, annuities, perpetuities &mdash; the foundation everything else builds on</span>
+    </li>
+  </ul>
+</div>
+
+<div class="mf-section">
   <div class="mf-hdr">Yield Curves &amp; Rates</div>
   <ul class="mf-list">
     <li>
       <a href="{{ "/math-finance/yield-curves-and-rates/" | relative_url }}">Par Yields, Spot Rates, Forward Rates, and Fitted Curves</a>
       <span class="mf-desc">Bootstrapping, no-arbitrage forwards, Nelson-Siegel/Svensson parametric fitting, cubic spline interpolation</span>
+    </li>
+    <li>
+      <a href="{{ "/math-finance/yield-curve-inversions/" | relative_url }}">Yield Curve Inversions: What They Signal and Why They Matter</a>
+      <span class="mf-desc">2s10s spread, historical recession track record, the un-inversion signal, term premium</span>
+    </li>
+  </ul>
+</div>
+
+<div class="mf-section">
+  <div class="mf-hdr">Bond Pricing &amp; Risk</div>
+  <ul class="mf-list">
+    <li>
+      <a href="{{ "/math-finance/bond-pricing/" | relative_url }}">Z-Spread, OAS, Binomial Trees, and Spread Duration</a>
+      <span class="mf-desc">Discounted cash flows, Z-spread bisection, binomial rate trees, backward induction, callable bonds, OAS, CS01</span>
+    </li>
+    <li>
+      <a href="{{ "/math-finance/duration-convexity/" | relative_url }}">Duration &amp; Convexity: How Bond Prices Move When Rates Change</a>
+      <span class="mf-desc">Macaulay duration, modified duration, DV01, convexity correction, duration vs spread duration (CS01)</span>
     </li>
   </ul>
 </div>
@@ -39,21 +67,21 @@ permalink: /math-finance/
 </div>
 
 <div class="mf-section">
-  <div class="mf-hdr">Bond Pricing</div>
-  <ul class="mf-list">
-    <li>
-      <a href="{{ "/math-finance/bond-pricing/" | relative_url }}">Z-Spread, OAS, Binomial Trees, and Spread Duration</a>
-      <span class="mf-desc">Discounted cash flows, Z-spread bisection, binomial rate trees, backward induction, callable bonds, OAS, CS01</span>
-    </li>
-  </ul>
-</div>
-
-<div class="mf-section">
   <div class="mf-hdr">Portfolio Risk</div>
   <ul class="mf-list">
     <li>
       <a href="{{ "/math-finance/portfolio-risk/" | relative_url }}">VaR, CVaR, Sharpe, and Monte Carlo Simulation</a>
       <span class="mf-desc">Returns, volatility, historical and parametric VaR, expected shortfall, Sharpe ratio, Cholesky decomposition, correlated Monte Carlo</span>
+    </li>
+  </ul>
+</div>
+
+<div class="mf-section">
+  <div class="mf-hdr">Options &amp; Derivatives</div>
+  <ul class="mf-list">
+    <li>
+      <a href="{{ "/math-finance/greeks/" | relative_url }}">The Greeks: Option Price Sensitivities</a>
+      <span class="mf-desc">Delta, Gamma, Theta, Vega, Rho &mdash; what each measures, worked Black-Scholes examples, Greek interactions</span>
     </li>
   </ul>
 </div>
