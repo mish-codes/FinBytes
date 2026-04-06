@@ -108,3 +108,332 @@ HealthStatus get_health() {
 }</code></pre>
   <div class="cpp-note">Separate liveness and readiness endpoints. Kubernetes calls them on different schedules with different thresholds. A liveness failure triggers a restart - make sure liveness only fails for genuinely unrecoverable conditions, not transient dependency issues.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust health checks and watchdog</h3>
+  <pre><code class="language-rust">use std::sync::atomic::{AtomicI64, AtomicBool, Ordering};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::time::interval;
+use axum::{Router, routing::get, Json};
+use serde::Serialize;
+
+// Shared health state
+struct HealthState {
+    last_heartbeat_ns: AtomicI64,
+    last_feed_ns:      AtomicI64,
+    vol_surface_loaded: AtomicBool,
+}
+
+impl HealthState {
+    fn new() -&gt; Self {
+        Self {
+            last_heartbeat_ns: AtomicI64::new(0),
+            last_feed_ns: AtomicI64::new(0),
+            vol_surface_loaded: AtomicBool::new(false),
+        }
+    }
+
+    fn heartbeat(&amp;self) {
+        let now = Instant::now().elapsed().as_nanos() as i64;
+        self.last_heartbeat_ns.store(now, Ordering::Relaxed);
+    }
+
+    fn is_alive(&amp;self, max_age: Duration) -&gt; bool {
+        let now = Instant::now().elapsed().as_nanos() as i64;
+        let last = self.last_heartbeat_ns.load(Ordering::Relaxed);
+        (now - last) &lt; max_age.as_nanos() as i64
+    }
+
+    fn is_feed_fresh(&amp;self, max_age: Duration) -&gt; bool {
+        let now = Instant::now().elapsed().as_nanos() as i64;
+        let last = self.last_feed_ns.load(Ordering::Relaxed);
+        (now - last) &lt; max_age.as_nanos() as i64
+    }
+}
+
+#[derive(Serialize)]
+struct HealthResponse {
+    status: String,
+    live:   bool,
+    ready:  bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option&lt;String&gt;,
+}
+
+// Axum health endpoints
+async fn liveness(state: axum::extract::State&lt;Arc&lt;HealthState&gt;&gt;) -&gt; Json&lt;HealthResponse&gt; {
+    let live = state.is_alive(Duration::from_secs(30));
+    Json(HealthResponse {
+        status: if live { "ok" } else { "unhealthy" }.into(),
+        live, ready: false,
+        reason: if !live { Some("no heartbeat".into()) } else { None },
+    })
+}
+
+async fn readiness(state: axum::extract::State&lt;Arc&lt;HealthState&gt;&gt;) -&gt; Json&lt;HealthResponse&gt; {
+    let live = state.is_alive(Duration::from_secs(30));
+    let feed_fresh = state.is_feed_fresh(Duration::from_secs(60));
+    let vol_ok = state.vol_surface_loaded.load(Ordering::Relaxed);
+    let ready = live &amp;&amp; feed_fresh &amp;&amp; vol_ok;
+    let reason = if !live { Some("deadlocked") }
+        else if !feed_fresh { Some("feed stale") }
+        else if !vol_ok { Some("vol surface not loaded") }
+        else { None };
+    Json(HealthResponse {
+        status: if ready { "ready" } else { "not_ready" }.into(),
+        live, ready, reason: reason.map(String::from),
+    })
+}
+
+// Watchdog task — kills the process if heartbeat stops
+async fn watchdog(state: Arc&lt;HealthState&gt;, timeout: Duration) {
+    let mut tick = interval(Duration::from_secs(5));
+    loop {
+        tick.tick().await;
+        if !state.is_alive(timeout) {
+            eprintln!("WATCHDOG: heartbeat timeout — aborting");
+            std::process::abort();
+        }
+    }
+}</code></pre>
+  <div class="cpp-note">Rust's <code>axum</code> web framework makes health endpoints concise. The <code>Arc&lt;HealthState&gt;</code> is shared between the processing task and the HTTP handlers. The watchdog runs as a separate tokio task and calls <code>std::process::abort()</code> if the heartbeat stops &mdash; Kubernetes then restarts the pod.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go health checks and watchdog</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "context"
+    "encoding/json"
+    "log"
+    "net/http"
+    "sync/atomic"
+    "time"
+)
+
+// Shared health state
+type HealthState struct {
+    lastHeartbeat  atomic.Int64 // unix nano
+    lastFeedUpdate atomic.Int64
+    volSurfaceOK   atomic.Bool
+}
+
+func (h *HealthState) Heartbeat() {
+    h.lastHeartbeat.Store(time.Now().UnixNano())
+}
+
+func (h *HealthState) IsAlive(maxAge time.Duration) bool {
+    last := h.lastHeartbeat.Load()
+    return time.Now().UnixNano()-last &lt; int64(maxAge)
+}
+
+func (h *HealthState) IsFeedFresh(maxAge time.Duration) bool {
+    last := h.lastFeedUpdate.Load()
+    return time.Now().UnixNano()-last &lt; int64(maxAge)
+}
+
+type HealthResponse struct {
+    Status string `json:"status"`
+    Live   bool   `json:"live"`
+    Ready  bool   `json:"ready"`
+    Reason string `json:"reason,omitempty"`
+}
+
+func setupHealthEndpoints(state *HealthState) {
+    // Liveness
+    http.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+        live := state.IsAlive(30 * time.Second)
+        resp := HealthResponse{Live: live}
+        if live {
+            resp.Status = "ok"
+        } else {
+            resp.Status = "unhealthy"
+            resp.Reason = "no heartbeat"
+            w.WriteHeader(http.StatusServiceUnavailable)
+        }
+        json.NewEncoder(w).Encode(resp)
+    })
+
+    // Readiness
+    http.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+        live := state.IsAlive(30 * time.Second)
+        feedOK := state.IsFeedFresh(60 * time.Second)
+        volOK := state.volSurfaceOK.Load()
+        ready := live &amp;&amp; feedOK &amp;&amp; volOK
+        resp := HealthResponse{Live: live, Ready: ready}
+        if ready {
+            resp.Status = "ready"
+        } else {
+            resp.Status = "not_ready"
+            w.WriteHeader(http.StatusServiceUnavailable)
+            if !live { resp.Reason = "deadlocked" } else if !feedOK { resp.Reason = "feed stale" } else { resp.Reason = "vol surface not loaded" }
+        }
+        json.NewEncoder(w).Encode(resp)
+    })
+}
+
+// Watchdog — goroutine that monitors heartbeat
+func watchdog(ctx context.Context, state *HealthState, timeout time.Duration) {
+    ticker := time.NewTicker(5 * time.Second)
+    defer ticker.Stop()
+    for {
+        select {
+        case &lt;-ctx.Done():
+            return
+        case &lt;-ticker.C:
+            if !state.IsAlive(timeout) {
+                log.Fatal("WATCHDOG: heartbeat timeout — exiting")
+            }
+        }
+    }
+}
+
+// Staleness checker — detects silent failures
+func stalenessChecker(ctx context.Context, state *HealthState) {
+    ticker := time.NewTicker(10 * time.Second)
+    defer ticker.Stop()
+    for {
+        select {
+        case &lt;-ctx.Done():
+            return
+        case &lt;-ticker.C:
+            if !state.IsFeedFresh(60 * time.Second) {
+                log.Println("WARN: feed data is stale — prices may be incorrect")
+            }
+        }
+    }
+}</code></pre>
+  <div class="cpp-note">Go's <code>net/http</code> gives you health endpoints with zero dependencies. The watchdog and staleness checker run as goroutines with <code>context.Context</code> for clean shutdown. This is the pattern Kubernetes expects: <code>/healthz</code> for liveness, <code>/readyz</code> for readiness, both returning JSON with appropriate status codes.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript health checks and watchdog</h3>
+  <pre><code class="language-typescript">import express from "express";
+
+// Shared health state
+class HealthState {
+  private lastHeartbeat = Date.now();
+  private lastFeedUpdate = 0;
+  private _volSurfaceLoaded = false;
+
+  heartbeat(): void { this.lastHeartbeat = Date.now(); }
+  feedUpdate(): void { this.lastFeedUpdate = Date.now(); }
+  set volSurfaceLoaded(v: boolean) { this._volSurfaceLoaded = v; }
+
+  isAlive(maxAgeMs: number = 30_000): boolean {
+    return Date.now() - this.lastHeartbeat &lt; maxAgeMs;
+  }
+
+  isFeedFresh(maxAgeMs: number = 60_000): boolean {
+    return Date.now() - this.lastFeedUpdate &lt; maxAgeMs;
+  }
+
+  get isReady(): boolean {
+    return this.isAlive() &amp;&amp; this.isFeedFresh() &amp;&amp; this._volSurfaceLoaded;
+  }
+}
+
+const state = new HealthState();
+const app = express();
+
+// Liveness
+app.get("/healthz", (_req, res) =&gt; {
+  if (state.isAlive()) {
+    res.json({ status: "ok", live: true });
+  } else {
+    res.status(503).json({ status: "unhealthy", live: false, reason: "no heartbeat" });
+  }
+});
+
+// Readiness
+app.get("/readyz", (_req, res) =&gt; {
+  const live = state.isAlive();
+  const feedOK = state.isFeedFresh();
+  const ready = state.isReady;
+  const reason = !live ? "deadlocked" : !feedOK ? "feed stale" : "vol surface not loaded";
+  if (ready) {
+    res.json({ status: "ready", live, ready });
+  } else {
+    res.status(503).json({ status: "not_ready", live, ready, reason });
+  }
+});
+
+// Watchdog — exit if heartbeat stops (PM2/Kubernetes restarts)
+function startWatchdog(timeoutMs: number = 30_000): NodeJS.Timeout {
+  return setInterval(() =&gt; {
+    if (!state.isAlive(timeoutMs)) {
+      console.error("WATCHDOG: heartbeat timeout — exiting");
+      process.exit(1);
+    }
+  }, 5000);
+}
+
+// Staleness detector for silent failures
+function startStalenessChecker(): NodeJS.Timeout {
+  return setInterval(() =&gt; {
+    if (!state.isFeedFresh()) {
+      console.warn("WARN: feed data is stale — prices may be incorrect");
+    }
+  }, 10_000);
+}
+
+app.listen(8080, () =&gt; {
+  startWatchdog();
+  startStalenessChecker();
+  console.log("Health endpoints on :8080");
+});</code></pre>
+  <div class="cpp-note">Node.js health endpoints with Express are simple and widely deployed. The watchdog calls <code>process.exit(1)</code> to trigger a restart by the process manager (PM2, Kubernetes, systemd). Because Node.js is single-threaded, a deadlock typically freezes the event loop entirely &mdash; the watchdog timer will not fire, so an external health checker (Kubernetes liveness probe) is the real safety net.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Health checks across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Health check framework</td>
+      <td>Flask / FastAPI</td><td>ASP.NET built-in</td><td>manual HTTP</td><td>axum / actix</td><td>net/http (stdlib)</td><td>Express / Fastify</td>
+    </tr>
+    <tr>
+      <td>Setup effort</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Deadlock detection</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Graceful shutdown</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Staleness detection</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>K8s readiness integration</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Go's net/http requires zero dependencies for health endpoints.</strong> No framework, no middleware, no configuration. A <code>/healthz</code> endpoint is 10 lines of code. Combined with goroutines for watchdog and staleness checking, Go makes reliability monitoring feel like a first-class language feature.</li>
+    <li><strong>C# ASP.NET has the most structured health check system.</strong> Built-in <code>AddHealthChecks()</code> with tagged checks, customizable responses, and automatic Kubernetes integration. The downside: heavier than Go's approach for simple services.</li>
+    <li><strong>TypeScript has a subtle weakness:</strong> if the event loop blocks (infinite loop, heavy synchronous computation), the watchdog timer will never fire. The process appears hung but cannot detect its own failure. An external liveness probe is the real safety net.</li>
+    <li><strong>Deadlock detection is hardest in single-threaded runtimes</strong> (Python GIL, Node.js event loop). In Go, a deadlocked goroutine does not block the health check goroutine because they run on different OS threads. This is a significant reliability advantage.</li>
+    <li><strong>Staleness is the silent killer.</strong> Every language can detect "process is alive" easily. Detecting "process is alive but returning stale data" requires application-level checks &mdash; timestamp every data update and compare against a threshold.</li>
+  </ul>
+
+  <h4>Decision guide for health checks</h4>
+  <ul>
+    <li><strong>Kubernetes deployment:</strong> Go or C# ASP.NET &mdash; both have first-class K8s health check support</li>
+    <li><strong>Minimal dependency footprint:</strong> Go &mdash; stdlib only, no framework needed</li>
+    <li><strong>Complex dependency tree (DB, feed, cache):</strong> C# ASP.NET &mdash; tagged health checks with per-dependency status</li>
+    <li><strong>Always implement both liveness and readiness.</strong> A pricing service that is alive but has no feed connection should not receive traffic, but should not be restarted either</li>
+    <li><strong>Always add staleness checks.</strong> "Feed connected" is not enough &mdash; check that the last tick arrived within an acceptable window</li>
+  </ul>
+</div>

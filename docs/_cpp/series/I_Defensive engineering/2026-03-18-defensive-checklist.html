@@ -131,3 +131,282 @@ public:
 <div class="good">Every public API has documented exception/error behaviour</div>
 
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust defensive checklist</h3>
+  <h4>Input validation (preconditions)</h4>
+  <pre><code class="language-rust">fn price_option(s: f64, k: f64, t: f64, sigma: f64) -&gt; Result&lt;f64, String&gt; {
+    // Validate at the boundary - fail fast
+    for (name, val) in [("S", s), ("K", k), ("T", t), ("sigma", sigma)] {
+        if !val.is_finite() { return Err(format!("{name} is not finite: {val}")); }
+        if val &lt;= 0.0       { return Err(format!("{name} must be positive: {val}")); }
+    }
+    let result = price_impl(s, k, t, sigma);
+    // Output validation (postcondition)
+    if !result.is_finite() { return Err(format!("Non-finite result: {result}")); }
+    if result &lt; 0.0        { return Err(format!("Negative price: {result}")); }
+    Ok(result)
+}</code></pre>
+
+  <h4>Null / missing value handling</h4>
+  <pre><code class="language-rust">// Option&lt;T&gt; replaces null - compiler forces handling
+let price: Option&lt;f64&gt; = feed.get(sym);
+let safe = price.unwrap_or(last_known);  // fallback
+let safe = price.ok_or("no price")?;     // propagate error
+
+// Exhaustive enums prevent missing cases
+enum TradeStatus { Pending, Filled, Rejected }
+fn handle(status: TradeStatus) {
+    match status {
+        TradeStatus::Pending  =&gt; queue_for_execution(),
+        TradeStatus::Filled   =&gt; update_position(),
+        TradeStatus::Rejected =&gt; log_rejection(),
+    }   // adding a new variant without a match arm = compile error
+}</code></pre>
+
+  <h4>Class invariants via newtype pattern</h4>
+  <pre><code class="language-rust">// Encode invariants in the type system - invalid states are unrepresentable
+struct PositiveF64(f64);
+
+impl PositiveF64 {
+    fn new(val: f64) -&gt; Result&lt;Self, String&gt; {
+        if val &gt; 0.0 && val.is_finite() { Ok(Self(val)) }
+        else { Err(format!("Not positive and finite: {val}")) }
+    }
+    fn value(&self) -&gt; f64 { self.0 }
+}
+
+fn price_option(s: PositiveF64, k: PositiveF64, t: PositiveF64, sigma: PositiveF64) -&gt; f64 {
+    // No validation needed here - types guarantee the invariant
+    price_impl(s.value(), k.value(), t.value(), sigma.value())
+}</code></pre>
+
+  <h4>Error propagation checklist</h4>
+  <ul>
+    <li>Every function that can fail returns <code>Result&lt;T, E&gt;</code> &mdash; the compiler forces callers to handle it</li>
+    <li>Every <code>Option&lt;T&gt;</code> is matched &mdash; <code>unwrap()</code> in production code is a code smell</li>
+    <li>Every thread has <code>catch_unwind</code> at its boundary for panic isolation</li>
+    <li>Every async task has error handling &mdash; dropped futures do not silently swallow errors</li>
+  </ul>
+  <div class="cpp-note">Rust's type system encodes defensive programming at compile time. Newtypes make invalid states unrepresentable. <code>Result</code> makes error handling mandatory. Exhaustive matching prevents missed cases. The compiler is your defensive coding checklist.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go defensive checklist</h3>
+  <h4>Input validation (preconditions)</h4>
+  <pre><code class="language-go">func priceOption(S, K, T, sigma float64) (float64, error) {
+    // Validate at the boundary
+    params := map[string]float64{"S": S, "K": K, "T": T, "sigma": sigma}
+    for name, val := range params {
+        if math.IsNaN(val) || math.IsInf(val, 0) {
+            return 0, fmt.Errorf("%s is not finite: %f", name, val)
+        }
+        if val &lt;= 0 {
+            return 0, fmt.Errorf("%s must be positive: %f", name, val)
+        }
+    }
+
+    result := priceImpl(S, K, T, sigma)
+
+    // Output validation (postcondition)
+    if math.IsNaN(result) || math.IsInf(result, 0) {
+        return 0, fmt.Errorf("non-finite result: %f", result)
+    }
+    if result &lt; 0 {
+        return 0, fmt.Errorf("negative price: %f", result)
+    }
+    return result, nil
+}</code></pre>
+
+  <h4>Null / missing value handling</h4>
+  <pre><code class="language-go">// Go has nil for pointers, slices, maps, channels, interfaces.
+// Always check before use.
+func safeGet(m map[string]float64, key string, fallback float64) float64 {
+    val, ok := m[key]
+    if !ok { return fallback }
+    return val
+}
+
+// Pointer nil checks at function entry
+func processOrder(order *Order) error {
+    if order == nil { return errors.New("nil order") }
+    if order.Symbol == "" { return errors.New("empty symbol") }
+    if order.Quantity &lt;= 0 { return errors.New("non-positive quantity") }
+    // proceed with validated order...
+    return nil
+}</code></pre>
+
+  <h4>Error propagation checklist</h4>
+  <ul>
+    <li>Every function that returns <code>error</code>: is the error checked at the call site?</li>
+    <li>Every goroutine: does it have <code>defer recover()</code> at the top?</li>
+    <li>Every channel: is it closed by the sender when done?</li>
+    <li>Every context: is <code>cancel()</code> called via <code>defer</code>?</li>
+    <li>Run <code>go vet</code> and <code>staticcheck</code> in CI &mdash; they catch unchecked errors and common mistakes</li>
+  </ul>
+
+  <h4>Code review red flags (Go-specific)</h4>
+  <pre><code class="language-go">// RED FLAG: ignoring errors
+result, _ := riskyFunction()      // _ discards the error
+
+// RED FLAG: goroutine without recovery
+go func() { riskyWork() }()      // panic crashes the process
+
+// RED FLAG: unbounded goroutine creation
+for _, item := range items {
+    go process(item)              // 1M items = 1M goroutines
+}
+
+// GREEN: bounded worker pool
+sem := make(chan struct{}, 10)
+for _, item := range items {
+    sem &lt;- struct{}{}
+    go func(it Item) {
+        defer func() { &lt;-sem }()
+        process(it)
+    }(item)
+}</code></pre>
+  <div class="cpp-note">Go's simplicity means fewer language-level safety nets. The <code>go vet</code> and <code>staticcheck</code> tools are essential &mdash; they catch unused error returns, unreachable code, and common concurrency mistakes. Run them in CI alongside <code>go test -race</code>.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript defensive checklist</h3>
+  <h4>Input validation (preconditions)</h4>
+  <pre><code class="language-typescript">// Runtime validation with Zod (for data from external boundaries)
+import { z } from "zod";
+
+const TradeSchema = z.object({
+  symbol:   z.string().min(1),
+  quantity: z.number().positive().finite(),
+  price:    z.number().positive().finite(),
+});
+
+type Trade = z.infer&lt;typeof TradeSchema&gt;;
+
+function processOrder(raw: unknown): Trade {
+  return TradeSchema.parse(raw);  // throws ZodError with details
+}
+
+// Type guards for narrowing
+function isFinitePositive(n: number): n is number {
+  return Number.isFinite(n) && n &gt; 0;
+}
+
+function priceOption(S: number, K: number, T: number, sigma: number): number {
+  if (!isFinitePositive(S)) throw new Error(`Bad S: ${S}`);
+  if (!isFinitePositive(K)) throw new Error(`Bad K: ${K}`);
+  if (!isFinitePositive(T)) throw new Error(`Bad T: ${T}`);
+  if (!isFinitePositive(sigma)) throw new Error(`Bad sigma: ${sigma}`);
+
+  const result = priceImpl(S, K, T, sigma);
+  if (!Number.isFinite(result) || result &lt; 0) {
+    throw new Error(`Invalid result: ${result}`);
+  }
+  return result;
+}</code></pre>
+
+  <h4>Null / missing value handling</h4>
+  <pre><code class="language-typescript">// tsconfig.json: "strict": true (includes strictNullChecks)
+
+// Optional chaining + nullish coalescing
+const price = feed.get(sym) ?? lastKnown;
+const name  = order?.customer?.name ?? "unknown";
+
+// Exhaustive checking with discriminated unions
+type OrderResult =
+  | { type: "filled"; price: number }
+  | { type: "rejected"; reason: string }
+  | { type: "pending" };
+
+function handle(result: OrderResult): void {
+  switch (result.type) {
+    case "filled":   updatePosition(result.price); break;
+    case "rejected": logRejection(result.reason); break;
+    case "pending":  queueForRetry(); break;
+    default: {
+      const _: never = result;  // compile error if new variant added
+    }
+  }
+}</code></pre>
+
+  <h4>Error propagation checklist</h4>
+  <ul>
+    <li>Is <code>"strict": true</code> enabled in tsconfig.json?</li>
+    <li>Is every Promise <code>await</code>-ed or has a <code>.catch()</code>?</li>
+    <li>Is external data validated at the boundary (Zod, io-ts, or manual checks)?</li>
+    <li>Are unhandled rejections caught via <code>process.on("unhandledRejection")</code>?</li>
+    <li>Are discriminated unions used instead of string literals for state?</li>
+    <li>Is ESLint configured with <code>@typescript-eslint/no-floating-promises</code> and <code>@typescript-eslint/no-unsafe-assignment</code>?</li>
+  </ul>
+
+  <h4>Code review red flags (TypeScript-specific)</h4>
+  <pre><code class="language-typescript">// RED FLAG: type assertion without validation
+const trade = rawData as Trade;        // bypasses type checking
+
+// RED FLAG: non-null assertion on external data
+const price = response.data!.price;    // crashes if data is null
+
+// RED FLAG: floating promises
+someAsyncOperation();                  // error silently swallowed
+
+// GREEN: validated external data
+const trade = TradeSchema.parse(rawData);  // runtime validation
+
+// GREEN: awaited with error handling
+try { await someAsyncOperation(); }
+catch (err) { handleError(err); }</code></pre>
+  <div class="cpp-note">TypeScript's compile-time checks are powerful but erased at runtime. The defensive boundary is where external data enters your system (API responses, user input, file reads). Use runtime validation libraries (Zod, io-ts) at these boundaries. Inside the boundary, trust the type system.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Defensive engineering &mdash; comprehensive comparison</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Compiler-prevented bugs</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Memory safety</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Concurrency safety</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Error handling rigour</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Tooling (sanitizers, linters)</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Defensive coding effort</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust</strong> requires the least defensive coding effort <em>because the compiler does it for you</em>. Null safety, memory safety, race prevention, and exhaustive error handling are all enforced at compile time. The trade-off is a steeper learning curve.</li>
+    <li><strong>C++</strong> requires the most defensive discipline. The language gives you maximum power but zero guardrails. Sanitisers (ASan, TSan, UBSan) are essential but only catch what they see at runtime.</li>
+    <li><strong>Go</strong> strikes a pragmatic balance: simple language, good tooling (<code>go vet</code>, <code>staticcheck</code>, race detector), and explicit error handling. The weakness is nil pointers and no generics for defensive patterns pre-1.18.</li>
+    <li><strong>TypeScript</strong> with strict mode catches many bugs at compile time, but type erasure means runtime boundaries need separate validation. The ecosystem (Zod, ESLint rules) fills the gap.</li>
+    <li><strong>Python</strong> relies most heavily on developer discipline. Type hints + mypy help, but nothing is enforced at runtime unless you add it. Best suited for prototyping and research where speed-of-development matters more than safety.</li>
+    <li><strong>C#</strong> is the most balanced for enterprise use: nullable reference types, analyzers, good IDE support, and a mature ecosystem of defensive patterns.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Maximum safety by construction:</strong> Rust (compiler prevents the most bug categories)</li>
+    <li><strong>Maximum performance with manual discipline:</strong> C++ (sanitisers + RAII + code review)</li>
+    <li><strong>Pragmatic safety + simplicity:</strong> Go (simple language, good tools, explicit errors)</li>
+    <li><strong>Enterprise standard:</strong> C# (balanced safety, tooling, and productivity)</li>
+    <li><strong>Full-stack with shared types:</strong> TypeScript (strict mode + Zod at boundaries)</li>
+    <li><strong>Research / prototyping:</strong> Python (fast iteration, add safety later)</li>
+  </ul>
+</div>

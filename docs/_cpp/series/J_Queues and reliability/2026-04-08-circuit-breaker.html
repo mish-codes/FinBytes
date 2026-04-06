@@ -143,3 +143,307 @@ double get_price_safe(const std::string& sym) {
 }</code></pre>
   <div class="cpp-note">Circuit breakers should be monitored and alarmed. An open circuit is a production incident. Alert immediately when a circuit opens so an engineer can investigate - do not silently fall back to stale data without notifying anyone.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust circuit breaker</h3>
+  <pre><code class="language-rust">use std::sync::Mutex;
+use std::time::Instant;
+
+#[derive(Clone, Copy, PartialEq)]
+enum CBState { Closed, Open, HalfOpen }
+
+struct CircuitBreaker {
+    threshold:  u32,
+    timeout:    std::time::Duration,
+    state:      Mutex&lt;(CBState, u32, Option&lt;Instant&gt;)&gt;, // (state, failures, opened_at)
+}
+
+impl CircuitBreaker {
+    fn new(threshold: u32, timeout_s: f64) -&gt; Self {
+        Self {
+            threshold,
+            timeout: std::time::Duration::from_secs_f64(timeout_s),
+            state: Mutex::new((CBState::Closed, 0, None)),
+        }
+    }
+
+    fn call&lt;F, T&gt;(&amp;self, f: F) -&gt; Result&lt;T, Box&lt;dyn std::error::Error&gt;&gt;
+    where
+        F: FnOnce() -&gt; Result&lt;T, Box&lt;dyn std::error::Error&gt;&gt;,
+    {
+        // Check state
+        {
+            let mut guard = self.state.lock().unwrap();
+            let (ref mut state, _, ref opened_at) = *guard;
+            if *state == CBState::Open {
+                if let Some(at) = opened_at {
+                    if at.elapsed() &gt; self.timeout {
+                        *state = CBState::HalfOpen;
+                    } else {
+                        return Err("Circuit open".into());
+                    }
+                }
+            }
+        }
+
+        match f() {
+            Ok(val) =&gt; {
+                let mut guard = self.state.lock().unwrap();
+                guard.0 = CBState::Closed;
+                guard.1 = 0;
+                Ok(val)
+            }
+            Err(e) =&gt; {
+                let mut guard = self.state.lock().unwrap();
+                guard.1 += 1;
+                if guard.1 &gt;= self.threshold {
+                    guard.0 = CBState::Open;
+                    guard.2 = Some(Instant::now());
+                    eprintln!("Circuit OPENED after {} failures", guard.1);
+                }
+                Err(e)
+            }
+        }
+    }
+}
+
+// Usage with fallback
+fn get_price_safe(breaker: &amp;CircuitBreaker, symbol: &amp;str) -&gt; f64 {
+    match breaker.call(|| market_feed_get_price(symbol)) {
+        Ok(price) =&gt; price,
+        Err(_) =&gt; last_known_prices.get(symbol).copied().unwrap_or(f64::NAN),
+    }
+}</code></pre>
+  <div class="cpp-note">Rust's <code>Result</code> type makes circuit breaker integration natural &mdash; every call returns <code>Result&lt;T, E&gt;</code> and the caller is forced to handle both paths. No unchecked exceptions can bypass the breaker. The <code>Mutex</code> ensures thread safety without the manual lock/unlock ceremony of C++.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go circuit breaker</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "errors"
+    "log"
+    "sync"
+    "time"
+)
+
+type CBState int
+
+const (
+    Closed CBState = iota
+    Open
+    HalfOpen
+)
+
+type CircuitBreaker struct {
+    mu        sync.Mutex
+    state     CBState
+    failures  int
+    threshold int
+    timeout   time.Duration
+    openedAt  time.Time
+}
+
+func NewCircuitBreaker(threshold int, timeout time.Duration) *CircuitBreaker {
+    return &amp;CircuitBreaker{threshold: threshold, timeout: timeout}
+}
+
+var ErrCircuitOpen = errors.New("circuit open")
+
+func (cb *CircuitBreaker) Call(fn func() error) error {
+    cb.mu.Lock()
+    if cb.state == Open {
+        if time.Since(cb.openedAt) &gt; cb.timeout {
+            cb.state = HalfOpen
+        } else {
+            cb.mu.Unlock()
+            return ErrCircuitOpen
+        }
+    }
+    cb.mu.Unlock()
+
+    err := fn()
+
+    cb.mu.Lock()
+    defer cb.mu.Unlock()
+    if err != nil {
+        cb.failures++
+        if cb.failures &gt;= cb.threshold {
+            cb.state = Open
+            cb.openedAt = time.Now()
+            log.Printf("Circuit OPENED after %d failures", cb.failures)
+        }
+        return err
+    }
+    cb.failures = 0
+    cb.state = Closed
+    return nil
+}
+
+func (cb *CircuitBreaker) State() CBState {
+    cb.mu.Lock()
+    defer cb.mu.Unlock()
+    return cb.state
+}
+
+// Usage with fallback
+func getPriceSafe(cb *CircuitBreaker, symbol string) float64 {
+    var price float64
+    err := cb.Call(func() error {
+        var e error
+        price, e = marketFeed.GetPrice(symbol)
+        return e
+    })
+    if err != nil {
+        if cached, ok := lastKnownPrices[symbol]; ok {
+            return cached
+        }
+        return math.NaN()
+    }
+    return price
+}
+
+// Monitor circuit state — goroutine logs state transitions
+func monitorCircuit(cb *CircuitBreaker, name string, ctx context.Context) {
+    prev := Closed
+    ticker := time.NewTicker(time.Second)
+    defer ticker.Stop()
+    for {
+        select {
+        case &lt;-ctx.Done():
+            return
+        case &lt;-ticker.C:
+            curr := cb.State()
+            if curr != prev {
+                log.Printf("Circuit %s: %v -> %v", name, prev, curr)
+                prev = curr
+            }
+        }
+    }
+}</code></pre>
+  <div class="cpp-note">Go's error return pattern fits circuit breakers naturally &mdash; <code>Call()</code> returns <code>error</code>, and the caller checks immediately. The monitoring goroutine with <code>context.Context</code> for clean shutdown is idiomatic Go. For production, the <code>sony/gobreaker</code> library adds sliding windows and more sophisticated trip conditions.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript circuit breaker</h3>
+  <pre><code class="language-typescript">enum CBState { Closed, Open, HalfOpen }
+
+class CircuitBreaker {
+  private state = CBState.Closed;
+  private failures = 0;
+  private openedAt = 0;
+
+  constructor(
+    private threshold: number = 5,
+    private timeoutMs: number = 30_000,
+    private onStateChange?: (from: CBState, to: CBState) =&gt; void
+  ) {}
+
+  async call&lt;T&gt;(fn: () =&gt; Promise&lt;T&gt;): Promise&lt;T&gt; {
+    if (this.state === CBState.Open) {
+      if (Date.now() - this.openedAt &gt; this.timeoutMs) {
+        this.transition(CBState.HalfOpen);
+      } else {
+        throw new Error("Circuit open");
+      }
+    }
+
+    try {
+      const result = await fn();
+      this.failures = 0;
+      if (this.state !== CBState.Closed) this.transition(CBState.Closed);
+      return result;
+    } catch (err) {
+      this.failures++;
+      if (this.failures &gt;= this.threshold) {
+        this.transition(CBState.Open);
+        this.openedAt = Date.now();
+      }
+      throw err;
+    }
+  }
+
+  private transition(to: CBState): void {
+    const from = this.state;
+    this.state = to;
+    this.onStateChange?.(from, to);
+  }
+
+  get currentState(): CBState { return this.state; }
+}
+
+// Usage with fallback
+const breaker = new CircuitBreaker(5, 30_000, (from, to) =&gt; {
+  console.error(`Circuit ${CBState[from]} -> ${CBState[to]}`);
+});
+
+async function getPriceSafe(symbol: string): Promise&lt;number&gt; {
+  try {
+    return await breaker.call(() =&gt; marketFeed.getPrice(symbol));
+  } catch {
+    return lastKnownPrices.get(symbol) ?? NaN;
+  }
+}
+
+// Wrap fetch with circuit breaker
+async function resilientFetch(url: string): Promise&lt;Response&gt; {
+  return breaker.call(async () =&gt; {
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res;
+  });
+}</code></pre>
+  <div class="cpp-note">TypeScript's <code>async/await</code> makes circuit breaker integration clean &mdash; the <code>call()</code> method wraps any async function. The <code>AbortSignal.timeout()</code> pattern ensures requests do not hang indefinitely even if the downstream never responds, which is critical for the half-open probe.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Circuit breaker across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Production library</td>
+      <td>pybreaker</td><td>Polly</td><td>&mdash; (roll your own)</td><td>failsafe-rs</td><td>sony/gobreaker</td><td>opossum, cockatiel</td>
+    </tr>
+    <tr>
+      <td>Ecosystem maturity</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Error handling model</td>
+      <td>exception</td><td>exception</td><td>exception</td><td>Result&lt;T, E&gt;</td><td>error return</td><td>exception</td>
+    </tr>
+    <tr>
+      <td>Thread safety effort</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Graceful shutdown support</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Callback on state change</td>
+      <td>&#10003;</td><td>&#10003; (Polly)</td><td>manual</td><td>manual</td><td>&#10003; (gobreaker)</td><td>manual / callback</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>C# Polly is the most mature circuit breaker ecosystem.</strong> Retry, circuit breaker, fallback, and bulkhead are composable policies. No other language has an equivalent single library that covers all resilience patterns.</li>
+    <li><strong>Go's error return model is a natural fit.</strong> Every function returns <code>error</code>, so circuit breaker wrapping does not change the calling convention. The <code>context.Context</code> pattern gives you clean cancellation propagation when a circuit opens.</li>
+    <li><strong>Rust forces you to handle the open-circuit case.</strong> Because <code>call()</code> returns <code>Result</code>, the compiler will not let you ignore a circuit-open error. In exception-based languages, an unhandled open-circuit exception can crash the process.</li>
+    <li><strong>C++ has no standard circuit breaker library.</strong> You roll your own. This gives maximum control but means every team reinvents the same state machine. Consider extracting a shared library early.</li>
+    <li><strong>TypeScript's single-threaded model simplifies state management</strong> &mdash; no mutex needed for the circuit breaker state. The risk is forgetting to add timeouts on the underlying fetch/HTTP calls, causing the half-open probe to hang.</li>
+  </ul>
+
+  <h4>Decision guide for circuit breakers</h4>
+  <ul>
+    <li><strong>Microservice with many downstream calls:</strong> C# Polly or Go gobreaker &mdash; battle-tested, configurable, observable</li>
+    <li><strong>Low-latency trading system:</strong> C++ hand-rolled breaker with lock-free state reads for the hot path</li>
+    <li><strong>Safety-critical path (must handle open circuit):</strong> Rust &mdash; the compiler enforces fallback handling</li>
+    <li><strong>Node.js API gateway:</strong> TypeScript with opossum &mdash; add AbortSignal timeouts on every downstream call</li>
+    <li><strong>Always alert on circuit open.</strong> In every language, wire up a callback or log line when the circuit transitions to open. Silent fallback is dangerous in finance.</li>
+  </ul>
+</div>

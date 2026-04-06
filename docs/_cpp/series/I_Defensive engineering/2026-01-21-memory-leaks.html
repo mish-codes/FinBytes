@@ -116,3 +116,239 @@ public:
 };</code></pre>
   <div class="cpp-note">For a pricing loop creating and destroying many small objects, a pool allocator can outperform the system allocator by 5-10x. Pre-allocate a fixed block at startup; allocation becomes a pointer increment. No heap calls, no fragmentation.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust memory safety</h3>
+  <h4>Ownership eliminates leaks by design</h4>
+  <pre><code class="language-rust">// Rust's ownership system means memory is freed when the owner goes out of scope.
+// No garbage collector, no manual free, no leaks (in safe code).
+
+fn good_function() {
+    let prices: Vec&lt;f64&gt; = vec![0.0; 1000]; // heap-allocated
+    compute(&prices);
+}   // prices dropped here - memory freed automatically
+
+// The equivalent of C++ raw pointer escape is impossible in safe Rust:
+// fn bad_function() {
+//     let prices = Box::new([0.0; 1000]);
+//     compute(&prices);
+//     // forget to free? Compiler handles it. Exception? Still freed.
+// }
+
+// Move semantics are the default - no accidental copies
+fn transfer_ownership() {
+    let data = vec![1.0, 2.0, 3.0];
+    let moved = data;           // data is MOVED, not copied
+    // println!("{:?}", data);  // compile error: data was moved
+    println!("{:?}", moved);    // only moved is valid
+}</code></pre>
+
+  <h4>Arena / pool allocator with bumpalo</h4>
+  <pre><code class="language-rust">use bumpalo::Bump;
+
+fn pricing_loop(trades: &[Trade]) {
+    let arena = Bump::new();  // arena allocator
+
+    for trade in trades {
+        // Allocate from the arena - no individual frees
+        let result = arena.alloc(PricingResult::default());
+        price_into(trade, result);
+    }
+}   // entire arena freed at once - zero fragmentation
+
+// Detecting leaks: Rc/Arc cycles are the one exception
+use std::rc::Rc;
+use std::cell::RefCell;
+
+struct Node {
+    parent: Option&lt;Rc&lt;RefCell&lt;Node&gt;&gt;&gt;,  // Rc cycle = leak
+}
+// Fix: use Weak references for back-pointers
+use std::rc::Weak;
+struct SafeNode {
+    parent: Option&lt;Weak&lt;RefCell&lt;SafeNode&gt;&gt;&gt;,  // Weak breaks the cycle
+}</code></pre>
+  <div class="cpp-note">Rust eliminates use-after-free, double-free, and most memory leaks at compile time through ownership and borrowing. The only way to leak in safe Rust is via <code>Rc</code>/<code>Arc</code> reference cycles or explicit <code>std::mem::forget</code>. Use <code>Weak</code> references to break cycles.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go memory management</h3>
+  <h4>Garbage collector handles the basics</h4>
+  <pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "runtime"
+)
+
+// Go's GC frees unreachable memory automatically.
+// Leaks happen when references are held longer than needed.
+
+// Common leak: goroutine that never exits
+func leakyGoroutine() {
+    ch := make(chan int)        // unbuffered channel
+    go func() {
+        val := &lt;-ch            // blocks forever if nobody sends
+        fmt.Println(val)
+    }()
+    // ch is never sent to - goroutine leaks (and anything it references)
+}
+
+// Fix: use context for cancellation
+func safeGoroutine(ctx context.Context) {
+    ch := make(chan int)
+    go func() {
+        select {
+        case val := &lt;-ch:
+            fmt.Println(val)
+        case &lt;-ctx.Done():
+            return  // goroutine exits cleanly
+        }
+    }()
+}
+
+// Monitor GC and memory stats
+func printMemStats() {
+    var m runtime.MemStats
+    runtime.ReadMemStats(&m)
+    fmt.Printf("Alloc: %d MB, Sys: %d MB, NumGC: %d\n",
+        m.Alloc/1024/1024, m.Sys/1024/1024, m.NumGC)
+}
+
+// Reduce allocations: sync.Pool for hot-path objects
+import "sync"
+
+var resultPool = sync.Pool{
+    New: func() interface{} { return &PricingResult{} },
+}
+
+func priceWithPool(trade Trade) float64 {
+    result := resultPool.Get().(*PricingResult)
+    defer resultPool.Put(result)  // returned to pool after use
+    result.Reset()
+    return computePrice(trade, result)
+}</code></pre>
+  <div class="cpp-note">Go's most common memory leak is a goroutine that blocks forever, holding references the GC cannot collect. Always use <code>context.Context</code> for cancellation. Use <code>runtime.ReadMemStats</code> and <code>pprof</code> to detect leaks. <code>sync.Pool</code> reduces GC pressure for frequently allocated objects.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript memory tracking</h3>
+  <h4>Common leak patterns in Node.js / browser</h4>
+  <pre><code class="language-typescript">// Leak 1: event listeners that are never removed
+class LeakyPricer {
+  constructor(private feed: EventEmitter) {
+    // Every time we construct, we add a listener - but never remove it
+    feed.on("tick", (price: number) =&gt; this.onTick(price));
+  }
+  private onTick(price: number): void { /* ... */ }
+}
+
+// Fix: remove listeners on cleanup
+class SafePricer {
+  private handler: (price: number) =&gt; void;
+
+  constructor(private feed: EventEmitter) {
+    this.handler = (price) =&gt; this.onTick(price);
+    feed.on("tick", this.handler);
+  }
+
+  dispose(): void {
+    this.feed.off("tick", this.handler);  // prevent leak
+  }
+
+  private onTick(price: number): void { /* ... */ }
+}
+
+// Leak 2: closures capturing large objects
+function createPricer(hugeDataset: number[]): () =&gt; number {
+  // The closure captures hugeDataset even if it only needs length
+  return () =&gt; hugeDataset.length;  // hugeDataset stays in memory
+}
+// Fix: capture only what you need
+function createPricerFixed(hugeDataset: number[]): () =&gt; number {
+  const len = hugeDataset.length;
+  return () =&gt; len;  // hugeDataset can be GC'd
+}
+
+// Leak 3: Maps/Sets that grow without bound
+const cache = new Map&lt;string, number&gt;();
+function getCachedPrice(key: string): number {
+  if (!cache.has(key)) cache.set(key, computePrice(key));
+  return cache.get(key)!;  // cache grows forever
+}
+
+// Fix: WeakRef or LRU cache
+class LRUCache&lt;K, V&gt; {
+  private map = new Map&lt;K, V&gt;();
+  constructor(private maxSize: number) {}
+  get(key: K): V | undefined { return this.map.get(key); }
+  set(key: K, value: V): void {
+    if (this.map.size &gt;= this.maxSize) {
+      const oldest = this.map.keys().next().value!;
+      this.map.delete(oldest);
+    }
+    this.map.set(key, value);
+  }
+}</code></pre>
+
+  <h4>Profiling with Node.js</h4>
+  <pre><code class="language-typescript">// node --inspect app.js  (then open Chrome DevTools)
+// Heap snapshots: compare two snapshots to find growing allocations
+
+// Programmatic tracking
+const used = process.memoryUsage();
+console.log(`Heap: ${(used.heapUsed / 1024 / 1024).toFixed(1)} MB`);</code></pre>
+  <div class="cpp-note">TypeScript/JavaScript leaks are typically caused by event listeners that outlive their owners, closures that capture large objects, and unbounded caches. Use <code>WeakRef</code> and <code>FinalizationRegistry</code> (ES2021) for caches. In Node.js, use <code>--inspect</code> with Chrome DevTools heap snapshots to find leaks.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Memory management across languages</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Memory model</td>
+      <td>GC + refcount</td><td>Tracing GC</td><td>Manual / RAII</td><td>Ownership</td><td>Tracing GC</td><td>Tracing GC</td>
+    </tr>
+    <tr>
+      <td>Leak prevention</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Fragmentation control</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>GC pause risk</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Profiling tools</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Pool allocator support</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust</strong> prevents use-after-free, double-free, and most leaks at compile time. The borrow checker is the strictest memory safety enforcer of any systems language. The trade-off: you fight the compiler until ownership patterns become second nature.</li>
+    <li><strong>C++</strong> gives maximum control over allocation (custom allocators, placement new, pool allocators) but requires discipline. RAII makes it manageable; raw <code>new</code>/<code>delete</code> does not.</li>
+    <li><strong>Go</strong> has a low-latency GC (sub-millisecond pauses) but the most common leak pattern &mdash; blocked goroutines &mdash; is unique to Go and invisible to the GC.</li>
+    <li><strong>Python</strong> and <strong>TypeScript</strong> have the least control over memory layout. Circular references (Python) and retained closures (TypeScript) are the primary leak vectors.</li>
+    <li><strong>C#</strong> offers the best middle ground: managed GC with <code>Span&lt;T&gt;</code> and <code>ArrayPool</code> for hot paths, plus excellent profiling tools (dotMemory, VS Diagnostics).</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Zero GC pauses required (HFT, real-time):</strong> C++ or Rust</li>
+    <li><strong>High throughput with predictable latency:</strong> Go (low-pause GC) or Rust</li>
+    <li><strong>Enterprise backend with good tooling:</strong> C# (managed + profiling)</li>
+    <li><strong>Rapid prototyping, data pipelines:</strong> Python</li>
+    <li><strong>Full-stack / browser-based dashboards:</strong> TypeScript</li>
+    <li><strong>Memory-critical embedded or pricing loops:</strong> Rust (safety) or C++ (control)</li>
+  </ul>
+</div>

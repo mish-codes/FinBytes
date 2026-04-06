@@ -140,3 +140,244 @@ double result = pipeline&lt;double&gt;(100.123456, {
 });</code></pre>
   <div class="cpp-note">Decorators in C++ must manage ownership carefully - use <code>unique_ptr</code> and move semantics. The outermost decorator owns the next one, which owns the next. The whole stack is freed when the outermost goes out of scope.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust decorator and pipeline</h3>
+  <pre><code class="language-rust">use std::collections::HashMap;
+use std::time::Instant;
+
+trait Pricer {
+    fn price(&self, s: f64, k: f64, t: f64) -> f64;
+}
+
+struct BSPricer;
+impl Pricer for BSPricer {
+    fn price(&self, s: f64, k: f64, _t: f64) -> f64 { (s - k).max(0.0) * 1.05 }
+}
+
+// Caching decorator wraps any Pricer
+struct CachingPricer&lt;P: Pricer&gt; {
+    inner: P,
+    cache: std::cell::RefCell&lt;HashMap&lt;(i64, i64, i64), f64&gt;&gt;,
+}
+
+impl&lt;P: Pricer&gt; CachingPricer&lt;P&gt; {
+    fn new(inner: P) -> Self {
+        Self { inner, cache: std::cell::RefCell::new(HashMap::new()) }
+    }
+}
+
+impl&lt;P: Pricer&gt; Pricer for CachingPricer&lt;P&gt; {
+    fn price(&self, s: f64, k: f64, t: f64) -> f64 {
+        let key = ((s * 1e4) as i64, (k * 1e4) as i64, (t * 1e4) as i64);
+        if let Some(&v) = self.cache.borrow().get(&key) { return v; }
+        let v = self.inner.price(s, k, t);
+        self.cache.borrow_mut().insert(key, v);
+        v
+    }
+}
+
+// Timing decorator
+struct TimingPricer&lt;P: Pricer&gt; { inner: P }
+
+impl&lt;P: Pricer&gt; Pricer for TimingPricer&lt;P&gt; {
+    fn price(&self, s: f64, k: f64, t: f64) -> f64 {
+        let start = Instant::now();
+        let result = self.inner.price(s, k, t);
+        println!("price() took {:?}", start.elapsed());
+        result
+    }
+}
+
+// Stack decorators
+let pricer = TimingPricer { inner: CachingPricer::new(BSPricer) };
+let px = pricer.price(100.0, 100.0, 1.0);
+
+// Functional pipeline
+fn pipeline&lt;T&gt;(mut value: T, stages: &[&dyn Fn(T) -> T]) -> T {
+    for stage in stages { value = stage(value); }
+    value
+}
+
+let result = pipeline(100.123456_f64, &[
+    &|x| (x * 10000.0).round() / 10000.0,
+    &|x| x * 1.001,
+]);</code></pre>
+  <div class="cpp-note">Rust decorators use generics rather than trait objects, so the entire decorator stack is resolved at compile time &mdash; zero virtual dispatch overhead. The <code>RefCell</code> in <code>CachingPricer</code> is needed because <code>price(&self, ...)</code> takes a shared reference but the cache must be mutated. This is interior mutability &mdash; Rust's way of saying "I promise this is safe even though it looks mutable through an immutable reference."</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go decorator and pipeline</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "math"
+    "sync"
+    "time"
+)
+
+type Pricer interface {
+    Price(S, K, T float64) float64
+}
+
+type BSPricer struct{}
+func (bs BSPricer) Price(S, K, T float64) float64 { return math.Max(S-K, 0) * 1.05 }
+
+// Caching decorator
+type CachingPricer struct {
+    inner Pricer
+    mu    sync.RWMutex
+    cache map[[3]int64]float64
+}
+
+func NewCachingPricer(inner Pricer) *CachingPricer {
+    return &CachingPricer{inner: inner, cache: make(map[[3]int64]float64)}
+}
+
+func (c *CachingPricer) Price(S, K, T float64) float64 {
+    key := [3]int64{int64(S * 1e4), int64(K * 1e4), int64(T * 1e4)}
+    c.mu.RLock()
+    if v, ok := c.cache[key]; ok { c.mu.RUnlock(); return v }
+    c.mu.RUnlock()
+    v := c.inner.Price(S, K, T)
+    c.mu.Lock()
+    c.cache[key] = v
+    c.mu.Unlock()
+    return v
+}
+
+// Logging decorator
+type LoggingPricer struct{ inner Pricer }
+
+func (l LoggingPricer) Price(S, K, T float64) float64 {
+    start := time.Now()
+    result := l.inner.Price(S, K, T)
+    fmt.Printf("Price(%.0f,%.0f,%.1f) = %.4f [%v]\n", S, K, T, result, time.Since(start))
+    return result
+}
+
+// Stack decorators
+pricer := LoggingPricer{inner: NewCachingPricer(BSPricer{})}
+pricer.Price(100, 100, 1)
+
+// Functional pipeline
+type Stage func(float64) float64
+
+func Pipeline(value float64, stages ...Stage) float64 {
+    for _, fn := range stages {
+        value = fn(value)
+    }
+    return value
+}
+
+result := Pipeline(100.123456,
+    func(x float64) float64 { return math.Round(x*1e4) / 1e4 },
+    func(x float64) float64 { return x * 1.001 },
+)</code></pre>
+  <div class="cpp-note">Go decorators are straightforward &mdash; each wrapper struct holds the inner <code>Pricer</code> interface. The caching decorator uses <code>sync.RWMutex</code> for thread-safe concurrent access. Go's interface satisfaction is implicit, so any struct with a <code>Price</code> method works as a decorator without declaring it.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript decorator and pipeline</h3>
+  <pre><code class="language-typescript">interface Pricer {
+  price(S: number, K: number, T: number): number;
+}
+
+class BSPricer implements Pricer {
+  price(S: number, K: number, T: number): number { return Math.max(S - K, 0) * 1.05; }
+}
+
+class CachingPricer implements Pricer {
+  private cache = new Map&lt;string, number&gt;();
+  constructor(private inner: Pricer) {}
+
+  price(S: number, K: number, T: number): number {
+    const key = `${S.toFixed(4)}|${K.toFixed(4)}|${T.toFixed(4)}`;
+    if (this.cache.has(key)) return this.cache.get(key)!;
+    const v = this.inner.price(S, K, T);
+    this.cache.set(key, v);
+    return v;
+  }
+}
+
+class LoggingPricer implements Pricer {
+  constructor(private inner: Pricer) {}
+
+  price(S: number, K: number, T: number): number {
+    const start = performance.now();
+    const result = this.inner.price(S, K, T);
+    console.log(`price(${S},${K},${T}) = ${result.toFixed(4)} [${(performance.now()-start).toFixed(3)}ms]`);
+    return result;
+  }
+}
+
+// Stack decorators
+const pricer: Pricer = new LoggingPricer(new CachingPricer(new BSPricer()));
+pricer.price(100, 100, 1);
+
+// Functional pipeline
+type Stage&lt;T&gt; = (value: T) =&gt; T;
+
+function pipeline&lt;T&gt;(value: T, ...stages: Stage&lt;T&gt;[]): T {
+  return stages.reduce((v, fn) => fn(v), value);
+}
+
+const result = pipeline(
+  100.123456,
+  x => Math.round(x * 1e4) / 1e4,
+  x => x * 1.001,
+);</code></pre>
+  <div class="cpp-note">TypeScript's <code>Array.reduce</code> makes pipelines concise. The decorator classes use constructor injection &mdash; <code>private inner: Pricer</code> in the constructor both declares and assigns the field. TypeScript also supports native decorators (<code>@decorator</code> syntax) for method-level decoration, but the wrapper-class approach shown here is more explicit and works at the object level.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Decorator &amp; Pipeline across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Decorator composability</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Runtime overhead</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Ownership clarity</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Pipeline ergonomics</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Thread-safe caching</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Native decorator syntax</td>
+      <td>&#10003; (@decorator)</td><td>&#10003; (attributes)</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&#10003; (@decorator)</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust decorators are zero-cost</strong> when using generics. The compiler monomorphises the entire decorator stack into a single function &mdash; no virtual dispatch at any layer. C++ achieves the same with templates, but Rust's approach also guarantees memory safety.</li>
+    <li><strong>Python and TypeScript have native decorator syntax</strong> (<code>@decorator</code>) that simplifies method-level decoration. However, object-level wrapping (shown here) is more powerful and works across all languages.</li>
+    <li><strong>Go's implicit interfaces make decorators natural.</strong> Any struct with a <code>Price</code> method satisfies the interface &mdash; no need to declare "implements Pricer". This makes adding a new decorator layer trivial.</li>
+    <li><strong>Thread-safe caching is hardest in C++ and easiest in Rust.</strong> C++ requires manual mutex management with no compiler help. Rust's <code>RefCell</code> (single-thread) or <code>RwLock</code> (multi-thread) are enforced by the type system &mdash; you cannot accidentally share a non-thread-safe cache across threads.</li>
+    <li><strong>Pipelines are most natural in functional-friendly languages</strong> &mdash; Python's list comprehension style and TypeScript's <code>reduce</code> are concise. C++ requires <code>std::function</code> overhead or template metaprogramming.</li>
+  </ul>
+
+  <h4>Decision guide for Decorator / Pipeline</h4>
+  <ul>
+    <li><strong>Cross-cutting concerns (logging, timing, caching):</strong> Decorator in any language &mdash; pick by team expertise</li>
+    <li><strong>Performance-critical decorator stack:</strong> Rust generics or C++ templates (zero dispatch overhead)</li>
+    <li><strong>Data transformation chain:</strong> Pipeline &mdash; Python or TypeScript for conciseness, Go for concurrency</li>
+    <li><strong>Thread-safe memoisation:</strong> Rust <code>RwLock</code> or Go <code>sync.RWMutex</code></li>
+    <li><strong>Rapid prototyping:</strong> Python <code>@functools.lru_cache</code> for instant caching without a decorator class</li>
+  </ul>
+</div>

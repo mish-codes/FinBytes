@@ -131,3 +131,440 @@ class OutboxPublisher:
 <div class="warn">Do not implement a self-healing system without comprehensive observability. You need to see current connection state, sequence numbers, reconciliation outcomes, outbox depth. A system that heals silently and logs nothing is harder to trust than one that fails loudly.</div>
 
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust self-healing OMS</h3>
+  <pre><code class="language-rust">use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::collections::HashMap;
+use tokio::sync::Mutex;
+use tokio::time::{sleep, Duration};
+
+// Connection lifecycle state machine
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum ConnState {
+    Disconnected, Connecting, Connected, Active, Recovering, Draining,
+}
+
+struct ExchangeConnection {
+    state:       Arc&lt;Mutex&lt;ConnState&gt;&gt;,
+    last_seq_rx: AtomicU64,
+}
+
+impl ExchangeConnection {
+    fn new() -&gt; Self {
+        Self {
+            state: Arc::new(Mutex::new(ConnState::Disconnected)),
+            last_seq_rx: AtomicU64::new(0),
+        }
+    }
+
+    async fn on_message(&amp;self, msg: &amp;Message) {
+        let expected = self.last_seq_rx.load(Ordering::Relaxed) + 1;
+        if msg.sequence &gt; expected {
+            self.request_retransmit(expected, msg.sequence - 1).await;
+        }
+        self.last_seq_rx.store(msg.sequence, Ordering::Relaxed);
+        self.process_message(msg).await;
+    }
+
+    async fn on_heartbeat_timeout(&amp;self) {
+        *self.state.lock().await = ConnState::Disconnected;
+        self.reconnect_with_backoff().await;
+    }
+
+    async fn on_reconnect_success(&amp;self) {
+        *self.state.lock().await = ConnState::Recovering;
+        let seq = self.last_seq_rx.load(Ordering::Relaxed);
+        self.request_fill_history(seq).await;
+    }
+
+    async fn reconnect_with_backoff(&amp;self) {
+        let mut delay = Duration::from_secs(1);
+        loop {
+            *self.state.lock().await = ConnState::Connecting;
+            match self.try_connect().await {
+                Ok(_) =&gt; {
+                    self.on_reconnect_success().await;
+                    return;
+                }
+                Err(e) =&gt; {
+                    let jitter = delay.mul_f64(0.5 + rand::random::&lt;f64&gt;());
+                    eprintln!("Reconnect failed: {}. Retry in {:?}", e, jitter);
+                    sleep(jitter).await;
+                    delay = delay.mul_f64(2.0).min(Duration::from_secs(60));
+                }
+            }
+        }
+    }
+}
+
+// Position reconciliation
+#[derive(Debug)]
+struct ReconciliationResult {
+    symbol:   String,
+    oms_qty:  f64,
+    exch_qty: f64,
+    diff:     f64,
+    action:   String,
+}
+
+fn reconcile(
+    oms: &amp;mut HashMap&lt;String, f64&gt;,
+    exch: &amp;HashMap&lt;String, f64&gt;,
+) -&gt; Vec&lt;ReconciliationResult&gt; {
+    let all_syms: std::collections::HashSet&lt;&amp;String&gt; =
+        oms.keys().chain(exch.keys()).collect();
+    let mut results = Vec::new();
+    for sym in all_syms {
+        let o = *oms.get(sym).unwrap_or(&amp;0.0);
+        let e = *exch.get(sym).unwrap_or(&amp;0.0);
+        let diff = (o - e).abs();
+        let action = if diff &lt; 1e-6 {
+            "ok".into()
+        } else if diff &lt; 10.0 {
+            oms.insert(sym.clone(), e);
+            format!("corrected: {} -> {}", o, e)
+        } else {
+            format!("ALERT: large discrepancy ({:.0}) — manual review", diff)
+        };
+        results.push(ReconciliationResult {
+            symbol: sym.clone(), oms_qty: o, exch_qty: e, diff, action,
+        });
+    }
+    results
+}
+
+// Outbox pattern — guaranteed delivery with sqlx
+// INSERT INTO outbox (payload, created_at) VALUES ($1, NOW())
+// Background task: SELECT * FROM outbox WHERE acked_at IS NULL ORDER BY id
+// After successful send: UPDATE outbox SET acked_at = NOW() WHERE id = $1</code></pre>
+  <div class="cpp-note">Rust's <code>enum ConnState</code> combined with <code>Mutex</code> ensures state transitions are atomic and exhaustively handled. The reconciliation function takes <code>&amp;mut HashMap</code> for the OMS side, making it clear that the OMS positions may be corrected in place. The compiler prevents accidentally mutating exchange positions (passed as <code>&amp;HashMap</code>).</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go self-healing OMS</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "context"
+    "database/sql"
+    "encoding/json"
+    "fmt"
+    "log"
+    "math"
+    "math/rand"
+    "sync"
+    "sync/atomic"
+    "time"
+)
+
+// Connection lifecycle
+type ConnState int
+
+const (
+    StateDisconnected ConnState = iota
+    StateConnecting
+    StateConnected
+    StateActive
+    StateRecovering
+    StateDraining
+)
+
+type ExchangeConnection struct {
+    mu        sync.Mutex
+    state     ConnState
+    lastSeqRx atomic.Uint64
+}
+
+func (ec *ExchangeConnection) OnMessage(msg Message) {
+    expected := ec.lastSeqRx.Load() + 1
+    if msg.Sequence &gt; expected {
+        ec.requestRetransmit(expected, msg.Sequence-1)
+    }
+    ec.lastSeqRx.Store(msg.Sequence)
+    ec.processMessage(msg)
+}
+
+func (ec *ExchangeConnection) OnHeartbeatTimeout(ctx context.Context) {
+    ec.mu.Lock()
+    ec.state = StateDisconnected
+    ec.mu.Unlock()
+    ec.reconnectWithBackoff(ctx)
+}
+
+func (ec *ExchangeConnection) reconnectWithBackoff(ctx context.Context) {
+    delay := time.Second
+    for {
+        ec.mu.Lock()
+        ec.state = StateConnecting
+        ec.mu.Unlock()
+
+        if err := ec.tryConnect(); err == nil {
+            ec.mu.Lock()
+            ec.state = StateRecovering
+            ec.mu.Unlock()
+            ec.requestFillHistory(ec.lastSeqRx.Load())
+            return
+        }
+
+        jitter := time.Duration(float64(delay) * (0.5 + rand.Float64()))
+        log.Printf("Reconnect failed. Retry in %v", jitter)
+        select {
+        case &lt;-ctx.Done():
+            return
+        case &lt;-time.After(jitter):
+        }
+        if delay &lt; 60*time.Second {
+            delay *= 2
+        }
+    }
+}
+
+// Position reconciliation
+type ReconciliationResult struct {
+    Symbol  string
+    OmsQty  float64
+    ExchQty float64
+    Diff    float64
+    Action  string
+}
+
+func reconcile(oms, exch map[string]float64) []ReconciliationResult {
+    allSyms := make(map[string]bool)
+    for s := range oms  { allSyms[s] = true }
+    for s := range exch { allSyms[s] = true }
+
+    var results []ReconciliationResult
+    for sym := range allSyms {
+        o := oms[sym]
+        e := exch[sym]
+        diff := math.Abs(o - e)
+        var action string
+        switch {
+        case diff &lt; 1e-6:
+            action = "ok"
+        case diff &lt; 10:
+            oms[sym] = e // exchange is authoritative
+            action = fmt.Sprintf("corrected: %v -> %v", o, e)
+        default:
+            action = fmt.Sprintf("ALERT: large discrepancy (%.0f) — manual review", diff)
+        }
+        results = append(results, ReconciliationResult{sym, o, e, diff, action})
+    }
+    return results
+}
+
+// Outbox pattern — guaranteed delivery
+type OutboxPublisher struct {
+    db *sql.DB
+}
+
+func (op *OutboxPublisher) Publish(ctx context.Context, payload interface{}) (int64, error) {
+    data, _ := json.Marshal(payload)
+    result, err := op.db.ExecContext(ctx,
+        "INSERT INTO outbox (payload, created_at) VALUES ($1, NOW())", string(data))
+    if err != nil {
+        return 0, err
+    }
+    id, _ := result.LastInsertId()
+    go op.sendAndAck(ctx, id, payload) // fire and forget — poller catches failures
+    return id, nil
+}
+
+func (op *OutboxPublisher) RetryUnacked(ctx context.Context) int {
+    rows, _ := op.db.QueryContext(ctx,
+        "SELECT id, payload FROM outbox WHERE acked_at IS NULL ORDER BY id")
+    defer rows.Close()
+    count := 0
+    for rows.Next() {
+        var id int64
+        var payload string
+        rows.Scan(&amp;id, &amp;payload)
+        go op.sendAndAck(ctx, id, payload)
+        count++
+    }
+    return count
+}</code></pre>
+  <div class="cpp-note">Go's <code>context.Context</code> propagates through reconnection, reconciliation, and outbox operations &mdash; a single <code>cancel()</code> call cleanly shuts down the entire OMS. The <code>select</code> on <code>ctx.Done()</code> ensures reconnection backoff respects shutdown signals. This is the pattern that makes Go the natural choice for self-healing infrastructure.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript self-healing OMS</h3>
+  <pre><code class="language-typescript">// Connection lifecycle state machine
+type ConnState = "disconnected" | "connecting" | "connected" | "active" | "recovering" | "draining";
+
+class ExchangeConnection {
+  private state: ConnState = "disconnected";
+  private lastSeqRx = 0;
+  private abortController = new AbortController();
+
+  async onMessage(msg: Message): Promise&lt;void&gt; {
+    const expected = this.lastSeqRx + 1;
+    if (msg.sequence &gt; expected) {
+      await this.requestRetransmit(expected, msg.sequence - 1);
+    }
+    this.lastSeqRx = msg.sequence;
+    await this.processMessage(msg);
+  }
+
+  async onHeartbeatTimeout(): Promise&lt;void&gt; {
+    this.state = "disconnected";
+    await this.reconnectWithBackoff();
+  }
+
+  private async reconnectWithBackoff(): Promise&lt;void&gt; {
+    let delayMs = 1000;
+    while (!this.abortController.signal.aborted) {
+      this.state = "connecting";
+      try {
+        await this.tryConnect();
+        this.state = "recovering";
+        await this.requestFillHistory(this.lastSeqRx);
+        this.state = "active";
+        return;
+      } catch (err) {
+        const jitter = delayMs * (0.5 + Math.random());
+        console.error(`Reconnect failed: ${err}. Retry in ${(jitter/1000).toFixed(1)}s`);
+        await new Promise(r =&gt; setTimeout(r, jitter));
+        delayMs = Math.min(delayMs * 2, 60_000);
+      }
+    }
+  }
+
+  shutdown(): void { this.abortController.abort(); }
+}
+
+// Position reconciliation
+interface ReconciliationResult {
+  symbol:  string;
+  omsQty:  number;
+  exchQty: number;
+  diff:    number;
+  action:  string;
+}
+
+function reconcile(
+  oms: Map&lt;string, number&gt;,
+  exch: Map&lt;string, number&gt;,
+): ReconciliationResult[] {
+  const allSyms = new Set([...oms.keys(), ...exch.keys()]);
+  const results: ReconciliationResult[] = [];
+
+  for (const sym of allSyms) {
+    const o = oms.get(sym) ?? 0;
+    const e = exch.get(sym) ?? 0;
+    const diff = Math.abs(o - e);
+    let action: string;
+
+    if (diff &lt; 1e-6) {
+      action = "ok";
+    } else if (diff &lt; 10) {
+      oms.set(sym, e); // exchange is authoritative
+      action = `corrected: ${o} -> ${e}`;
+    } else {
+      action = `ALERT: large discrepancy (${diff.toFixed(0)}) — manual review`;
+    }
+    results.push({ symbol: sym, omsQty: o, exchQty: e, diff, action });
+  }
+  return results;
+}
+
+// Outbox pattern with SQLite (better-sqlite3 for sync, or knex for async)
+import Database from "better-sqlite3";
+
+class OutboxPublisher {
+  private db: Database.Database;
+
+  constructor(dbPath: string) {
+    this.db = new Database(dbPath);
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS outbox (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        payload TEXT NOT NULL,
+        created_at REAL NOT NULL,
+        acked_at REAL
+      )
+    `);
+  }
+
+  publish(payload: unknown): number {
+    const stmt = this.db.prepare(
+      "INSERT INTO outbox (payload, created_at) VALUES (?, ?)"
+    );
+    const result = stmt.run(JSON.stringify(payload), Date.now() / 1000);
+    this.sendAndAck(result.lastInsertRowid as number, payload);
+    return result.lastInsertRowid as number;
+  }
+
+  retryUnacked(): number {
+    const rows = this.db.prepare(
+      "SELECT id, payload FROM outbox WHERE acked_at IS NULL ORDER BY id"
+    ).all() as Array&lt;{ id: number; payload: string }&gt;;
+    for (const row of rows) {
+      this.sendAndAck(row.id, JSON.parse(row.payload));
+    }
+    return rows.length;
+  }
+
+  private sendAndAck(id: number, payload: unknown): void {
+    try {
+      exchange.send(payload);
+      this.db.prepare("UPDATE outbox SET acked_at = ? WHERE id = ?")
+        .run(Date.now() / 1000, id);
+    } catch { /* background poller retries */ }
+  }
+}</code></pre>
+  <div class="cpp-note">TypeScript's union type for <code>ConnState</code> gives compile-time exhaustiveness checking if you use a switch statement. The <code>AbortController</code> pattern for shutdown is the Node.js equivalent of Go's <code>context.Context</code> &mdash; call <code>abort()</code> once and all pending operations respect it.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Self-healing OMS across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python (above)</th><th>C++ (above)</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>State machine clarity</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Reconnection + backoff</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Graceful shutdown</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Reconciliation logic</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Outbox pattern support</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Production ecosystem</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Go is purpose-built for self-healing services.</strong> The <code>context.Context</code> propagates cancellation through reconnection, reconciliation, and outbox polling. Goroutines for each concern (heartbeat monitor, reconnect loop, outbox poller) run concurrently without thread pool configuration. A single <code>cancel()</code> call drains everything cleanly.</li>
+    <li><strong>Rust's enum-based state machine is the most correct.</strong> The compiler enforces exhaustive matching on <code>ConnState</code>, so you cannot forget to handle a state. The <code>&amp;mut</code> vs <code>&amp;</code> distinction in reconciliation makes it clear which side gets corrected.</li>
+    <li><strong>The outbox pattern is language-agnostic</strong> &mdash; it relies on the database transaction, not the language. Write the state change and the outbox row in the same transaction. A background poller retries unacked rows. This works identically in all languages.</li>
+    <li><strong>TypeScript's AbortController is the closest analogue to Go's context</strong> but less pervasive &mdash; not every Node.js library respects it. In Go, virtually every stdlib and third-party function accepts a <code>context.Context</code>.</li>
+    <li><strong>Sequence gap detection is critical in all languages.</strong> If you receive sequence 1001 after 999, immediately request retransmission of 1000. Without this, the OMS silently misses fills and positions drift.</li>
+  </ul>
+
+  <h4>Decision guide for self-healing OMS</h4>
+  <ul>
+    <li><strong>Multi-connection OMS with many exchanges:</strong> Go &mdash; goroutines per connection, context for shutdown, channels for inter-component communication</li>
+    <li><strong>Safety-critical state machine:</strong> Rust &mdash; exhaustive match on connection states, ownership prevents accidental mutation</li>
+    <li><strong>Ultra-low-latency exchange gateway:</strong> C++ &mdash; lock-free sequence tracking, direct memory access to messages</li>
+    <li><strong>Always implement the outbox pattern</strong> for guaranteed delivery. In-memory queues lose messages on crash. The database is your durability layer.</li>
+    <li><strong>Always reconcile positions.</strong> Even with perfect sequence tracking, edge cases (race conditions, partial fills, exchange corrections) will cause drift. Daily reconciliation is not optional.</li>
+  </ul>
+</div>

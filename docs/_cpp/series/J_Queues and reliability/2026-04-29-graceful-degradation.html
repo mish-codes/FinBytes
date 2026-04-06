@@ -132,3 +132,314 @@ public:
 };</code></pre>
   <div class="cpp-note">Always include <code>source</code> and <code>age</code> in your price result. Downstream consumers - risk engines, traders - need to know whether they are acting on live or stale data. A price without provenance is an untrusted number.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust graceful degradation</h3>
+  <pre><code class="language-rust">use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
+
+#[derive(Clone, Debug)]
+struct PriceResult {
+    price:    f64,
+    symbol:   String,
+    age_s:    f64,
+    is_stale: bool,
+    source:   String, // "live", "cached", "stale_cache"
+}
+
+struct CacheEntry {
+    price: f64,
+    ts:    Instant,
+}
+
+struct ResilientPricer {
+    cache:           Arc&lt;Mutex&lt;HashMap&lt;String, CacheEntry&gt;&gt;&gt;,
+    stale_threshold: Duration,
+}
+
+impl ResilientPricer {
+    fn new(stale_threshold_s: f64) -&gt; Self {
+        Self {
+            cache: Arc::new(Mutex::new(HashMap::new())),
+            stale_threshold: Duration::from_secs_f64(stale_threshold_s),
+        }
+    }
+
+    async fn get_price(&amp;self, symbol: &amp;str) -&gt; Result&lt;PriceResult, String&gt; {
+        // Try live feed first
+        match live_feed_get_price(symbol).await {
+            Ok(price) =&gt; {
+                let mut cache = self.cache.lock().await;
+                cache.insert(symbol.to_string(), CacheEntry { price, ts: Instant::now() });
+                return Ok(PriceResult {
+                    price, symbol: symbol.into(), age_s: 0.0,
+                    is_stale: false, source: "live".into(),
+                });
+            }
+            Err(e) =&gt; eprintln!("Live feed failed for {}: {}", symbol, e),
+        }
+
+        // Fall back to cache
+        let cache = self.cache.lock().await;
+        if let Some(entry) = cache.get(symbol) {
+            let age = entry.ts.elapsed().as_secs_f64();
+            let is_stale = age &gt; self.stale_threshold.as_secs_f64();
+            if is_stale {
+                eprintln!("WARN: stale price for {}: {:.0}s old", symbol, age);
+            }
+            return Ok(PriceResult {
+                price: entry.price, symbol: symbol.into(), age_s: age,
+                is_stale,
+                source: if is_stale { "stale_cache" } else { "cached" }.into(),
+            });
+        }
+
+        Err(format!("No price available for {}", symbol))
+    }
+}
+
+// Model fallback — try complex vol surface, fall back to flat vol
+async fn price_with_fallback(trade: &amp;Trade) -&gt; PriceResult {
+    match price_with_vol_surface(trade).await {
+        Ok(result) =&gt; result,
+        Err(e) =&gt; {
+            eprintln!("Vol surface failed: {} — using flat vol", e);
+            price_with_flat_vol(trade) // simpler model, always succeeds
+        }
+    }
+}</code></pre>
+  <div class="cpp-note">Rust's <code>Result</code> type makes the fallback chain explicit &mdash; each step either succeeds or falls through to the next. The compiler ensures every error path is handled. The <code>source</code> field in <code>PriceResult</code> propagates provenance to downstream consumers.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go graceful degradation</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "log"
+    "sync"
+    "time"
+)
+
+type PriceResult struct {
+    Price   float64
+    Symbol  string
+    AgeS    float64
+    IsStale bool
+    Source  string // "live", "cached", "stale_cache"
+}
+
+type cacheEntry struct {
+    price float64
+    ts    time.Time
+}
+
+type ResilientPricer struct {
+    mu             sync.RWMutex
+    cache          map[string]cacheEntry
+    staleThreshold time.Duration
+    liveFeed       MarketFeed
+}
+
+func NewResilientPricer(feed MarketFeed, staleSec float64) *ResilientPricer {
+    return &amp;ResilientPricer{
+        cache:          make(map[string]cacheEntry),
+        staleThreshold: time.Duration(staleSec * float64(time.Second)),
+        liveFeed:       feed,
+    }
+}
+
+func (rp *ResilientPricer) GetPrice(symbol string) (PriceResult, error) {
+    // Try live feed
+    price, err := rp.liveFeed.GetPrice(symbol)
+    if err == nil {
+        rp.mu.Lock()
+        rp.cache[symbol] = cacheEntry{price, time.Now()}
+        rp.mu.Unlock()
+        return PriceResult{price, symbol, 0, false, "live"}, nil
+    }
+    log.Printf("Live feed failed for %s: %v", symbol, err)
+
+    // Fall back to cache
+    rp.mu.RLock()
+    entry, ok := rp.cache[symbol]
+    rp.mu.RUnlock()
+    if ok {
+        age := time.Since(entry.ts).Seconds()
+        stale := age &gt; rp.staleThreshold.Seconds()
+        if stale {
+            log.Printf("WARN: stale price for %s: %.0fs old", symbol, age)
+        }
+        source := "cached"
+        if stale { source = "stale_cache" }
+        return PriceResult{entry.price, symbol, age, stale, source}, nil
+    }
+
+    return PriceResult{}, fmt.Errorf("no price available for %s", symbol)
+}
+
+// Read-only mode — context signals degraded state
+type ServiceMode int
+
+const (
+    ModeNormal ServiceMode = iota
+    ModeReadOnly
+    ModeDegraded
+)
+
+type DegradableService struct {
+    mu   sync.RWMutex
+    mode ServiceMode
+}
+
+func (s *DegradableService) SetMode(m ServiceMode) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    if s.mode != m {
+        log.Printf("Service mode: %v -> %v", s.mode, m)
+    }
+    s.mode = m
+}
+
+func (s *DegradableService) SubmitTrade(trade Trade) error {
+    s.mu.RLock()
+    defer s.mu.RUnlock()
+    if s.mode == ModeReadOnly {
+        return fmt.Errorf("service in read-only mode — trade submission rejected")
+    }
+    return processTrade(trade)
+}</code></pre>
+  <div class="cpp-note">Go's <code>sync.RWMutex</code> lets multiple readers (price queries) run concurrently while locking only for writes (cache updates). The <code>ServiceMode</code> pattern with a simple int and a mutex is idiomatic Go for managing degraded state &mdash; log every transition so operators can see exactly when the system entered and exited degraded mode.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript graceful degradation</h3>
+  <pre><code class="language-typescript">interface PriceResult {
+  price:   number;
+  symbol:  string;
+  ageS:    number;
+  isStale: boolean;
+  source:  "live" | "cached" | "stale_cache";
+}
+
+class ResilientPricer {
+  private cache = new Map&lt;string, { price: number; ts: number }&gt;();
+  private static STALE_MS = 60_000;
+
+  constructor(private liveFeed: MarketFeed) {}
+
+  async getPrice(symbol: string): Promise&lt;PriceResult&gt; {
+    // Try live feed
+    try {
+      const price = await this.liveFeed.getPrice(symbol);
+      this.cache.set(symbol, { price, ts: Date.now() });
+      return { price, symbol, ageS: 0, isStale: false, source: "live" };
+    } catch (err) {
+      console.warn(`Live feed failed for ${symbol}: ${err}`);
+    }
+
+    // Fall back to cache
+    const cached = this.cache.get(symbol);
+    if (cached) {
+      const ageMs = Date.now() - cached.ts;
+      const isStale = ageMs &gt; ResilientPricer.STALE_MS;
+      if (isStale) console.warn(`Stale price for ${symbol}: ${(ageMs/1000).toFixed(0)}s old`);
+      return {
+        price: cached.price, symbol,
+        ageS: ageMs / 1000, isStale,
+        source: isStale ? "stale_cache" : "cached",
+      };
+    }
+
+    throw new Error(`No price available for ${symbol}`);
+  }
+}
+
+// Model fallback — try complex model, fall back to simple
+async function priceWithFallback(trade: Trade): Promise&lt;PriceResult&gt; {
+  try {
+    return await priceWithVolSurface(trade);
+  } catch (err) {
+    console.warn(`Vol surface failed: ${err} — using flat vol`);
+    return priceWithFlatVol(trade);
+  }
+}
+
+// Service mode management
+type ServiceMode = "normal" | "read-only" | "degraded";
+
+class DegradableService {
+  private mode: ServiceMode = "normal";
+
+  setMode(mode: ServiceMode): void {
+    if (this.mode !== mode) {
+      console.log(`Service mode: ${this.mode} -> ${mode}`);
+      this.mode = mode;
+    }
+  }
+
+  async submitTrade(trade: Trade): Promise&lt;void&gt; {
+    if (this.mode === "read-only") {
+      throw new Error("Service in read-only mode — trade submission rejected");
+    }
+    await processTrade(trade);
+  }
+
+  get currentMode(): ServiceMode { return this.mode; }
+}</code></pre>
+  <div class="cpp-note">TypeScript's union type <code>"live" | "cached" | "stale_cache"</code> for the source field gives you compile-time safety that the source string is always one of the expected values. The <code>ServiceMode</code> union type similarly constrains the degradation states.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Graceful degradation across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Fallback chain clarity</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Concurrent cache access</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Mode switching safety</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Provenance tracking</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Graceful shutdown</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Production ecosystem</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust's <code>Result</code> chain makes fallback logic the clearest.</strong> Each step returns <code>Result&lt;T, E&gt;</code>, and the compiler forces you to handle failures. You cannot accidentally skip a fallback level. The <code>source</code> field with typed enums ensures provenance is always correct.</li>
+    <li><strong>Go's <code>sync.RWMutex</code> makes concurrent cache access trivial.</strong> Multiple price readers run concurrently; only cache updates take a write lock. Combined with goroutines for mode switching and monitoring, Go makes degradation management feel lightweight.</li>
+    <li><strong>TypeScript gets concurrent cache access for free</strong> because Node.js is single-threaded &mdash; no lock needed. The tradeoff: you cannot run CPU-intensive fallback logic (like flat vol pricing) without blocking the event loop.</li>
+    <li><strong>C# has the richest ecosystem for degradation patterns</strong> &mdash; Polly fallback policies, ASP.NET health checks, and feature flags (LaunchDarkly, Azure Feature Management) work together out of the box.</li>
+    <li><strong>Always log the source of every price.</strong> In all languages, the <code>source</code> field is not optional. A risk engine that silently uses stale data without knowing it is a compliance and P&amp;L risk.</li>
+  </ul>
+
+  <h4>Decision guide for graceful degradation</h4>
+  <ul>
+    <li><strong>Compiler-enforced fallback handling:</strong> Rust &mdash; Result chains make skipping a fallback a compile error</li>
+    <li><strong>Concurrent read-heavy workload (many symbols):</strong> Go with RWMutex or TypeScript (single-threaded, lock-free)</li>
+    <li><strong>Enterprise with feature flags:</strong> C# &mdash; richest integration with feature management platforms</li>
+    <li><strong>Always include provenance.</strong> Every price result must carry source and age &mdash; downstream consumers need this to make informed decisions</li>
+    <li><strong>Log every mode transition.</strong> When the system enters or exits degraded mode, log it prominently so operators and audit trails capture the event</li>
+  </ul>
+</div>

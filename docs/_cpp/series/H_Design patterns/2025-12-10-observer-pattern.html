@@ -120,3 +120,237 @@ feed.on([](const PriceUpdate& u) { /* risk update */ });
 feed.emit({"AAPL", 151.25, 10'000});</code></pre>
   <div class="cpp-note">Raw observer pointers work if observer lifetimes are managed carefully (unsubscribe before destruction). For shared ownership, use <code>weak_ptr</code> observers - the publisher skips any that have expired, avoiding dangling pointer crashes.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust observer pattern</h3>
+  <pre><code class="language-rust">use std::sync::{Arc, Mutex};
+
+struct PriceUpdate {
+    symbol: String,
+    price:  f64,
+    volume: i64,
+}
+
+trait PriceObserver: Send {
+    fn on_price(&self, update: &PriceUpdate);
+}
+
+struct MarketDataFeed {
+    observers: Vec&lt;Arc&lt;dyn PriceObserver&gt;&gt;,
+}
+
+impl MarketDataFeed {
+    fn new() -> Self { Self { observers: Vec::new() } }
+
+    fn subscribe(&mut self, obs: Arc&lt;dyn PriceObserver&gt;) {
+        self.observers.push(obs);
+    }
+
+    fn publish(&self, update: &PriceUpdate) {
+        for obs in &self.observers {
+            obs.on_price(update);
+        }
+    }
+}
+
+struct OptionPricer;
+impl PriceObserver for OptionPricer {
+    fn on_price(&self, u: &PriceUpdate) {
+        println!("Pricer: repricing {} @ {:.2}", u.symbol, u.price);
+    }
+}
+
+struct RiskMonitor;
+impl PriceObserver for RiskMonitor {
+    fn on_price(&self, u: &PriceUpdate) {
+        println!("Risk: updating PnL for {}", u.symbol);
+    }
+}
+
+// Callback-based variant using closures
+struct EventFeed {
+    handlers: Vec&lt;Box&lt;dyn Fn(&PriceUpdate) + Send&gt;&gt;,
+}
+
+impl EventFeed {
+    fn new() -> Self { Self { handlers: Vec::new() } }
+    fn on(&mut self, f: impl Fn(&PriceUpdate) + Send + 'static) {
+        self.handlers.push(Box::new(f));
+    }
+    fn emit(&self, update: &PriceUpdate) {
+        for h in &self.handlers { h(update); }
+    }
+}</code></pre>
+  <div class="cpp-note">Rust requires observers to be <code>Send</code> if the feed might be shared across threads. <code>Arc&lt;dyn PriceObserver&gt;</code> gives shared ownership with reference counting &mdash; no dangling pointers. For mutable observers, wrap in <code>Arc&lt;Mutex&lt;T&gt;&gt;</code>. The closure-based variant avoids trait objects entirely, which is often simpler for small projects.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go observer pattern</h3>
+  <pre><code class="language-go">package main
+
+import "fmt"
+
+type PriceUpdate struct {
+    Symbol string
+    Price  float64
+    Volume int
+}
+
+type PriceObserver interface {
+    OnPrice(update PriceUpdate)
+}
+
+type MarketDataFeed struct {
+    observers []PriceObserver
+}
+
+func (f *MarketDataFeed) Subscribe(obs PriceObserver) {
+    f.observers = append(f.observers, obs)
+}
+
+func (f *MarketDataFeed) Publish(update PriceUpdate) {
+    for _, obs := range f.observers {
+        obs.OnPrice(update)
+    }
+}
+
+type OptionPricer struct{}
+func (p OptionPricer) OnPrice(u PriceUpdate) {
+    fmt.Printf("Pricer: repricing %s @ %.2f\n", u.Symbol, u.Price)
+}
+
+type RiskMonitor struct{}
+func (r RiskMonitor) OnPrice(u PriceUpdate) {
+    fmt.Printf("Risk: updating PnL for %s\n", u.Symbol)
+}
+
+// Channel-based observer (idiomatic Go for concurrent consumers)
+type ChannelFeed struct {
+    subscribers []chan PriceUpdate
+}
+
+func (f *ChannelFeed) Subscribe() chan PriceUpdate {
+    ch := make(chan PriceUpdate, 64)
+    f.subscribers = append(f.subscribers, ch)
+    return ch
+}
+
+func (f *ChannelFeed) Publish(update PriceUpdate) {
+    for _, ch := range f.subscribers {
+        select {
+        case ch &lt;- update:
+        default: // drop if subscriber is slow
+        }
+    }
+}
+
+// Usage:
+// ch := feed.Subscribe()
+// go func() { for u := range ch { process(u) } }()</code></pre>
+  <div class="cpp-note">Go's channels provide a natural observer mechanism. Each subscriber gets its own channel, and the publisher fans out updates. The <code>select/default</code> idiom drops messages to slow subscribers rather than blocking the publisher &mdash; a common pattern in real-time market data systems where stale data is worse than missing data.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript observer pattern</h3>
+  <pre><code class="language-typescript">interface PriceUpdate {
+  symbol: string;
+  price:  number;
+  volume: number;
+}
+
+interface PriceObserver {
+  onPrice(update: PriceUpdate): void;
+}
+
+class MarketDataFeed {
+  private observers: PriceObserver[] = [];
+
+  subscribe(obs: PriceObserver): void { this.observers.push(obs); }
+
+  unsubscribe(obs: PriceObserver): void {
+    this.observers = this.observers.filter(o => o !== obs);
+  }
+
+  publish(update: PriceUpdate): void {
+    for (const obs of this.observers) obs.onPrice(update);
+  }
+}
+
+class OptionPricer implements PriceObserver {
+  onPrice(u: PriceUpdate): void {
+    console.log(`Pricer: repricing ${u.symbol} @ ${u.price}`);
+  }
+}
+
+// Generic typed event emitter
+class EventEmitter&lt;T&gt; {
+  private handlers: Array&lt;(data: T) =&gt; void&gt; = [];
+
+  on(handler: (data: T) =&gt; void): () =&gt; void {
+    this.handlers.push(handler);
+    return () => { this.handlers = this.handlers.filter(h => h !== handler); };
+  }
+
+  emit(data: T): void {
+    for (const h of this.handlers) h(data);
+  }
+}
+
+// Usage
+const priceEvents = new EventEmitter&lt;PriceUpdate&gt;();
+const unsub = priceEvents.on(u => console.log(`${u.symbol}: ${u.price}`));
+priceEvents.emit({ symbol: "AAPL", price: 151.25, volume: 10_000 });
+unsub(); // clean unsubscribe</code></pre>
+  <div class="cpp-note">The generic <code>EventEmitter&lt;T&gt;</code> is a reusable building block. The <code>on()</code> method returns an unsubscribe function &mdash; a pattern borrowed from React/RxJS that avoids the "forgot to unsubscribe" memory leak. TypeScript's type parameter ensures subscribers receive correctly typed data at compile time.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Observer pattern across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Event delivery guarantee</td>
+      <td>synchronous</td><td>synchronous (event)</td><td>synchronous</td><td>synchronous</td><td>sync or channel</td><td>synchronous</td>
+    </tr>
+    <tr>
+      <td>Decoupling strength</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Memory safety</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Concurrent delivery</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Unsubscribe ergonomics</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Built-in support</td>
+      <td>&mdash;</td><td>event keyword</td><td>&mdash;</td><td>&mdash;</td><td>channels</td><td>EventTarget (DOM)</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Go channels are the most natural fit</strong> for observer in concurrent systems. Each subscriber runs in its own goroutine, receiving events through a buffered channel. No shared mutable state, no locks. The publisher does not block if a subscriber is slow &mdash; it drops or buffers.</li>
+    <li><strong>C# has first-class language support</strong> via the <code>event</code> keyword and delegates. Subscribe with <code>+=</code>, unsubscribe with <code>-=</code>. This is the most ergonomic observer syntax of all six languages.</li>
+    <li><strong>C++ observer is dangerous</strong> if observer lifetimes are not managed. A destroyed observer that is still subscribed causes a dangling pointer crash. Use <code>weak_ptr</code> or ensure unsubscribe-before-destroy discipline.</li>
+    <li><strong>Rust enforces lifetime safety at compile time.</strong> You cannot hold a reference to a destroyed observer &mdash; the compiler rejects it. The cost: more explicit ownership (<code>Arc</code>, <code>Box</code>) and trait bounds (<code>Send</code>).</li>
+    <li><strong>TypeScript's unsubscribe-function pattern</strong> (returning a cleanup closure from <code>on()</code>) is the cleanest way to avoid forgotten unsubscriptions. Borrowed from the React/RxJS ecosystem.</li>
+  </ul>
+
+  <h4>Decision guide for the Observer pattern</h4>
+  <ul>
+    <li><strong>Real-time market data fan-out:</strong> Go channels or Rust with <code>tokio::broadcast</code></li>
+    <li><strong>UI event binding:</strong> C# events or TypeScript EventEmitter</li>
+    <li><strong>Simple in-process pub/sub:</strong> Python Protocol-based or callback list</li>
+    <li><strong>High-frequency with many subscribers:</strong> C++ with careful lifetime management</li>
+    <li><strong>Cross-thread notification:</strong> Go channels (built-in) or Rust <code>Arc&lt;Mutex&gt;</code></li>
+  </ul>
+</div>

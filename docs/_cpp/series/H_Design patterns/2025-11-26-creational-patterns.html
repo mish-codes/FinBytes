@@ -169,3 +169,267 @@ private:
 };</code></pre>
   <div class="cpp-note">The <code>static</code> local variable singleton is the Meyers Singleton, guaranteed thread-safe since C++11. The double-checked locking pattern seen in older code is unnecessary. Use this instead.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust creational patterns</h3>
+  <h4>Factory</h4>
+  <pre><code class="language-rust">trait PricingModel {
+    fn price(&self, s: f64, k: f64, t: f64) -> f64;
+}
+
+struct BlackScholes;
+impl PricingModel for BlackScholes {
+    fn price(&self, s: f64, k: f64, _t: f64) -> f64 { (s - k).max(0.0) }
+}
+
+struct MonteCarlo { n_paths: usize }
+impl PricingModel for MonteCarlo {
+    fn price(&self, s: f64, k: f64, _t: f64) -> f64 { (s - k).max(0.0) * 0.99 }
+}
+
+fn pricer_factory(model_type: &str, n_paths: usize) -> Box&lt;dyn PricingModel&gt; {
+    match model_type {
+        "black_scholes" => Box::new(BlackScholes),
+        "monte_carlo"   => Box::new(MonteCarlo { n_paths }),
+        other           => panic!("Unknown model: {other}"),
+    }
+}</code></pre>
+
+  <h4>Builder</h4>
+  <pre><code class="language-rust">struct Trade {
+    symbol:   String,
+    notional: f64,
+    maturity: f64,
+    coupon:   f64,
+    currency: String,
+}
+
+#[derive(Default)]
+struct TradeBuilder {
+    symbol:   Option&lt;String&gt;,
+    notional: Option&lt;f64&gt;,
+    maturity: Option&lt;f64&gt;,
+    coupon:   Option&lt;f64&gt;,
+    currency: Option&lt;String&gt;,
+}
+
+impl TradeBuilder {
+    fn symbol(mut self, s: &str)    -> Self { self.symbol   = Some(s.into()); self }
+    fn notional(mut self, n: f64)   -> Self { self.notional = Some(n);        self }
+    fn maturity(mut self, m: f64)   -> Self { self.maturity = Some(m);        self }
+    fn coupon(mut self, c: f64)     -> Self { self.coupon   = Some(c);        self }
+    fn build(self) -> Trade {
+        Trade {
+            symbol:   self.symbol.expect("symbol required"),
+            notional: self.notional.expect("notional required"),
+            maturity: self.maturity.expect("maturity required"),
+            coupon:   self.coupon.unwrap_or(0.0),
+            currency: self.currency.unwrap_or_else(|| "GBP".into()),
+        }
+    }
+}
+
+let trade = TradeBuilder::default()
+    .symbol("GILT2030")
+    .notional(1_000_000.0)
+    .maturity(5.0)
+    .build();</code></pre>
+
+  <h4>Singleton</h4>
+  <pre><code class="language-rust">use std::sync::OnceLock;
+
+struct ConnectionPool { /* ... */ }
+
+impl ConnectionPool {
+    fn instance() -> &'static ConnectionPool {
+        static POOL: OnceLock&lt;ConnectionPool&gt; = OnceLock::new();
+        POOL.get_or_init(|| ConnectionPool { /* ... */ })
+    }
+}</code></pre>
+  <div class="cpp-note">Rust's <code>OnceLock</code> (stable since 1.70) provides a safe, lazy singleton without any <code>unsafe</code>. The builder pattern is extremely common in Rust &mdash; the <code>Option&lt;T&gt;</code> fields plus <code>.expect()</code> in <code>build()</code> enforce required vs optional fields at runtime. For compile-time enforcement, use the typestate builder pattern with generic marker types.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go creational patterns</h3>
+  <h4>Factory</h4>
+  <pre><code class="language-go">package main
+
+import "fmt"
+
+type PricingModel interface {
+    Price(S, K, T float64) float64
+}
+
+type BlackScholes struct{}
+func (bs BlackScholes) Price(S, K, T float64) float64 { return max(S-K, 0) }
+
+type MonteCarlo struct{ NPaths int }
+func (mc MonteCarlo) Price(S, K, T float64) float64 { return max(S-K, 0) * 0.99 }
+
+func PricerFactory(modelType string, nPaths int) (PricingModel, error) {
+    switch modelType {
+    case "black_scholes":
+        return BlackScholes{}, nil
+    case "monte_carlo":
+        return MonteCarlo{NPaths: nPaths}, nil
+    default:
+        return nil, fmt.Errorf("unknown model: %s", modelType)
+    }
+}</code></pre>
+
+  <h4>Builder (functional options)</h4>
+  <pre><code class="language-go">type Trade struct {
+    Symbol   string
+    Notional float64
+    Maturity float64
+    Coupon   float64
+    Currency string
+}
+
+type TradeOption func(*Trade)
+
+func WithCoupon(c float64)   TradeOption { return func(t *Trade) { t.Coupon = c } }
+func WithCurrency(c string)  TradeOption { return func(t *Trade) { t.Currency = c } }
+
+func NewTrade(symbol string, notional, maturity float64, opts ...TradeOption) Trade {
+    t := Trade{Symbol: symbol, Notional: notional, Maturity: maturity, Currency: "GBP"}
+    for _, opt := range opts {
+        opt(&t)
+    }
+    return t
+}
+
+trade := NewTrade("GILT2030", 1_000_000, 5.0, WithCoupon(0.03))</code></pre>
+
+  <h4>Singleton</h4>
+  <pre><code class="language-go">import "sync"
+
+type ConnectionPool struct{ /* ... */ }
+
+var (
+    poolInstance *ConnectionPool
+    poolOnce     sync.Once
+)
+
+func GetPool() *ConnectionPool {
+    poolOnce.Do(func() {
+        poolInstance = &ConnectionPool{ /* ... */ }
+    })
+    return poolInstance
+}</code></pre>
+  <div class="cpp-note">Go favours the "functional options" pattern over a classical builder. Required fields are constructor parameters; optional fields use variadic option functions. <code>sync.Once</code> guarantees the singleton initialiser runs exactly once, even under concurrent access &mdash; the Go equivalent of Meyers' Singleton.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript creational patterns</h3>
+  <h4>Factory</h4>
+  <pre><code class="language-typescript">interface PricingModel {
+  price(S: number, K: number, T: number): number;
+}
+
+class BlackScholes implements PricingModel {
+  price(S: number, K: number, T: number): number { return Math.max(S - K, 0); }
+}
+
+class MonteCarlo implements PricingModel {
+  constructor(private nPaths: number = 10_000) {}
+  price(S: number, K: number, T: number): number { return Math.max(S - K, 0) * 0.99; }
+}
+
+function pricerFactory(type: string, nPaths = 10_000): PricingModel {
+  switch (type) {
+    case "black_scholes": return new BlackScholes();
+    case "monte_carlo":   return new MonteCarlo(nPaths);
+    default: throw new Error(`Unknown model: ${type}`);
+  }
+}</code></pre>
+
+  <h4>Builder</h4>
+  <pre><code class="language-typescript">interface Trade {
+  symbol: string; notional: number; maturity: number;
+  coupon: number; currency: string;
+}
+
+class TradeBuilder {
+  private _symbol?:   string;
+  private _notional?: number;
+  private _maturity?: number;
+  private _coupon     = 0;
+  private _currency   = "GBP";
+
+  symbol(s: string)    { this._symbol   = s; return this; }
+  notional(n: number)  { this._notional = n; return this; }
+  maturity(m: number)  { this._maturity = m; return this; }
+  coupon(c: number)    { this._coupon   = c; return this; }
+  currency(c: string)  { this._currency = c; return this; }
+
+  build(): Trade {
+    if (!this._symbol || !this._notional || !this._maturity)
+      throw new Error("Required fields missing");
+    return {
+      symbol: this._symbol, notional: this._notional,
+      maturity: this._maturity, coupon: this._coupon, currency: this._currency,
+    };
+  }
+}
+
+const trade = new TradeBuilder().symbol("GILT2030").notional(1_000_000).maturity(5).build();</code></pre>
+
+  <h4>Singleton</h4>
+  <pre><code class="language-typescript">class ConnectionPool {
+  private static _instance: ConnectionPool;
+  private constructor() { /* ... */ }
+  static get instance(): ConnectionPool {
+    if (!ConnectionPool._instance) ConnectionPool._instance = new ConnectionPool();
+    return ConnectionPool._instance;
+  }
+}</code></pre>
+  <div class="cpp-note">TypeScript's <code>private constructor</code> prevents external instantiation, enforcing the singleton. For the builder, TypeScript's structural typing means you can also use a plain object literal &mdash; the builder adds value when you need validation or defaults that go beyond what a simple interface provides.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Creational patterns across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Factory ergonomics</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Builder expressiveness</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Singleton safety</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Ownership clarity</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Compile-time validation</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust's builder is the most rigorous.</strong> The typestate builder pattern (using generic markers for set/unset fields) can make it a compile error to call <code>.build()</code> without setting required fields. No other language offers this without code generation.</li>
+    <li><strong>Go replaces the builder with functional options.</strong> Required fields are constructor parameters (can't forget them), optional fields use variadic functions. Less ceremony than a builder class, more idiomatic in Go.</li>
+    <li><strong>Python's factory is the simplest</strong> &mdash; a dict mapping names to classes. But with no type enforcement, a typo in the model name is a runtime error. Type checkers help but are optional.</li>
+    <li><strong>C++ factory returns <code>unique_ptr</code></strong> &mdash; ownership is explicit. The caller knows it owns the created object. In Python/Go/TS, ownership is implicit (GC handles it), which is simpler but hides memory semantics.</li>
+    <li><strong>Singleton is controversial in all languages.</strong> Prefer dependency injection. When you must use a singleton (connection pools, config), Rust's <code>OnceLock</code>, C++'s Meyers pattern, C#'s <code>Lazy&lt;T&gt;</code>, and Go's <code>sync.Once</code> are all thread-safe by default.</li>
+  </ul>
+
+  <h4>Decision guide for creational patterns</h4>
+  <ul>
+    <li><strong>Object type chosen at runtime (config, user input):</strong> Factory in any language</li>
+    <li><strong>Many optional fields, complex validation:</strong> Builder (Rust for strictest, Go functional options for lightest)</li>
+    <li><strong>Shared resource (pool, config):</strong> Singleton &mdash; but inject it rather than accessing the global</li>
+    <li><strong>Performance-critical object creation:</strong> C++ or Rust &mdash; stack allocation, no GC overhead</li>
+    <li><strong>Rapid prototyping:</strong> Python dict-factory or TypeScript factory function</li>
+  </ul>
+</div>

@@ -118,3 +118,359 @@ if (!queue.push(tick, std::chrono::milliseconds(0))) {
 }</code></pre>
   <div class="cpp-note">Monitor your queue depth continuously. At 50% capacity the system is healthy. At 80% investigate. At 95% you are minutes from blocking the producer or running out of memory. Alert at 70%; page at 85%.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust backpressure</h3>
+  <pre><code class="language-rust">use tokio::sync::mpsc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::collections::HashMap;
+use tokio::sync::Mutex;
+
+// Block strategy — send().await blocks when channel is full
+async fn block_strategy() {
+    let (tx, mut rx) = mpsc::channel::&lt;Tick&gt;(1000);
+
+    tokio::spawn(async move {
+        for tick in simulate_feed() {
+            tx.send(tick).await.unwrap(); // awaits when buffer full
+        }
+    });
+
+    while let Some(tick) = rx.recv().await {
+        process_tick(tick).await;
+    }
+}
+
+// Drop strategy — try_send returns Err when full
+static DROPPED: AtomicU64 = AtomicU64::new(0);
+
+async fn drop_strategy(tx: mpsc::Sender&lt;Tick&gt;, ticks: Vec&lt;Tick&gt;) {
+    for tick in ticks {
+        if tx.try_send(tick).is_err() {
+            DROPPED.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+}
+
+// Latest-value cache — only keep the newest price per symbol
+struct LatestValueCache {
+    data: Arc&lt;Mutex&lt;HashMap&lt;String, f64&gt;&gt;&gt;,
+}
+
+impl LatestValueCache {
+    fn new() -&gt; Self {
+        Self { data: Arc::new(Mutex::new(HashMap::new())) }
+    }
+
+    async fn put(&amp;self, symbol: String, price: f64) {
+        self.data.lock().await.insert(symbol, price); // overwrites old
+    }
+
+    async fn get_all(&amp;self) -&gt; HashMap&lt;String, f64&gt; {
+        let mut guard = self.data.lock().await;
+        let items = guard.clone();
+        guard.clear();
+        items
+    }
+}
+
+// Shed strategy — rate limiter using token bucket
+use tokio::time::{Instant, Duration};
+
+struct RateLimiter {
+    capacity: u32,
+    tokens: Arc&lt;Mutex&lt;(u32, Instant)&gt;&gt;,
+    refill_rate: u32, // tokens per second
+}
+
+impl RateLimiter {
+    fn new(max_rps: u32) -&gt; Self {
+        Self {
+            capacity: max_rps,
+            tokens: Arc::new(Mutex::new((max_rps, Instant::now()))),
+            refill_rate: max_rps,
+        }
+    }
+
+    async fn try_acquire(&amp;self) -&gt; bool {
+        let mut guard = self.tokens.lock().await;
+        let (ref mut tokens, ref mut last) = *guard;
+        let now = Instant::now();
+        let elapsed = now.duration_since(*last).as_secs_f64();
+        *tokens = (*tokens + (elapsed * self.refill_rate as f64) as u32)
+            .min(self.capacity);
+        *last = now;
+        if *tokens &gt; 0 { *tokens -= 1; true } else { false }
+    }
+}</code></pre>
+  <div class="cpp-note">Rust's <code>mpsc::channel</code> gives you the block-vs-drop choice via <code>send().await</code> (block) vs <code>try_send()</code> (drop). The compiler enforces that only one task owns the receiver, so you cannot accidentally create competing consumers on a single channel.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go backpressure</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "sync"
+    "sync/atomic"
+    "time"
+)
+
+// Block strategy — default channel send blocks when full
+func blockStrategy() {
+    feed := make(chan Tick, 1000)
+
+    go func() {
+        for _, tick := range ticks {
+            feed &lt;- tick // blocks when 1000 items buffered
+        }
+        close(feed)
+    }()
+
+    for tick := range feed {
+        processTick(tick)
+    }
+}
+
+// Drop strategy — select with default
+var dropped uint64
+
+func dropStrategy(feed chan&lt;- Tick, ticks []Tick) {
+    for _, tick := range ticks {
+        select {
+        case feed &lt;- tick:
+            // sent
+        default:
+            atomic.AddUint64(&amp;dropped, 1)
+        }
+    }
+}
+
+// Latest-value cache — only keep newest price per symbol
+type LatestValueCache struct {
+    mu   sync.Mutex
+    data map[string]float64
+}
+
+func NewLatestValueCache() *LatestValueCache {
+    return &amp;LatestValueCache{data: make(map[string]float64)}
+}
+
+func (c *LatestValueCache) Put(symbol string, price float64) {
+    c.mu.Lock()
+    c.data[symbol] = price // overwrites old price
+    c.mu.Unlock()
+}
+
+func (c *LatestValueCache) GetAll() map[string]float64 {
+    c.mu.Lock()
+    defer c.mu.Unlock()
+    items := c.data
+    c.data = make(map[string]float64)
+    return items
+}
+
+// Shed strategy — rate limiter using token bucket
+type RateLimiter struct {
+    mu       sync.Mutex
+    tokens   float64
+    capacity float64
+    refill   float64 // per second
+    lastTime time.Time
+}
+
+func NewRateLimiter(maxRPS int) *RateLimiter {
+    return &amp;RateLimiter{
+        tokens: float64(maxRPS), capacity: float64(maxRPS),
+        refill: float64(maxRPS), lastTime: time.Now(),
+    }
+}
+
+func (r *RateLimiter) Allow() bool {
+    r.mu.Lock()
+    defer r.mu.Unlock()
+    now := time.Now()
+    elapsed := now.Sub(r.lastTime).Seconds()
+    r.tokens += elapsed * r.refill
+    if r.tokens &gt; r.capacity { r.tokens = r.capacity }
+    r.lastTime = now
+    if r.tokens &gt;= 1 { r.tokens--; return true }
+    return false
+}
+
+// Monitor queue depth
+func monitorDepth(feed chan Tick, alertThreshold float64) {
+    ticker := time.NewTicker(time.Second)
+    defer ticker.Stop()
+    for range ticker.C {
+        usage := float64(len(feed)) / float64(cap(feed))
+        if usage &gt; alertThreshold {
+            log.Printf("WARN: queue at %.0f%% capacity", usage*100)
+        }
+    }
+}</code></pre>
+  <div class="cpp-note">Go's <code>select</code> with <code>default</code> gives you a one-line non-blocking send &mdash; the cleanest drop-on-full syntax in any language. Monitoring queue depth is equally trivial: <code>len(ch)</code> and <code>cap(ch)</code> are built into the language. No wrapper needed.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript backpressure</h3>
+  <pre><code class="language-typescript">// Drop strategy — non-blocking push with counter
+class DropOnFullQueue&lt;T&gt; {
+  private queue: T[] = [];
+  private _dropped = 0;
+
+  constructor(private capacity: number) {}
+
+  tryPush(item: T): boolean {
+    if (this.queue.length &gt;= this.capacity) {
+      this._dropped++;
+      return false;
+    }
+    this.queue.push(item);
+    return true;
+  }
+
+  pop(): T | undefined { return this.queue.shift(); }
+  get dropped(): number { return this._dropped; }
+  get size(): number { return this.queue.length; }
+}
+
+// Latest-value cache — overwrites per symbol
+class LatestValueCache {
+  private data = new Map&lt;string, number&gt;();
+
+  put(symbol: string, price: number): void {
+    this.data.set(symbol, price); // overwrites old
+  }
+
+  getAll(): Map&lt;string, number&gt; {
+    const items = new Map(this.data);
+    this.data.clear();
+    return items;
+  }
+}
+
+// Shed strategy — rate limiter
+class RateLimiter {
+  private tokens: number;
+  private lastRefill: number;
+
+  constructor(
+    private maxRPS: number,
+    private capacity: number = maxRPS
+  ) {
+    this.tokens = capacity;
+    this.lastRefill = Date.now();
+  }
+
+  allow(): boolean {
+    const now = Date.now();
+    const elapsed = (now - this.lastRefill) / 1000;
+    this.tokens = Math.min(this.capacity, this.tokens + elapsed * this.maxRPS);
+    this.lastRefill = now;
+    if (this.tokens &gt;= 1) { this.tokens--; return true; }
+    return false;
+  }
+}
+
+// Backpressure-aware async producer-consumer
+class BackpressuredPipeline&lt;T&gt; {
+  private queue: T[] = [];
+  private resolvers: Array&lt;() =&gt; void&gt; = [];
+
+  constructor(
+    private capacity: number,
+    private dropOldest: boolean = false
+  ) {}
+
+  async push(item: T): Promise&lt;boolean&gt; {
+    if (this.queue.length &gt;= this.capacity) {
+      if (this.dropOldest) {
+        this.queue.shift(); // drop oldest
+        this.queue.push(item);
+        return true;
+      }
+      // block until space
+      await new Promise&lt;void&gt;(resolve =&gt; this.resolvers.push(resolve));
+    }
+    this.queue.push(item);
+    return true;
+  }
+
+  pop(): T | undefined {
+    const item = this.queue.shift();
+    if (this.resolvers.length &gt; 0) this.resolvers.shift()!();
+    return item;
+  }
+
+  get utilisation(): number {
+    return this.queue.length / this.capacity;
+  }
+}
+
+// Monitor and alert
+function monitorQueue&lt;T&gt;(queue: BackpressuredPipeline&lt;T&gt;): NodeJS.Timeout {
+  return setInterval(() =&gt; {
+    const usage = queue.utilisation;
+    if (usage &gt; 0.85) console.error(`CRITICAL: queue at ${(usage * 100).toFixed(0)}%`);
+    else if (usage &gt; 0.70) console.warn(`WARN: queue at ${(usage * 100).toFixed(0)}%`);
+  }, 1000);
+}</code></pre>
+  <div class="cpp-note">Node.js is single-threaded, so queue operations are atomic by default &mdash; no mutex needed. The tradeoff: you cannot truly block a producer. The idiomatic pattern is <code>tryPush</code> with a drop counter, or <code>await</code>-based backpressure that yields to the event loop.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Backpressure across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Block-when-full</td>
+      <td>Queue.put(timeout)</td><td>Channel.WriteAsync</td><td>CV wait_for</td><td>send().await</td><td>ch &lt;- val</td><td>await Promise</td>
+    </tr>
+    <tr>
+      <td>Drop-when-full</td>
+      <td>put_nowait + except</td><td>DropOldest/DropWrite</td><td>try_push manual</td><td>try_send()</td><td>select/default</td><td>tryPush manual</td>
+    </tr>
+    <tr>
+      <td>Drop syntax simplicity</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Queue depth monitoring</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Built-in drop policies</td>
+      <td>&mdash;</td><td>4 modes</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td>
+    </tr>
+    <tr>
+      <td>Concurrency model</td>
+      <td>threads / asyncio</td><td>async/await + threads</td><td>threads + CV</td><td>tokio async tasks</td><td>goroutines</td><td>event loop</td>
+    </tr>
+    <tr>
+      <td>Performance under backpressure</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Go has the most ergonomic backpressure in any language.</strong> A buffered channel blocks producers when full (zero code), and <code>select/default</code> turns blocking into non-blocking drop in two lines. Queue depth is <code>len(ch)/cap(ch)</code> &mdash; no method call, no wrapper. This is Go's strongest category.</li>
+    <li><strong>C#'s BoundedChannelOptions is the most configurable.</strong> Four drop modes (Wait, DropOldest, DropNewest, DropWrite) out of the box. Every other language requires manual implementation of drop policies.</li>
+    <li><strong>Rust's ownership model prevents a subtle bug:</strong> you cannot accidentally have two consumers racing on the same channel without explicitly opting in via <code>Arc&lt;Mutex&lt;Receiver&gt;&gt;</code>. This eliminates an entire class of backpressure-related race conditions.</li>
+    <li><strong>TypeScript cannot truly block a producer</strong> because Node.js is single-threaded. Blocking would freeze the event loop. The pattern is always non-blocking try-push or await-based cooperative yielding.</li>
+    <li><strong>C++ gives you lock-free options</strong> that no other language can match for latency. When microseconds matter (market data hot path), a lock-free SPSC queue with atomic sequence numbers avoids mutex contention entirely.</li>
+  </ul>
+
+  <h4>Decision guide for backpressure</h4>
+  <ul>
+    <li><strong>Market data where latest price wins:</strong> latest-value cache (all languages) &mdash; no queue needed</li>
+    <li><strong>Order flow where every message matters:</strong> block-when-full (Go channel, Rust mpsc, C# Channel.Wait)</li>
+    <li><strong>High-throughput feed with acceptable loss:</strong> drop-when-full with counter (Go select/default is cleanest)</li>
+    <li><strong>API gateway with caller-managed retry:</strong> shed via rate limiter &mdash; return 429 and let the caller back off</li>
+    <li><strong>Ultra-low-latency path:</strong> C++ lock-free SPSC with overwrite semantics</li>
+  </ul>
+</div>

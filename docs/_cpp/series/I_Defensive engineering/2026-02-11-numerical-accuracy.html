@@ -123,3 +123,240 @@ double kahan_sum(const std::vector&lt;double&gt;& v) {
 }</code></pre>
   <div class="cpp-note">Enable <code>-fno-fast-math</code> to prevent the compiler reordering floating-point ops in ways that break Kahan summation. Use <code>-fsanitize=float-divide-by-zero</code> to catch division by zero during development.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust numerical accuracy</h3>
+  <h4>NaN and Inf handling</h4>
+  <pre><code class="language-rust">// Rust f64 follows IEEE 754, same NaN/Inf behaviour as C++
+let x: f64 = f64::NAN;
+println!("{}", x + 1.0);     // NaN
+println!("{}", x &gt; 0.0);     // false - no panic!
+println!("{}", x == x);      // false (NaN != NaN)
+println!("{}", x.is_nan());  // true
+
+// f64 does NOT implement Ord (because of NaN).
+// This is a compile-time safety net:
+// let mut v = vec![1.0, 2.0, f64::NAN];
+// v.sort();  // COMPILE ERROR - f64 doesn't implement Ord
+
+// Use total_cmp for sorting (available since Rust 1.62)
+let mut v = vec![1.0, f64::NAN, 2.0];
+v.sort_by(f64::total_cmp);  // NaN sorts to the end
+
+// Validate at boundaries
+fn validate_inputs(s: f64, k: f64, t: f64, sigma: f64) -&gt; Result&lt;(), String&gt; {
+    for (name, val) in [("S", s), ("K", k), ("T", t), ("sigma", sigma)] {
+        if !val.is_finite() {
+            return Err(format!("{name} is not finite: {val}"));
+        }
+        if val &lt;= 0.0 {
+            return Err(format!("{name} must be positive: {val}"));
+        }
+    }
+    Ok(())
+}</code></pre>
+
+  <h4>Kahan summation and stable variance</h4>
+  <pre><code class="language-rust">// Kahan compensated summation
+fn kahan_sum(values: &[f64]) -&gt; f64 {
+    let (mut sum, mut c) = (0.0_f64, 0.0_f64);
+    for &v in values {
+        let y = v - c;
+        let t = sum + y;
+        c = (t - sum) - y;
+        sum = t;
+    }
+    sum
+}
+
+// Welford online variance (numerically stable)
+fn variance_stable(x: &[f64]) -&gt; f64 {
+    let mut mean = 0.0;
+    let mut m2   = 0.0;
+    for (n, &xi) in x.iter().enumerate() {
+        let n = (n + 1) as f64;
+        let delta = xi - mean;
+        mean += delta / n;
+        m2   += delta * (xi - mean);
+    }
+    m2 / (x.len() as f64 - 1.0)
+}
+
+// Newtype for validated prices
+#[derive(Debug, Clone, Copy)]
+struct FinitePrice(f64);
+
+impl FinitePrice {
+    fn new(v: f64) -&gt; Result&lt;Self, String&gt; {
+        if v.is_finite() && v &gt;= 0.0 { Ok(Self(v)) }
+        else { Err(format!("Invalid price: {v}")) }
+    }
+    fn value(self) -&gt; f64 { self.0 }
+}</code></pre>
+  <div class="cpp-note">Rust's type system offers a unique advantage: <code>f64</code> does not implement <code>Ord</code>, so you cannot accidentally sort or compare floats without handling NaN. Use newtypes like <code>FinitePrice</code> to encode "validated and finite" in the type system, making invalid states unrepresentable.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go numerical accuracy</h3>
+  <h4>NaN and Inf checking</h4>
+  <pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "math"
+)
+
+func main() {
+    x := math.NaN()
+    fmt.Println(x + 1)           // NaN
+    fmt.Println(x &gt; 0)           // false - no panic
+    fmt.Println(x == x)          // false (NaN != NaN)
+    fmt.Println(math.IsNaN(x))   // true
+    fmt.Println(math.IsInf(x, 0)) // false
+}
+
+// Validate at boundaries
+func validateInputs(S, K, T, sigma float64) error {
+    params := map[string]float64{"S": S, "K": K, "T": T, "sigma": sigma}
+    for name, val := range params {
+        if math.IsNaN(val) || math.IsInf(val, 0) {
+            return fmt.Errorf("%s is not finite: %f", name, val)
+        }
+        if val &lt;= 0 {
+            return fmt.Errorf("%s must be positive: %f", name, val)
+        }
+    }
+    return nil
+}
+
+// Kahan compensated summation
+func kahanSum(values []float64) float64 {
+    sum, c := 0.0, 0.0
+    for _, v := range values {
+        y := v - c
+        t := sum + y
+        c = (t - sum) - y
+        sum = t
+    }
+    return sum
+}
+
+// Welford online variance
+func varianceStable(x []float64) float64 {
+    mean, m2 := 0.0, 0.0
+    for i, xi := range x {
+        n := float64(i + 1)
+        delta := xi - mean
+        mean += delta / n
+        m2 += delta * (xi - mean)
+    }
+    return m2 / float64(len(x)-1)
+}</code></pre>
+  <div class="cpp-note">Go follows IEEE 754 for all float operations. Unlike Rust, Go allows direct comparison and sorting of floats (NaN sorts unpredictably). There is no compile-time warning for NaN-unsafe operations &mdash; boundary validation and explicit <code>math.IsNaN</code> checks are your only defence.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript numerical accuracy</h3>
+  <h4>NaN and Inf handling</h4>
+  <pre><code class="language-typescript">// JavaScript/TypeScript follows IEEE 754
+const x = NaN;
+console.log(x + 1);        // NaN
+console.log(x &gt; 0);        // false - no error!
+console.log(x === x);      // false (NaN !== NaN)
+console.log(Number.isNaN(x));      // true (prefer over global isNaN)
+console.log(Number.isFinite(x));   // false
+
+// DANGER: global isNaN vs Number.isNaN
+console.log(isNaN("hello"));       // true (coerces string!)
+console.log(Number.isNaN("hello")); // false (correct)
+
+// Validate at boundaries
+function validateInputs(
+  S: number, K: number, T: number, sigma: number
+): void {
+  const params = { S, K, T, sigma };
+  for (const [name, val] of Object.entries(params)) {
+    if (!Number.isFinite(val)) {
+      throw new Error(`${name} is not finite: ${val}`);
+    }
+    if (val &lt;= 0) {
+      throw new Error(`${name} must be positive: ${val}`);
+    }
+  }
+}
+
+// Kahan compensated summation
+function kahanSum(values: number[]): number {
+  let sum = 0, c = 0;
+  for (const v of values) {
+    const y = v - c;
+    const t = sum + y;
+    c = (t - sum) - y;
+    sum = t;
+  }
+  return sum;
+}
+
+// Branded type for validated numbers
+type FinitePositive = number &amp; { readonly __brand: "FinitePositive" };
+
+function toFinitePositive(v: number): FinitePositive {
+  if (!Number.isFinite(v) || v &lt;= 0) {
+    throw new Error(`Not a finite positive number: ${v}`);
+  }
+  return v as FinitePositive;
+}</code></pre>
+  <div class="cpp-note">TypeScript has only one number type (<code>number</code> = IEEE 754 double). There is no <code>float</code> vs <code>double</code> distinction. Use <code>Number.isFinite</code> (not <code>isFinite</code>) and <code>Number.isNaN</code> (not <code>isNaN</code>) to avoid type-coercion traps. Branded types can encode "validated" in the type system, similar to Rust newtypes.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Numerical accuracy across languages</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>IEEE 754 compliance</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>NaN compile-time safety</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Precision control</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Arbitrary precision</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Fast-math risk</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Numeric validation tooling</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust</strong> is the only language where NaN comparison is a compile-time concern: <code>f64</code> does not implement <code>Ord</code>, preventing accidental NaN-unsafe sorting. Newtypes can encode "finite and positive" directly in the type system.</li>
+    <li><strong>C++</strong> gives maximum precision control (<code>float</code>, <code>double</code>, <code>long double</code>, compiler flags) but <code>-ffast-math</code> can silently break Kahan summation and NaN checks. This is the biggest numerical footgun in any language here.</li>
+    <li><strong>Python</strong> has arbitrary precision integers and <code>decimal.Decimal</code> for exact decimal arithmetic &mdash; useful for settlement calculations where floating-point is unacceptable.</li>
+    <li><strong>C#</strong> offers <code>decimal</code> (128-bit exact decimal) as a first-class type, ideal for financial calculations where rounding matters.</li>
+    <li><strong>Go</strong> has <code>math/big</code> for arbitrary precision but no special compile-time NaN protection. Validation is purely runtime.</li>
+    <li><strong>TypeScript</strong> has a single number type (64-bit double), no <code>float</code>/<code>int</code> distinction, and a notorious <code>isNaN</code> vs <code>Number.isNaN</code> trap.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Settlement / accounting (exact decimals):</strong> C# <code>decimal</code> or Python <code>Decimal</code></li>
+    <li><strong>Monte Carlo / pricing (speed + precision):</strong> C++ or Rust (<code>f64</code>, Kahan summation)</li>
+    <li><strong>Research / prototyping:</strong> Python (NumPy handles precision; focus on correctness first)</li>
+    <li><strong>Type-safe numerical pipelines:</strong> Rust (newtypes prevent NaN propagation at compile time)</li>
+    <li><strong>Full-stack dashboards displaying prices:</strong> TypeScript (but validate on the server side)</li>
+  </ul>
+</div>
