@@ -1,39 +1,32 @@
-# Welcome to Jekyll!
-#
+theme: jekyll-theme-chirpy
+
+lang: en
+timezone: Europe/London
+
 # Site settings
-email: me@finbytes.anonaddy.com
-future: true
+title: FinBytes
+tagline: "Quantitative Finance & Software Engineering"
 description: >-
   Just a documentary learning blog.
-baseurl: "/FinBytes"
 url: "https://mishcodesfinbytes.github.io"
-github_username: MishCodesFinBytes
+baseurl: "/FinBytes"
 
-# Build settings
-theme: minima
+github:
+  username: MishCodesFinBytes
 
-logo: /assets/images/logo.png
+# Chirpy-specific
+avatar: /assets/images/logo.png
 
-minima:
-  logo: /assets/images/logo.png
+social:
+  name: MishCodesFinBytes
+  email: me@finbytes.anonaddy.com
+  links:
+    - https://github.com/MishCodesFinBytes
 
-plugins:
-  - jekyll-feed
-  - jekyll-sitemap
+# Theme mode (dark/light/auto) — leave empty for auto
+theme_mode:
 
-include:
-  - _pages
-
-# ── Navigation ──────────────────────────────────────────────────────────────
-# header_pages is now only used for the simple flat links (About, Private).
-# The multi-level dropdown nav is hardcoded in _includes/header.html.
-# Quant Lab and Python index pages are included via their own collection/page
-# entries and linked directly in header.html.
-header_pages:
-  - _pages/2024-10-30-about.html
-  - private.html
-
-# ── Collections ─────────────────────────────────────────────────────────────
+# Collections
 collections:
   private:
     output: true
@@ -44,6 +37,28 @@ collections:
   cpp:
     output: true
     permalink: /cpp/:name/
-    # Posts in _cpp/series/A_testing/ etc. are picked up automatically.
-    # Each post must have an explicit 'permalink' in its front matter
-    # so the series subfolder path doesn't appear in the URL.
+
+include:
+  - _pages
+
+defaults:
+  - scope:
+      path: ""
+      type: posts
+    values:
+      layout: post
+      comments: true
+      toc: true
+  - scope:
+      path: ""
+      type: cpp
+    values:
+      layout: cpp-post
+      toc: false
+
+plugins:
+  - jekyll-feed
+  - jekyll-sitemap
+  - jekyll-seo-tag
+
+future: true

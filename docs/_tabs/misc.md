@@ -1,0 +1,111 @@
+---
+layout: page
+title: Misc
+icon: fas fa-toolbox
+order: 5
+permalink: /misc/
+---
+
+<style>
+.misc-lede { color:#666; font-size:.95rem; margin-bottom:2.5rem; max-width:580px; line-height:1.7; }
+.misc-section { margin-bottom:2.5rem; }
+.misc-hdr { font-size:.72rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#999; margin-bottom:.6rem; padding-bottom:.5rem; border-bottom:1px solid #ebebeb; display:flex; align-items:baseline; gap:.75rem; }
+.misc-hdr .sub { font-weight:400; font-size:.7rem; color:#bbb; letter-spacing:0; text-transform:none; }
+.misc-list { list-style:none; margin:0; padding:0; }
+.misc-list li { display:flex; align-items:baseline; gap:1rem; padding:.4rem 0; border-bottom:1px solid #f4f4f4; }
+.misc-list li:last-child { border-bottom:none; }
+.misc-date { font-size:.78rem; color:#ccc; white-space:nowrap; min-width:72px; }
+.misc-list a { font-size:.93rem; color:#333; text-decoration:none; line-height:1.4; }
+.misc-list a:hover { color:#2a7ae2; text-decoration:underline; }
+</style>
+
+<p class="misc-lede">Infrastructure, tooling, and systems that don't belong to a specific language. AWS, Terraform, FastAPI, databases, dashboards, CI/CD, and anything else that keeps the wheels turning.</p>
+
+<div class="misc-section" id="tech-references">
+  <div class="misc-hdr">Technology references <span class="sub">from the QuantLab project</span></div>
+  <ul class="misc-list">
+    <li><span class="misc-date">Reference</span><a href="{{ "/misc/aws-services/" | relative_url }}">AWS Services &mdash; S3, Lambda, API Gateway, RDS, DynamoDB, SQS, SNS, ElastiCache, CloudWatch</a></li>
+    <li><span class="misc-date">Reference</span><a href="{{ "/misc/terraform/" | relative_url }}">Terraform &mdash; Infrastructure as Code for Quant Systems</a></li>
+    <li><span class="misc-date">Reference</span><a href="{{ "/misc/fastapi/" | relative_url }}">FastAPI &mdash; Async APIs for Financial Data</a></li>
+    <li><span class="misc-date">Reference</span><a href="{{ "/misc/postgresql-sqlalchemy/" | relative_url }}">PostgreSQL &amp; SQLAlchemy &mdash; Async Database Layer</a></li>
+    <li><span class="misc-date">Reference</span><a href="{{ "/misc/streamlit/" | relative_url }}">Streamlit &mdash; Python-Only Dashboards</a></li>
+    <li><span class="misc-date">Reference</span><a href="{{ "/misc/github-actions/" | relative_url }}">GitHub Actions &amp; CI/CD &mdash; Automated Testing and Deployment</a></li>
+  </ul>
+</div>
+
+<div class="misc-section" id="redis">
+  <div class="misc-hdr">Redis &amp; caching <span class="sub">Jan&ndash;Feb 2026</span></div>
+  <ul class="misc-list">
+    {% for p in site.posts %}
+      {% assign pd = p.date | date: "%Y-%m-%d" %}
+      {% assign sl = p.slug %}
+      {% assign show = false %}
+      {% if p.tags contains "redis" or p.tags contains "caching" or p.section == "redis" %}{% assign show = true %}{% endif %}
+      {% if pd >= "2026-01-02" and pd <= "2026-02-08" %}
+        {% if sl contains "redis" or sl contains "cache" or sl contains "gunicorn" or sl contains "tracing" or sl contains "lru" or sl contains "distributed" %}{% assign show = true %}{% endif %}
+      {% endif %}
+      {% if show %}
+        <li><span class="misc-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="misc-section" id="queues">
+  <div class="misc-hdr">Message queues <span class="sub">RabbitMQ, Redis pub/sub &amp; alternatives</span></div>
+  <ul class="misc-list">
+    {% for p in site.posts %}
+      {% assign show = false %}
+      {% if p.tags contains "rabbitmq" or p.tags contains "queues" or p.tags contains "message-queue" or p.section == "queues" %}{% assign show = true %}{% endif %}
+      {% if show %}
+        <li><span class="misc-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="misc-section" id="cli">
+  <div class="misc-hdr">CLI tools &amp; scripting <span class="sub">argparse, making scripts professional</span></div>
+  <ul class="misc-list">
+    {% for p in site.posts %}
+      {% assign pd = p.date | date: "%Y-%m-%d" %}
+      {% assign sl = p.slug %}
+      {% assign show = false %}
+      {% if p.tags contains "argparse" or p.tags contains "cli" or p.section == "cli" %}{% assign show = true %}{% endif %}
+      {% if pd >= "2026-02-09" and pd <= "2026-02-28" %}
+        {% if sl contains "argparse" %}{% assign show = true %}{% endif %}
+      {% endif %}
+      {% if show %}
+        <li><span class="misc-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="misc-section" id="git">
+  <div class="misc-hdr">Git <span class="sub">workflow and setup</span></div>
+  <ul class="misc-list">
+    {% for p in site.posts %}
+      {% assign show = false %}
+      {% if p.tags contains "git" or p.section == "git" %}{% assign show = true %}{% endif %}
+      {% assign sl = p.slug %}
+      {% if sl contains "git" %}{% assign show = true %}{% endif %}
+      {% if show %}
+        <li><span class="misc-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+</div>
+
+<div class="misc-section" id="devops">
+  <div class="misc-hdr">Docker, Kubernetes &amp; CI/CD <span class="sub">just enough for a developer</span></div>
+  <ul class="misc-list">
+    {% for p in site.posts %}
+      {% assign show = false %}
+      {% if p.tags contains "docker" or p.tags contains "kubernetes" or p.tags contains "ci-cd" or p.section == "devops" %}{% assign show = true %}{% endif %}
+      {% if show %}
+        <li><span class="misc-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
+      {% endif %}
+    {% endfor %}
+  </ul>
+</div>
