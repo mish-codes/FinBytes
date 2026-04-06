@@ -28,6 +28,9 @@ theme_mode:
 
 # Collections
 collections:
+  tabs:
+    output: true
+    sort_by: order
   private:
     output: true
     permalink: /private/:name/
