@@ -1,0 +1,154 @@
+---
+layout: post
+title: "Terraform Modules and Default Probability Term Structures"
+date: 2026-04-13
+tags: [aws, terraform, modules, default-probability, survival-curve, hazard-rate, expected-loss, credit-risk, quant-lab, python]
+categories:
+- AWS
+- DevOps
+- Credit Risk
+permalink: "/2026/04/13/terraform-advanced-default-probs/"
+---
+
+<h2>Two Upgrades in One Exercise</h2>
+
+<p>Exercise 18 pairs a Terraform maturity step (modules, environments, remote state) with a credit-risk maturity step (piecewise hazard rates, survival curves, expected loss). Both are about moving from "good enough for one-off experiments" to "ready for production plumbing."</p>
+
+<h2>From Constant to Piecewise Hazard Rates</h2>
+
+<p>Exercise 15 used a single constant hazard rate &lambda; = s / (1 &minus; R), which implies the same instantaneous default intensity at every horizon. That's fine for a quick read, but CDS term structures are rarely flat. A BBB name might trade at 80 bps for 1Y and 150 bps for 5Y &mdash; the market is saying default risk is back-loaded, probably because the company has enough cash to survive the near term but faces refinancing walls or competitive threats later.</p>
+
+<p>Piecewise-constant hazard rates capture this. For each successive tenor interval, we solve for the interval-specific &lambda; that makes the cumulative hazard integrate to the level implied by the observed CDS spread:</p>
+
+<pre><code class="language-python">def bootstrap_hazard_rates(cds_spreads, recovery_rate=0.40):
+    lgd = 1.0 - recovery_rate
+    ordered = [(t, cds_spreads[t]) for t in TENOR_ORDER if t in cds_spreads]
+
+    hazard_rates = {}
+    cum_hazard = 0.0
+    prev_years = 0.0
+
+    for tenor, spread_bps in ordered:
+        years = CDS_TENOR_YEARS[tenor]
+        dt = years - prev_years
+
+        lambda_avg = (spread_bps / 10000.0) / lgd
+        cum_hazard_target = lambda_avg * years
+
+        lambda_i = (cum_hazard_target - cum_hazard) / dt if dt &gt; 0 else lambda_avg
+        lambda_i = max(lambda_i, 0.0)
+
+        interval = f"{int(prev_years)}Y-{tenor}" if prev_years &gt; 0 else f"0-{tenor}"
+        hazard_rates[interval] = round(lambda_i, 6)
+
+        cum_hazard = cum_hazard_target
+        prev_years = years
+
+    return hazard_rates
+</code></pre>
+
+<p>The logic: the CDS spread at tenor T implies an <em>average</em> hazard rate over [0, T]. If you already know the cumulative hazard up to the previous tenor, the interval-specific &lambda; is whatever fills the gap. On a steepening curve, later intervals have higher &lambda;. On an inverted curve (rare, but possible for distressed names with near-term default risk), early intervals have higher &lambda; and we floor later intervals at 0.</p>
+
+<h3>Reading the Output</h3>
+
+<p>For a hypothetical BBB name with spreads {1Y: 80, 3Y: 120, 5Y: 150} and 40% recovery:</p>
+
+<pre><code>Interval    λ          Interpretation
+0-1Y        0.0133     Low near-term risk: company has runway
+1Y-3Y       0.0200     Rising risk: market sees refinancing pressure
+3Y-5Y       0.0250     Highest interval risk: structural concerns
+</code></pre>
+
+<p>A flat curve would give the same &lambda; everywhere. The piecewise structure is what lets you see <em>when</em> the market thinks the risk lives.</p>
+
+<h2>Survival Curves</h2>
+
+<p>The survival probability is the complement of the cumulative default probability:</p>
+
+<pre><code>S(T) = exp(&minus;&lambda;_avg &times; T)
+P(default by T) = 1 &minus; S(T)</code></pre>
+
+<p>Plotted over time, survival curves are always decreasing and always start at 1.0 (you're alive today with certainty). Their <em>shape</em> tells you about the risk profile:</p>
+
+<ul>
+  <li><strong>Convex</strong> (drops steeply early, flattens later): front-loaded risk. The dangerous period is now. If the entity survives the near term, it's probably fine.</li>
+  <li><strong>Concave</strong> (drops slowly early, steepens later): back-loaded risk. Safe now, trouble ahead. This is the pattern for companies burning cash or facing debt maturity walls.</li>
+  <li><strong>Approximately linear</strong>: constant hazard. Risk is evenly distributed. This is what a flat CDS curve implies.</li>
+</ul>
+
+<p>A credit analyst looking at two names with the same 5Y CDS spread but different curve shapes would treat them very differently. Same headline risk, very different stories.</p>
+
+<h2>Expected Loss: PD &times; LGD &times; EAD</h2>
+
+<p>The expected loss formula is the foundation of credit risk capital calculations (Basel II/III). Three inputs:</p>
+
+<ul>
+  <li><strong>PD</strong> (Probability of Default): from the CDS-implied default probability.</li>
+  <li><strong>LGD</strong> (Loss Given Default): 1 &minus; recovery rate. Senior unsecured: ~60%. Secured: ~40%. Subordinated: ~80%.</li>
+  <li><strong>EAD</strong> (Exposure at Default): dollar amount at risk. For a bond, typically par value.</li>
+</ul>
+
+<pre><code class="language-python">def expected_loss(default_prob, lgd, exposure):
+    return round(default_prob * lgd * exposure, 2)
+</code></pre>
+
+<p>Example: a $1M senior unsecured bond with a 5% implied default probability:</p>
+
+<pre><code>EL = 0.05 &times; 0.60 &times; $1,000,000 = $30,000</code></pre>
+
+<p>$30K expected loss on a $1M position. That's the number that drives reserve calculations, credit limits, and portfolio allocation decisions.</p>
+
+<h2>Terraform: Modules and Environments</h2>
+
+<p>The Terraform side of this exercise is about organising infrastructure code for a growing system. Through exercises 12 and 14 we wrote flat <code>.tf</code> files &mdash; fine for one or two resources, but the full credit-risk platform now has Lambda functions, API Gateways (REST and HTTP), RDS, SQS, SNS, DynamoDB, and eventually ElastiCache. A single flat config would be unreadable.</p>
+
+<h3>Modules</h3>
+
+<p>Terraform modules are reusable blocks of infrastructure. A <code>lambda-api</code> module might take a function name, handler path, and route key, and create the Lambda + API Gateway integration + route + permission. You call it once per endpoint:</p>
+
+<pre><code class="language-hcl">module "curve_fitting" {
+  source        = "./modules/lambda-api"
+  function_name = "quant-lab-curve-fitting"
+  handler       = "handler.lambda_handler"
+  route_key     = "POST /curves/fit"
+}
+
+module "cds_endpoint" {
+  source        = "./modules/lambda-api"
+  function_name = "quant-lab-cds"
+  handler       = "handler.lambda_handler"
+  route_key     = "POST /credit/cds"
+}
+</code></pre>
+
+<p>Same infrastructure pattern, different parameters. The module encapsulates the wiring so each new endpoint is 5 lines instead of 30.</p>
+
+<h3>Environments via Variable Files</h3>
+
+<p>Rather than Terraform workspaces (which share state but use different variable values), the common pattern is environment-specific <code>.tfvars</code> files:</p>
+
+<pre><code class="language-bash">terraform plan -var-file=environments/dev.tfvars
+terraform plan -var-file=environments/prod.tfvars
+</code></pre>
+
+<p>Dev might use <code>db.t3.micro</code> and a single-AZ RDS; prod uses <code>db.r6g.large</code> with Multi-AZ. Same config, different inputs.</p>
+
+<h3>Remote State</h3>
+
+<p>Local state (<code>terraform.tfstate</code> on disk) works for solo development but breaks the moment two people run <code>terraform apply</code> simultaneously &mdash; they'll both read the same state, plan independently, and one will clobber the other's changes. The fix is an S3 backend with DynamoDB locking:</p>
+
+<pre><code class="language-hcl">backend "s3" {
+  bucket         = "finbytes-quant-lab-tfstate"
+  key            = "credit-risk/terraform.tfstate"
+  region         = "us-east-1"
+  dynamodb_table = "terraform-locks"
+}
+</code></pre>
+
+<p>DynamoDB provides a distributed lock: before writing state, Terraform acquires a row-level lock. If someone else is mid-apply, yours waits. This is a one-time setup that prevents an entire class of infrastructure bugs.</p>
+
+<h2>What's Next</h2>
+
+<p>Exercise 19 adds observability: CloudWatch custom metrics, dashboards, and log queries for the APIs we've been building. On the finance side, it implements OAS (Option-Adjusted Spread) and Z-spread calculations with a binomial interest rate tree for callable bonds.</p>
+
+<p>Full code: <a href="https://github.com/MishCodesFinBytes/QuantLab/tree/master/exercises/18-terraform-advanced">exercises/18-terraform-advanced</a>. 13 tests, all green.</p>
