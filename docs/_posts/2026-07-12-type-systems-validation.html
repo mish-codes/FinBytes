@@ -1,0 +1,401 @@
+---
+layout: post
+title: "Type Systems & Validation: Pydantic vs Zod vs serde"
+date: 2026-07-12
+tags: [types, validation, pydantic, zod, serde, type-safety, python, typescript, rust, go, csharp, comparison]
+categories:
+- Comparisons
+section: comparisons
+permalink: "/comparisons/type-systems-validation/"
+---
+
+<h2>One Model, Six Languages</h2>
+
+<p>The task: validate a trading request with these fields:</p>
+
+<ul>
+  <li><strong>ticker</strong> &mdash; string, uppercase, 1&ndash;5 characters</li>
+  <li><strong>quantity</strong> &mdash; positive integer</li>
+  <li><strong>side</strong> &mdash; "buy" or "sell"</li>
+  <li><strong>price</strong> &mdash; optional positive float</li>
+</ul>
+
+<p>Every language handles this differently. Some catch errors at compile time, some at runtime, and some not at all unless you add validation manually. Here is each approach.</p>
+
+<h2>1. Python Pydantic</h2>
+
+<pre><code class="language-python">from pydantic import BaseModel, Field, field_validator
+from typing import Literal, Optional
+
+class TradeRequest(BaseModel):
+    ticker: str = Field(min_length=1, max_length=5)
+    quantity: int = Field(gt=0)
+    side: Literal["buy", "sell"]
+    price: Optional[float] = Field(default=None, gt=0)
+
+    @field_validator("ticker")
+    @classmethod
+    def ticker_uppercase(cls, v: str) -> str:
+        if v != v.upper():
+            raise ValueError("ticker must be uppercase")
+        return v
+
+# Valid
+trade = TradeRequest(ticker="AAPL", quantity=100, side="buy", price=189.50)
+
+# Invalid — triggers ValidationError
+try:
+    bad = TradeRequest(ticker="aapl toolong", quantity=-5, side="hold")
+except Exception as e:
+    print(e)
+    # 3 validation errors for TradeRequest
+    # ticker: String should have at most 5 characters
+    # quantity: Input should be greater than 0
+    # side: Input should be 'buy' or 'sell'
+</code></pre>
+
+<p>Pydantic validates at runtime when you instantiate the model. It generates clear, structured error messages with field paths. It also handles JSON serialization (<code>trade.model_dump_json()</code>) and schema generation (<code>TradeRequest.model_json_schema()</code>).</p>
+
+<h2>2. TypeScript Zod</h2>
+
+<pre><code class="language-typescript">import { z } from "zod";
+
+const TradeRequest = z.object({
+    ticker: z.string().min(1).max(5).toUpperCase(),
+    quantity: z.number().int().positive(),
+    side: z.enum(["buy", "sell"]),
+    price: z.number().positive().optional(),
+});
+
+type TradeRequest = z.infer&lt;typeof TradeRequest&gt;;
+
+// Valid
+const trade = TradeRequest.parse({
+    ticker: "AAPL", quantity: 100, side: "buy", price: 189.50,
+});
+
+// Invalid — throws ZodError
+try {
+    TradeRequest.parse({ ticker: "", quantity: -5, side: "hold" });
+} catch (e) {
+    console.log(e.issues);
+    // [
+    //   { path: ["ticker"], message: "String must contain at least 1 character(s)" },
+    //   { path: ["quantity"], message: "Number must be greater than 0" },
+    //   { path: ["side"], message: "Invalid enum value..." },
+    // ]
+}
+</code></pre>
+
+<p>Zod validates at runtime but also infers TypeScript types via <code>z.infer</code>. You define the schema once and get both validation and type safety. The <code>.toUpperCase()</code> transform modifies the input during parsing&mdash;useful for normalization.</p>
+
+<h2>3. Rust serde + validator</h2>
+
+<pre><code class="language-rust">use serde::Deserialize;
+use validator::Validate;
+
+#[derive(Debug, Deserialize, Validate)]
+struct TradeRequest {
+    #[validate(length(min = 1, max = 5))]
+    ticker: String,
+
+    #[validate(range(min = 1))]
+    quantity: i64,
+
+    side: Side,
+
+    #[validate(range(min = 0.01))]
+    price: Option&lt;f64&gt;,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "lowercase")]
+enum Side { Buy, Sell }
+
+fn main() {
+    let json = r#"{"ticker":"AAPL","quantity":100,"side":"buy","price":189.50}"#;
+
+    // serde handles deserialization + type checking
+    let trade: TradeRequest = serde_json::from_str(json).unwrap();
+
+    // validator handles business rules
+    trade.validate().unwrap();
+
+    // Invalid side value fails at deserialization (serde), not validation
+    let bad = r#"{"ticker":"AAPL","quantity":100,"side":"hold"}"#;
+    let result: Result&lt;TradeRequest, _&gt; = serde_json::from_str(bad);
+    // Err: unknown variant `hold`, expected `buy` or `sell`
+}
+</code></pre>
+
+<p>Rust splits the work: <code>serde</code> handles deserialization and type matching (wrong type = compile error or deserialization error). The <code>validator</code> crate handles business rules (range, length). The enum <code>Side</code> restricts values at the type level&mdash;no invalid enum can exist in memory.</p>
+
+<h2>4. Go struct tags + validator</h2>
+
+<pre><code class="language-go">package main
+
+import (
+    "encoding/json"
+    "fmt"
+    "github.com/go-playground/validator/v10"
+)
+
+type TradeRequest struct {
+    Ticker   string   `json:"ticker"   validate:"required,min=1,max=5,uppercase"`
+    Quantity int      `json:"quantity" validate:"required,gt=0"`
+    Side     string   `json:"side"     validate:"required,oneof=buy sell"`
+    Price    *float64 `json:"price"    validate:"omitempty,gt=0"`
+}
+
+func main() {
+    raw := []byte(`{"ticker":"AAPL","quantity":100,"side":"buy","price":189.50}`)
+    var trade TradeRequest
+    json.Unmarshal(raw, &amp;trade)
+
+    v := validator.New()
+    err := v.Struct(trade)
+    if err != nil {
+        for _, e := range err.(validator.ValidationErrors) {
+            fmt.Printf("Field: %s, Tag: %s, Value: %v\n", e.Field(), e.Tag(), e.Value())
+        }
+    }
+}
+</code></pre>
+
+<p>Go uses struct tags for validation rules. The <code>go-playground/validator</code> package reads tags at runtime via reflection. The pattern is simple but error messages are less descriptive than Pydantic or Zod&mdash;you often need to map tag names to human-readable messages yourself.</p>
+
+<h2>5. C# DataAnnotations</h2>
+
+<pre><code class="language-csharp">using System.ComponentModel.DataAnnotations;
+
+public class TradeRequest
+{
+    [Required]
+    [StringLength(5, MinimumLength = 1)]
+    [RegularExpression(@"^[A-Z]+$", ErrorMessage = "Ticker must be uppercase letters")]
+    public string Ticker { get; set; }
+
+    [Required]
+    [Range(1, int.MaxValue, ErrorMessage = "Quantity must be positive")]
+    public int Quantity { get; set; }
+
+    [Required]
+    [RegularExpression(@"^(buy|sell)$", ErrorMessage = "Side must be 'buy' or 'sell'")]
+    public string Side { get; set; }
+
+    [Range(0.01, double.MaxValue, ErrorMessage = "Price must be positive")]
+    public double? Price { get; set; }
+}
+
+// Validation
+var trade = new TradeRequest { Ticker = "AAPL", Quantity = 100, Side = "buy" };
+var context = new ValidationContext(trade);
+var results = new List&lt;ValidationResult&gt;();
+bool isValid = Validator.TryValidateObject(trade, context, results, true);
+
+if (!isValid)
+{
+    foreach (var error in results)
+        Console.WriteLine($"{string.Join(",", error.MemberNames)}: {error.ErrorMessage}");
+}
+</code></pre>
+
+<p>C# uses attributes (annotations) on properties. ASP.NET Core validates these automatically on model binding. Outside of a web framework, you call <code>Validator.TryValidateObject</code> manually. The approach is declarative but the regex-based enum validation is clunky compared to Zod or Pydantic.</p>
+
+<h2>6. C++ (Manual Validation)</h2>
+
+<pre><code class="language-cpp">#include &lt;string&gt;
+#include &lt;optional&gt;
+#include &lt;stdexcept&gt;
+#include &lt;vector&gt;
+#include &lt;algorithm&gt;
+
+struct TradeRequest {
+    std::string ticker;
+    int quantity;
+    std::string side;
+    std::optional&lt;double&gt; price;
+
+    std::vector&lt;std::string&gt; validate() const {
+        std::vector&lt;std::string&gt; errors;
+
+        if (ticker.empty() || ticker.size() &gt; 5)
+            errors.push_back("ticker must be 1-5 characters");
+
+        if (!std::all_of(ticker.begin(), ticker.end(), ::isupper))
+            errors.push_back("ticker must be uppercase");
+
+        if (quantity &lt;= 0)
+            errors.push_back("quantity must be positive");
+
+        if (side != "buy" &amp;&amp; side != "sell")
+            errors.push_back("side must be 'buy' or 'sell'");
+
+        if (price.has_value() &amp;&amp; price.value() &lt;= 0.0)
+            errors.push_back("price must be positive");
+
+        return errors;
+    }
+};
+
+// Usage
+TradeRequest req{"AAPL", 100, "buy", 189.50};
+auto errors = req.validate();
+if (!errors.empty()) {
+    for (const auto&amp; e : errors)
+        printf("Error: %s\n", e.c_str());
+}
+</code></pre>
+
+<p>C++ has no standard validation framework. You write it by hand. The upside: full control, no runtime reflection overhead. The downside: every field is a manual check, and there is no schema generation, no serialization integration, and no standardized error format.</p>
+
+<h2>Comparison Table</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Feature</th>
+      <th style="text-align:left; padding:0.4rem;">Pydantic</th>
+      <th style="text-align:left; padding:0.4rem;">Zod</th>
+      <th style="text-align:left; padding:0.4rem;">serde+validator</th>
+      <th style="text-align:left; padding:0.4rem;">Go validator</th>
+      <th style="text-align:left; padding:0.4rem;">C# Annotations</th>
+      <th style="text-align:left; padding:0.4rem;">C++ manual</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Compile-time safety</td>
+      <td style="padding:0.4rem;">None</td>
+      <td style="padding:0.4rem;">Type inference</td>
+      <td style="padding:0.4rem;">Strong (enums, types)</td>
+      <td style="padding:0.4rem;">Struct types only</td>
+      <td style="padding:0.4rem;">Strong types</td>
+      <td style="padding:0.4rem;">Types only</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Runtime validation</td>
+      <td style="padding:0.4rem;">Full</td>
+      <td style="padding:0.4rem;">Full</td>
+      <td style="padding:0.4rem;">Full (two crates)</td>
+      <td style="padding:0.4rem;">Full</td>
+      <td style="padding:0.4rem;">Full</td>
+      <td style="padding:0.4rem;">Manual</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Error quality</td>
+      <td style="padding:0.4rem;">Excellent</td>
+      <td style="padding:0.4rem;">Excellent</td>
+      <td style="padding:0.4rem;">Good</td>
+      <td style="padding:0.4rem;">Basic (needs mapping)</td>
+      <td style="padding:0.4rem;">Good</td>
+      <td style="padding:0.4rem;">Whatever you write</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Serialization</td>
+      <td style="padding:0.4rem;">Built in</td>
+      <td style="padding:0.4rem;">Via transform</td>
+      <td style="padding:0.4rem;">Built in (serde)</td>
+      <td style="padding:0.4rem;">Separate (encoding/json)</td>
+      <td style="padding:0.4rem;">System.Text.Json</td>
+      <td style="padding:0.4rem;">Manual / nlohmann</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Schema generation</td>
+      <td style="padding:0.4rem;">JSON Schema</td>
+      <td style="padding:0.4rem;">JSON Schema (plugin)</td>
+      <td style="padding:0.4rem;">Via schemars</td>
+      <td style="padding:0.4rem;">No</td>
+      <td style="padding:0.4rem;">Via Swashbuckle</td>
+      <td style="padding:0.4rem;">No</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Ecosystem maturity</td>
+      <td style="padding:0.4rem;">Mature (v2+)</td>
+      <td style="padding:0.4rem;">Mature (v3+)</td>
+      <td style="padding:0.4rem;">Mature</td>
+      <td style="padding:0.4rem;">Mature</td>
+      <td style="padding:0.4rem;">Mature</td>
+      <td style="padding:0.4rem;">N/A</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>What Gets Caught Where</h2>
+
+<p>This is the table that matters. For each bug type, when does each tool catch it?</p>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Bug</th>
+      <th style="text-align:left; padding:0.4rem;">Pydantic</th>
+      <th style="text-align:left; padding:0.4rem;">Zod</th>
+      <th style="text-align:left; padding:0.4rem;">serde+validator</th>
+      <th style="text-align:left; padding:0.4rem;">Go validator</th>
+      <th style="text-align:left; padding:0.4rem;">C# Annotations</th>
+      <th style="text-align:left; padding:0.4rem;">C++ manual</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Wrong type (string for int)</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Compile</td>
+      <td style="padding:0.4rem;">Runtime (JSON)</td>
+      <td style="padding:0.4rem;">Compile</td>
+      <td style="padding:0.4rem;">Compile</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Missing required field</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Runtime (serde)</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Not caught</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Negative quantity</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Runtime (validator)</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Runtime (if coded)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Invalid enum ("hold")</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Compile (enum) / Runtime (JSON)</td>
+      <td style="padding:0.4rem;">Runtime</td>
+      <td style="padding:0.4rem;">Runtime (regex)</td>
+      <td style="padding:0.4rem;">Runtime (if coded)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Extra unknown field</td>
+      <td style="padding:0.4rem;">Ignored (configurable)</td>
+      <td style="padding:0.4rem;">Stripped (configurable)</td>
+      <td style="padding:0.4rem;">Ignored by default</td>
+      <td style="padding:0.4rem;">Ignored</td>
+      <td style="padding:0.4rem;">Ignored</td>
+      <td style="padding:0.4rem;">Not caught</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>When to Use What</h2>
+
+<p><strong>Pydantic</strong> &mdash; Python APIs, FastAPI integration, anywhere you need runtime validation with excellent error messages and JSON Schema generation. The default choice for Python web services.</p>
+
+<p><strong>Zod</strong> &mdash; TypeScript APIs and form validation. Bridges the gap between runtime validation and compile-time types. Pairs well with tRPC, Next.js, and any TypeScript backend.</p>
+
+<p><strong>serde + validator</strong> &mdash; Rust services where you want the compiler to catch as much as possible, then validate business rules at the boundary. The two-crate split (deserialization vs validation) is slightly verbose but very explicit.</p>
+
+<p><strong>Go validator</strong> &mdash; Go APIs where struct tags keep validation close to the type definition. Simple and effective, but you will write custom error formatting.</p>
+
+<p><strong>C# DataAnnotations</strong> &mdash; ASP.NET Core APIs where model binding validates automatically. Works well in the framework; awkward outside it.</p>
+
+<p><strong>C++ manual</strong> &mdash; When you have no choice. There is no standard equivalent. Write a <code>validate()</code> method, return a list of errors, and accept that this is boilerplate you maintain by hand.</p>

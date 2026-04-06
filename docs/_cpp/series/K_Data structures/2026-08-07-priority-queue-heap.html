@@ -1,0 +1,474 @@
+---
+layout: cpp-post
+title: "Priority Queue — Build a Min-Heap From an Array"
+description: "Complete binary tree as array, sift-up, sift-down, heapify. Stdlib APIs are surprisingly inconsistent."
+date: 2026-08-07
+tags: [data-structures, heap, priority-queue, implementation]
+permalink: /cpp/heap-impl/
+---
+
+<div id="tab-intro"  class="ql-tab-content active">
+  <h3>A tree stored in an array</h3>
+  <p>A min-heap is a complete binary tree where every parent is smaller than or equal to its children. The smallest element is always at the root. Because the tree is complete, we can store it in a flat array with no pointers:</p>
+  <ul>
+    <li>Parent of index <code>i</code>: <code>(i - 1) / 2</code></li>
+    <li>Left child of index <code>i</code>: <code>2*i + 1</code></li>
+    <li>Right child of index <code>i</code>: <code>2*i + 2</code></li>
+  </ul>
+  <p><strong>Push:</strong> append to the end, then <strong>sift up</strong> &mdash; swap with parent while smaller. O(log n). <strong>Pop:</strong> swap root with last element, remove last, then <strong>sift down</strong> &mdash; swap with smallest child while larger. O(log n). <strong>Peek:</strong> return index 0. O(1).</p>
+  <p><strong>Heapify</strong> builds a heap from an unsorted array in O(n) by sifting down from the last non-leaf to index 0. This is faster than pushing n elements individually (O(n log n)).</p>
+  <p>The stdlib APIs across languages are surprisingly inconsistent &mdash; some default to max-heap, some to min-heap, some use classes, others use bare functions on arrays.</p>
+</div>
+
+<div id="tab-python" class="ql-tab-content" style="display:none">
+  <h3>Python &mdash; MinHeap class (heapq is functions-on-list)</h3>
+  <pre><code class="language-python">class MinHeap:
+    def __init__(self, items=None):
+        self._data = list(items) if items else []
+        if self._data:
+            self._heapify()
+
+    def __len__(self):
+        return len(self._data)
+
+    def push(self, val):
+        self._data.append(val)
+        self._sift_up(len(self._data) - 1)
+
+    def pop(self):
+        if not self._data:
+            raise IndexError("pop from empty heap")
+        self._swap(0, len(self._data) - 1)
+        val = self._data.pop()
+        if self._data:
+            self._sift_down(0)
+        return val
+
+    def peek(self):
+        if not self._data:
+            raise IndexError("peek at empty heap")
+        return self._data[0]
+
+    def _sift_up(self, i):
+        while i &gt; 0:
+            parent = (i - 1) // 2
+            if self._data[i] &lt; self._data[parent]:
+                self._swap(i, parent)
+                i = parent
+            else:
+                break
+
+    def _sift_down(self, i):
+        n = len(self._data)
+        while True:
+            smallest = i
+            left, right = 2*i + 1, 2*i + 2
+            if left &lt; n and self._data[left] &lt; self._data[smallest]:
+                smallest = left
+            if right &lt; n and self._data[right] &lt; self._data[smallest]:
+                smallest = right
+            if smallest == i:
+                break
+            self._swap(i, smallest)
+            i = smallest
+
+    def _heapify(self):
+        for i in range(len(self._data) // 2 - 1, -1, -1):
+            self._sift_down(i)
+
+    def _swap(self, i, j):
+        self._data[i], self._data[j] = self._data[j], self._data[i]
+
+h = MinHeap([5, 3, 8, 1, 2])
+print(h.pop(), h.pop(), h.pop())  # 1 2 3</code></pre>
+  <div class="cpp-note">Python's <code>heapq</code> module provides <code>heappush</code> and <code>heappop</code> as standalone functions that operate on a plain list. There is no <code>Heap</code> class in the stdlib. This design is minimal but means you can accidentally break the heap invariant by modifying the list directly.</div>
+</div>
+
+<div id="tab-csharp" class="ql-tab-content" style="display:none">
+  <h3>C# &mdash; generic MinHeap</h3>
+  <pre><code class="language-csharp">public class MinHeap&lt;T&gt; where T : IComparable&lt;T&gt;
+{
+    private readonly List&lt;T&gt; _data = new();
+
+    public int Count =&gt; _data.Count;
+
+    public MinHeap() { }
+    public MinHeap(IEnumerable&lt;T&gt; items)
+    {
+        _data.AddRange(items);
+        for (int i = _data.Count / 2 - 1; i &gt;= 0; i--) SiftDown(i);
+    }
+
+    public void Push(T val)
+    {
+        _data.Add(val);
+        SiftUp(_data.Count - 1);
+    }
+
+    public T Pop()
+    {
+        if (_data.Count == 0) throw new InvalidOperationException("empty");
+        T val = _data[0];
+        _data[0] = _data[^1];
+        _data.RemoveAt(_data.Count - 1);
+        if (_data.Count &gt; 0) SiftDown(0);
+        return val;
+    }
+
+    public T Peek() =&gt; _data.Count &gt; 0
+        ? _data[0]
+        : throw new InvalidOperationException("empty");
+
+    private void SiftUp(int i)
+    {
+        while (i &gt; 0)
+        {
+            int p = (i - 1) / 2;
+            if (_data[i].CompareTo(_data[p]) &lt; 0) { Swap(i, p); i = p; }
+            else break;
+        }
+    }
+
+    private void SiftDown(int i)
+    {
+        int n = _data.Count;
+        while (true)
+        {
+            int sm = i, l = 2*i+1, r = 2*i+2;
+            if (l &lt; n &amp;&amp; _data[l].CompareTo(_data[sm]) &lt; 0) sm = l;
+            if (r &lt; n &amp;&amp; _data[r].CompareTo(_data[sm]) &lt; 0) sm = r;
+            if (sm == i) break;
+            Swap(i, sm); i = sm;
+        }
+    }
+
+    private void Swap(int i, int j) { (_data[i], _data[j]) = (_data[j], _data[i]); }
+}
+
+var h = new MinHeap&lt;int&gt;(new[] { 5, 3, 8, 1, 2 });
+Console.WriteLine($"{h.Pop()} {h.Pop()} {h.Pop()}"); // 1 2 3</code></pre>
+  <div class="cpp-note">.NET 6+ added <code>PriorityQueue&lt;TElement, TPriority&gt;</code> which separates element from priority. Our implementation is simpler &mdash; the element itself is comparable. The stdlib version is a min-heap by default.</div>
+</div>
+
+<div id="tab-cpp" class="ql-tab-content" style="display:none">
+  <h3>C++ &mdash; min-heap (stdlib defaults to max)</h3>
+  <pre><code class="language-cpp">#include &lt;vector&gt;
+#include &lt;stdexcept&gt;
+#include &lt;algorithm&gt;
+
+template&lt;typename T&gt;
+class MinHeap {
+    std::vector&lt;T&gt; data_;
+
+    void sift_up(size_t i) {
+        while (i &gt; 0) {
+            size_t p = (i - 1) / 2;
+            if (data_[i] &lt; data_[p]) { std::swap(data_[i], data_[p]); i = p; }
+            else break;
+        }
+    }
+
+    void sift_down(size_t i) {
+        size_t n = data_.size();
+        while (true) {
+            size_t sm = i, l = 2*i+1, r = 2*i+2;
+            if (l &lt; n &amp;&amp; data_[l] &lt; data_[sm]) sm = l;
+            if (r &lt; n &amp;&amp; data_[r] &lt; data_[sm]) sm = r;
+            if (sm == i) break;
+            std::swap(data_[i], data_[sm]);
+            i = sm;
+        }
+    }
+
+public:
+    MinHeap() = default;
+
+    explicit MinHeap(std::vector&lt;T&gt; items) : data_(std::move(items)) {
+        for (int i = static_cast&lt;int&gt;(data_.size()) / 2 - 1; i &gt;= 0; --i)
+            sift_down(static_cast&lt;size_t&gt;(i));
+    }
+
+    size_t size() const { return data_.size(); }
+    bool   empty() const { return data_.empty(); }
+
+    void push(T val) {
+        data_.push_back(std::move(val));
+        sift_up(data_.size() - 1);
+    }
+
+    T pop() {
+        if (data_.empty()) throw std::out_of_range("empty");
+        T val = std::move(data_.front());
+        data_.front() = std::move(data_.back());
+        data_.pop_back();
+        if (!data_.empty()) sift_down(0);
+        return val;
+    }
+
+    const T& peek() const {
+        if (data_.empty()) throw std::out_of_range("empty");
+        return data_.front();
+    }
+};</code></pre>
+  <div class="cpp-note"><code>std::priority_queue</code> is a <strong>max-heap</strong> by default. To get a min-heap you write <code>priority_queue&lt;int, vector&lt;int&gt;, greater&lt;int&gt;&gt;</code> &mdash; three template parameters to flip the comparison. Our custom class avoids this awkwardness.</div>
+</div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust &mdash; min-heap (BinaryHeap is max-only)</h3>
+  <pre><code class="language-rust">pub struct MinHeap&lt;T: Ord&gt; {
+    data: Vec&lt;T&gt;,
+}
+
+impl&lt;T: Ord&gt; MinHeap&lt;T&gt; {
+    pub fn new() -&gt; Self { Self { data: Vec::new() } }
+
+    pub fn from_vec(mut items: Vec&lt;T&gt;) -&gt; Self {
+        let mut heap = Self { data: items };
+        let n = heap.data.len();
+        for i in (0..n / 2).rev() {
+            heap.sift_down(i);
+        }
+        heap
+    }
+
+    pub fn len(&amp;self) -&gt; usize { self.data.len() }
+
+    pub fn push(&amp;mut self, val: T) {
+        self.data.push(val);
+        let i = self.data.len() - 1;
+        self.sift_up(i);
+    }
+
+    pub fn pop(&amp;mut self) -&gt; Option&lt;T&gt; {
+        if self.data.is_empty() { return None; }
+        let last = self.data.len() - 1;
+        self.data.swap(0, last);
+        let val = self.data.pop();
+        if !self.data.is_empty() { self.sift_down(0); }
+        val
+    }
+
+    pub fn peek(&amp;self) -&gt; Option&lt;&amp;T&gt; { self.data.first() }
+
+    fn sift_up(&amp;mut self, mut i: usize) {
+        while i &gt; 0 {
+            let p = (i - 1) / 2;
+            if self.data[i] &lt; self.data[p] {
+                self.data.swap(i, p);
+                i = p;
+            } else {
+                break;
+            }
+        }
+    }
+
+    fn sift_down(&amp;mut self, mut i: usize) {
+        let n = self.data.len();
+        loop {
+            let (mut sm, l, r) = (i, 2*i+1, 2*i+2);
+            if l &lt; n &amp;&amp; self.data[l] &lt; self.data[sm] { sm = l; }
+            if r &lt; n &amp;&amp; self.data[r] &lt; self.data[sm] { sm = r; }
+            if sm == i { break; }
+            self.data.swap(i, sm);
+            i = sm;
+        }
+    }
+}
+
+fn main() {
+    let mut h = MinHeap::from_vec(vec![5, 3, 8, 1, 2]);
+    println!("{} {} {}", h.pop().unwrap(), h.pop().unwrap(), h.pop().unwrap());
+    // 1 2 3
+}</code></pre>
+  <div class="cpp-note">Rust's <code>BinaryHeap</code> is a <strong>max-heap only</strong>. The workaround is wrapping values in <code>std::cmp::Reverse</code> or implementing a newtype with flipped <code>Ord</code>. Our custom <code>MinHeap</code> avoids this ceremony entirely.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go &mdash; implement heap.Interface (Len, Less, Swap, Push, Pop)</h3>
+  <pre><code class="language-go">package main
+
+import "fmt"
+
+type MinHeap[T interface{ ~int | ~float64 | ~string }] struct {
+    data []T
+}
+
+func NewMinHeap[T interface{ ~int | ~float64 | ~string }](items ...T) *MinHeap[T] {
+    h := &amp;MinHeap[T]{data: append([]T{}, items...)}
+    n := len(h.data)
+    for i := n/2 - 1; i &gt;= 0; i-- {
+        h.siftDown(i)
+    }
+    return h
+}
+
+func (h *MinHeap[T]) Len() int { return len(h.data) }
+
+func (h *MinHeap[T]) Push(val T) {
+    h.data = append(h.data, val)
+    h.siftUp(len(h.data) - 1)
+}
+
+func (h *MinHeap[T]) Pop() (T, bool) {
+    if len(h.data) == 0 {
+        var zero T
+        return zero, false
+    }
+    val := h.data[0]
+    last := len(h.data) - 1
+    h.data[0] = h.data[last]
+    h.data = h.data[:last]
+    if len(h.data) &gt; 0 {
+        h.siftDown(0)
+    }
+    return val, true
+}
+
+func (h *MinHeap[T]) Peek() (T, bool) {
+    if len(h.data) == 0 {
+        var zero T
+        return zero, false
+    }
+    return h.data[0], true
+}
+
+func (h *MinHeap[T]) siftUp(i int) {
+    for i &gt; 0 {
+        p := (i - 1) / 2
+        if h.data[i] &lt; h.data[p] {
+            h.data[i], h.data[p] = h.data[p], h.data[i]
+            i = p
+        } else {
+            break
+        }
+    }
+}
+
+func (h *MinHeap[T]) siftDown(i int) {
+    n := len(h.data)
+    for {
+        sm, l, r := i, 2*i+1, 2*i+2
+        if l &lt; n &amp;&amp; h.data[l] &lt; h.data[sm] { sm = l }
+        if r &lt; n &amp;&amp; h.data[r] &lt; h.data[sm] { sm = r }
+        if sm == i { break }
+        h.data[i], h.data[sm] = h.data[sm], h.data[i]
+        i = sm
+    }
+}
+
+func main() {
+    h := NewMinHeap(5, 3, 8, 1, 2)
+    v1, _ := h.Pop()
+    v2, _ := h.Pop()
+    v3, _ := h.Pop()
+    fmt.Println(v1, v2, v3) // 1 2 3
+}</code></pre>
+  <div class="cpp-note">Go's stdlib <code>container/heap</code> requires you to implement the <code>heap.Interface</code>: <code>Len()</code>, <code>Less(i, j)</code>, <code>Swap(i, j)</code>, <code>Push(x)</code>, and <code>Pop()</code>. It is the most ceremony of any language &mdash; you write five methods before calling <code>heap.Push</code>. Our generic version is simpler but limited to ordered types.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript &mdash; comparator-based MinHeap</h3>
+  <pre><code class="language-typescript">class MinHeap&lt;T&gt; {
+  private data: T[] = [];
+
+  constructor(private cmp: (a: T, b: T) =&gt; number, items?: T[]) {
+    if (items) {
+      this.data = [...items];
+      for (let i = Math.floor(this.data.length / 2) - 1; i &gt;= 0; i--)
+        this.siftDown(i);
+    }
+  }
+
+  get size(): number { return this.data.length; }
+
+  push(val: T): void {
+    this.data.push(val);
+    this.siftUp(this.data.length - 1);
+  }
+
+  pop(): T | undefined {
+    if (this.data.length === 0) return undefined;
+    const val = this.data[0];
+    const last = this.data.pop()!;
+    if (this.data.length &gt; 0) {
+      this.data[0] = last;
+      this.siftDown(0);
+    }
+    return val;
+  }
+
+  peek(): T | undefined { return this.data[0]; }
+
+  private siftUp(i: number): void {
+    while (i &gt; 0) {
+      const p = (i - 1) &gt;&gt;&gt; 1;
+      if (this.cmp(this.data[i], this.data[p]) &lt; 0) {
+        [this.data[i], this.data[p]] = [this.data[p], this.data[i]];
+        i = p;
+      } else break;
+    }
+  }
+
+  private siftDown(i: number): void {
+    const n = this.data.length;
+    while (true) {
+      let sm = i, l = 2*i+1, r = 2*i+2;
+      if (l &lt; n &amp;&amp; this.cmp(this.data[l], this.data[sm]) &lt; 0) sm = l;
+      if (r &lt; n &amp;&amp; this.cmp(this.data[r], this.data[sm]) &lt; 0) sm = r;
+      if (sm === i) break;
+      [this.data[i], this.data[sm]] = [this.data[sm], this.data[i]];
+      i = sm;
+    }
+  }
+}
+
+const h = new MinHeap&lt;number&gt;((a, b) =&gt; a - b, [5, 3, 8, 1, 2]);
+console.log(h.pop(), h.pop(), h.pop()); // 1 2 3</code></pre>
+  <div class="cpp-note">JavaScript/TypeScript has no built-in heap or priority queue. You always roll your own or use a library. The comparator pattern <code>(a, b) =&gt; a - b</code> follows the same convention as <code>Array.sort</code> &mdash; negative means a comes first.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Priority queue across languages &mdash; API inconsistency table</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Stdlib type</td>
+      <td>heapq (functions)</td><td>PriorityQueue&lt;E,P&gt;</td><td>priority_queue</td><td>BinaryHeap</td><td>container/heap</td><td>none</td>
+    </tr>
+    <tr>
+      <td>Default order</td>
+      <td>min-heap</td><td>min-heap</td><td><strong>max-heap</strong></td><td><strong>max-heap</strong></td><td>you decide (Less)</td><td>N/A</td>
+    </tr>
+    <tr>
+      <td>API style</td>
+      <td>functions on list</td><td>class</td><td>class (adaptor)</td><td>struct</td><td>interface (5 methods)</td><td>N/A</td>
+    </tr>
+    <tr>
+      <td>Flip to other order</td>
+      <td>negate key</td><td>custom comparer</td><td>greater&lt;&gt; param</td><td>Reverse wrapper</td><td>flip Less()</td><td>flip comparator</td>
+    </tr>
+    <tr>
+      <td>Ease of use</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733; (no stdlib)</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>C++ and Rust default to max-heap, everyone else defaults to min (or lets you choose).</strong> This trips up beginners constantly. In C++ you need <code>priority_queue&lt;int, vector&lt;int&gt;, greater&lt;int&gt;&gt;</code> for a min-heap. In Rust you wrap values in <code>Reverse</code>.</li>
+    <li><strong>Go's heap.Interface is the most ceremony.</strong> You implement five methods on your own type, then call <code>heap.Push(&amp;h, val)</code> as a package-level function. The tradeoff is full control over storage and ordering.</li>
+    <li><strong>Python's heapq is minimal but fragile.</strong> It operates on a plain list with no encapsulation. Nothing stops you from calling <code>list.append()</code> instead of <code>heapq.heappush()</code> and silently breaking the invariant.</li>
+    <li><strong>TypeScript has no stdlib heap at all.</strong> You either build one (as we did) or pull in a library. This is a recurring gap in JavaScript's data structure support.</li>
+    <li><strong>Heapify in O(n) is a universal trick.</strong> All implementations above support constructing a heap from an unsorted collection in linear time. The key insight: half the elements are leaves and need no sifting.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Dijkstra / event simulation / top-K:</strong> use a min-heap (watch out for C++ and Rust defaulting to max)</li>
+    <li><strong>Go project:</strong> accept the ceremony and implement <code>heap.Interface</code>, or write a generic wrapper like ours</li>
+    <li><strong>TypeScript project:</strong> copy the comparator-based MinHeap above or use a library like <code>mnemonist</code></li>
+    <li><strong>Need decrease-key (Fibonacci heap):</strong> none of the stdlibs support this &mdash; you need a custom implementation or indexed priority queue</li>
+  </ul>
+</div>

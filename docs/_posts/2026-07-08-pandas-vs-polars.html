@@ -1,0 +1,288 @@
+---
+layout: post
+title: "pandas vs polars: Side-by-Side for Real Work"
+date: 2026-07-08
+tags: [python, pandas, polars, dataframes, data-wrangling, comparison]
+categories:
+- Comparisons
+section: comparisons
+permalink: "/comparisons/pandas-vs-polars/"
+---
+
+<h2>Same Task, Two Libraries</h2>
+
+<p>pandas has been the default DataFrame library in Python for over a decade. polars is the challenger&mdash;written in Rust, built on Apache Arrow, and designed to be fast without requiring you to think about performance. This post runs the same six operations in both libraries so you can see the differences yourself.</p>
+
+<p>The dataset: a CSV of trade records with columns <code>ticker</code>, <code>side</code>, <code>quantity</code>, <code>price</code>, and <code>timestamp</code>.</p>
+
+<h2>1. Load CSV</h2>
+
+<h3>pandas</h3>
+
+<pre><code class="language-python">import pandas as pd
+
+df = pd.read_csv("trades.csv", parse_dates=["timestamp"])
+</code></pre>
+
+<h3>polars (eager)</h3>
+
+<pre><code class="language-python">import polars as pl
+
+df = pl.read_csv("trades.csv", try_parse_dates=True)
+</code></pre>
+
+<h3>polars (lazy)</h3>
+
+<pre><code class="language-python">lf = pl.scan_csv("trades.csv", try_parse_dates=True)
+# Nothing executes yet. polars builds a query plan.
+# Call .collect() when you want results.
+</code></pre>
+
+<p>Lazy mode is the key differentiator. <code>scan_csv</code> returns a <code>LazyFrame</code>. polars optimizes the entire chain of operations before touching data&mdash;predicate pushdown, projection pruning, and join reordering happen automatically.</p>
+
+<h2>2. Filter Rows (quantity &gt; 100)</h2>
+
+<h3>pandas</h3>
+
+<pre><code class="language-python">big_trades = df[df["quantity"] > 100]
+</code></pre>
+
+<h3>polars (eager)</h3>
+
+<pre><code class="language-python">big_trades = df.filter(pl.col("quantity") > 100)
+</code></pre>
+
+<h3>polars (lazy)</h3>
+
+<pre><code class="language-python">lf = lf.filter(pl.col("quantity") > 100)
+# Still no execution. The filter is added to the query plan.
+</code></pre>
+
+<h2>3. Add Computed Column (notional = quantity * price)</h2>
+
+<h3>pandas</h3>
+
+<pre><code class="language-python">df["notional"] = df["quantity"] * df["price"]
+</code></pre>
+
+<h3>polars (eager)</h3>
+
+<pre><code class="language-python">df = df.with_columns(
+    (pl.col("quantity") * pl.col("price")).alias("notional")
+)
+</code></pre>
+
+<h3>polars (lazy)</h3>
+
+<pre><code class="language-python">lf = lf.with_columns(
+    (pl.col("quantity") * pl.col("price")).alias("notional")
+)
+</code></pre>
+
+<p>Notice that pandas mutates the DataFrame in place. polars returns a new frame&mdash;frames are immutable. This makes polars code easier to reason about in long pipelines.</p>
+
+<h2>4. Group By + Aggregate</h2>
+
+<h3>pandas</h3>
+
+<pre><code class="language-python">summary = (
+    df.groupby("ticker")
+    .agg(
+        total_qty=("quantity", "sum"),
+        avg_price=("price", "mean"),
+        trade_count=("ticker", "count"),
+    )
+    .reset_index()
+)
+</code></pre>
+
+<h3>polars (eager)</h3>
+
+<pre><code class="language-python">summary = df.group_by("ticker").agg(
+    pl.col("quantity").sum().alias("total_qty"),
+    pl.col("price").mean().alias("avg_price"),
+    pl.col("ticker").count().alias("trade_count"),
+)
+</code></pre>
+
+<h3>polars (lazy)</h3>
+
+<pre><code class="language-python">lf_summary = lf.group_by("ticker").agg(
+    pl.col("quantity").sum().alias("total_qty"),
+    pl.col("price").mean().alias("avg_price"),
+    pl.col("ticker").count().alias("trade_count"),
+)
+</code></pre>
+
+<p>polars expressions are composable. Each <code>pl.col(...).sum()</code> is an independent expression; you can mix and match aggregations freely without the named-tuple syntax pandas requires.</p>
+
+<h2>5. Join with Reference Table</h2>
+
+<p>We have a small lookup table mapping tickers to sectors:</p>
+
+<pre><code class="language-python"># pandas
+sectors_pd = pd.DataFrame({
+    "ticker": ["AAPL", "MSFT", "GS", "JPM", "XOM"],
+    "sector": ["Tech", "Tech", "Finance", "Finance", "Energy"],
+})
+
+# polars
+sectors_pl = pl.DataFrame({
+    "ticker": ["AAPL", "MSFT", "GS", "JPM", "XOM"],
+    "sector": ["Tech", "Tech", "Finance", "Finance", "Energy"],
+})
+</code></pre>
+
+<h3>pandas</h3>
+
+<pre><code class="language-python">merged = df.merge(sectors_pd, on="ticker", how="left")
+</code></pre>
+
+<h3>polars (eager)</h3>
+
+<pre><code class="language-python">merged = df.join(sectors_pl, on="ticker", how="left")
+</code></pre>
+
+<h3>polars (lazy)</h3>
+
+<pre><code class="language-python">lf_merged = lf.join(sectors_pl.lazy(), on="ticker", how="left")
+</code></pre>
+
+<h2>6. Sort by Notional Descending</h2>
+
+<h3>pandas</h3>
+
+<pre><code class="language-python">result = merged.sort_values("notional", ascending=False)
+</code></pre>
+
+<h3>polars (eager)</h3>
+
+<pre><code class="language-python">result = merged.sort("notional", descending=True)
+</code></pre>
+
+<h3>polars (lazy &mdash; collect the full pipeline)</h3>
+
+<pre><code class="language-python">result = (
+    lf_merged
+    .sort("notional", descending=True)
+    .collect()  # NOW execution happens, with full optimization
+)
+</code></pre>
+
+<p>When you call <code>.collect()</code>, polars inspects the entire plan and optimizes it. If you only selected two columns but the CSV has twenty, polars skips reading the other eighteen. pandas reads everything up front.</p>
+
+<h2>API Philosophy</h2>
+
+<p><strong>pandas</strong> is imperative. DataFrames are mutable objects. You chain methods, but intermediate results often modify state. Index alignment is automatic and powerful but also a source of subtle bugs. The API grew organically over 15 years, so there are often multiple ways to do the same thing (<code>df.groupby</code> vs <code>df.pivot_table</code> vs <code>df.resample</code>).</p>
+
+<p><strong>polars</strong> is expression-based and functional. Frames are immutable. Operations are built from composable expressions (<code>pl.col</code>, <code>pl.when</code>, <code>pl.lit</code>). There is one way to do most things, and the type system catches errors earlier. The lack of an index is intentional&mdash;polars treats row order as data, not metadata.</p>
+
+<h2>Memory and Speed</h2>
+
+<p>polars uses Apache Arrow columnar memory under the hood. This means contiguous arrays per column, zero-copy slicing, and efficient SIMD operations. pandas uses NumPy arrays, which also columnar but with more overhead from Python object boxing (especially for strings and mixed types).</p>
+
+<p>Benchmarks consistently show polars 5&ndash;50x faster than pandas on operations like groupby, join, and filter on datasets above 100 MB. The gap widens with more data because polars parallelizes across CPU cores automatically.</p>
+
+<h2>Error Messages</h2>
+
+<p>polars raises typed exceptions with clear messages. If you misspell a column name, you get a <code>ColumnNotFoundError</code> listing available columns. pandas often raises a generic <code>KeyError</code> with just the bad key.</p>
+
+<h2>Ecosystem</h2>
+
+<p>pandas wins here, and it is not close. scikit-learn expects pandas DataFrames or NumPy arrays. matplotlib and seaborn integrate directly. Every StackOverflow answer, every tutorial, every data science course uses pandas. polars is growing fast but you will hit friction when passing data to libraries that do not support it yet.</p>
+
+<h2>Comparison Table</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Dimension</th>
+      <th style="text-align:left; padding:0.4rem;">pandas</th>
+      <th style="text-align:left; padding:0.4rem;">polars</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">API style</td>
+      <td style="padding:0.4rem;">Method chaining, mutable state, index-based</td>
+      <td style="padding:0.4rem;">Expression-based, immutable frames, no index</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Speed</td>
+      <td style="padding:0.4rem;">Baseline</td>
+      <td style="padding:0.4rem;">5&ndash;50x faster (auto-parallelized)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Memory</td>
+      <td style="padding:0.4rem;">NumPy-backed, object dtype overhead</td>
+      <td style="padding:0.4rem;">Arrow columnar, zero-copy, less overhead</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Lazy evaluation</td>
+      <td style="padding:0.4rem;">No</td>
+      <td style="padding:0.4rem;">Yes (query plan optimization)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Ecosystem</td>
+      <td style="padding:0.4rem;">Dominant (sklearn, plotting, tutorials)</td>
+      <td style="padding:0.4rem;">Growing but gaps remain</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Learning curve</td>
+      <td style="padding:0.4rem;">Gentle (vast resources)</td>
+      <td style="padding:0.4rem;">Moderate (expression DSL takes adjustment)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Error messages</td>
+      <td style="padding:0.4rem;">Generic Python exceptions</td>
+      <td style="padding:0.4rem;">Typed, descriptive, suggests fixes</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">String handling</td>
+      <td style="padding:0.4rem;"><code>object</code> dtype (slow)</td>
+      <td style="padding:0.4rem;">Native <code>Utf8</code> type (fast)</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>When to Use What</h2>
+
+<h3>Stay on pandas when:</h3>
+
+<ul>
+  <li>Your data fits in memory comfortably (&lt;1 GB)</li>
+  <li>You have an existing codebase with pandas everywhere</li>
+  <li>You need tight integration with scikit-learn, matplotlib, or seaborn</li>
+  <li>Your team knows pandas and the project is short-lived</li>
+  <li>You are prototyping in a Jupyter notebook and speed does not matter</li>
+</ul>
+
+<h3>Switch to polars when:</h3>
+
+<ul>
+  <li>Your data exceeds 1 GB (or you expect it to grow)</li>
+  <li>You are starting a new project with no legacy pandas code</li>
+  <li>You need speed without dropping to Spark or Dask</li>
+  <li>You are building ETL pipelines where lazy evaluation saves I/O</li>
+  <li>You want stricter types and better error messages</li>
+  <li>You want to avoid the "which pandas API do I use?" problem</li>
+</ul>
+
+<h3>Use both:</h3>
+
+<p>polars has <code>.to_pandas()</code> and <code>pl.from_pandas()</code>. Do heavy lifting in polars, then convert to pandas at the boundary where you need sklearn or plotting. This is a practical middle ground for many projects.</p>
+
+<pre><code class="language-python"># Heavy processing in polars
+result = (
+    pl.scan_csv("trades.csv")
+    .filter(pl.col("quantity") > 100)
+    .with_columns((pl.col("quantity") * pl.col("price")).alias("notional"))
+    .group_by("ticker")
+    .agg(pl.col("notional").sum().alias("total_notional"))
+    .sort("total_notional", descending=True)
+    .collect()
+)
+
+# Convert at the boundary for sklearn / matplotlib
+result_pd = result.to_pandas()
+</code></pre>

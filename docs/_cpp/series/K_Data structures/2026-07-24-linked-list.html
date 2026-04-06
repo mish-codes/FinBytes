@@ -1,0 +1,416 @@
+---
+layout: cpp-post
+title: "Linked List — Why Rust Makes This Hard"
+description: "Singly-linked list from scratch. Ownership vs GC makes this trivial or nightmarish."
+date: 2026-07-24
+tags: [data-structures, linked-list, ownership, implementation]
+permalink: /cpp/linked-list-impl/
+---
+
+<div id="tab-intro"  class="ql-tab-content active">
+  <h3>Nodes and pointers &mdash; the simplest dynamic structure</h3>
+  <p>A singly-linked list is a chain of nodes. Each node holds data and a pointer to the next node. The last node points to nothing (null, None, nil).</p>
+  <p>Operations: <strong>push_front</strong> is O(1) &mdash; allocate a node, point it at the current head, update head. <strong>pop_front</strong> is O(1). <strong>Search</strong> is O(n) &mdash; walk from head to tail. There is no random access.</p>
+  <p>In garbage-collected languages (Python, Go, C#, TypeScript), a linked list is trivial: create nodes, assign references, and the GC cleans up. In C++, <code>unique_ptr</code> gives clear ownership. In Rust, things get interesting.</p>
+  <p>Rust's ownership model makes singly-linked lists possible with <code>Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt;</code>, but doubly-linked lists require shared ownership (<code>Rc&lt;RefCell&lt;&gt;&gt;</code>) or <code>unsafe</code>. This post focuses on the singly-linked case &mdash; the doubly-linked version is a separate adventure.</p>
+</div>
+
+<div id="tab-python" class="ql-tab-content" style="display:none">
+  <h3>Python &mdash; trivial with GC</h3>
+  <pre><code class="language-python">from __future__ import annotations
+from dataclasses import dataclass
+from typing import Optional
+
+@dataclass
+class Node:
+    data: object
+    next: Optional[Node] = None
+
+class LinkedList:
+    def __init__(self):
+        self.head: Optional[Node] = None
+        self._len = 0
+
+    def push_front(self, val):
+        self.head = Node(data=val, next=self.head)
+        self._len += 1
+
+    def pop_front(self):
+        if self.head is None:
+            raise IndexError("pop from empty list")
+        val = self.head.data
+        self.head = self.head.next
+        self._len -= 1
+        return val
+
+    def contains(self, val) -&gt; bool:
+        cur = self.head
+        while cur:
+            if cur.data == val:
+                return True
+            cur = cur.next
+        return False
+
+    def __iter__(self):
+        cur = self.head
+        while cur:
+            yield cur.data
+            cur = cur.next
+
+    def __len__(self):
+        return self._len
+
+    def __repr__(self):
+        return " -> ".join(str(x) for x in self) + " -> None"
+
+ll = LinkedList()
+for x in [3, 2, 1]:
+    ll.push_front(x)
+print(ll)            # 1 -> 2 -> 3 -> None
+print(ll.contains(2))  # True
+ll.pop_front()
+print(ll)            # 2 -> 3 -> None</code></pre>
+  <div class="cpp-note">Python's GC handles the old head node automatically when <code>pop_front</code> drops the reference. No manual free, no ownership headaches. This is why linked lists feel trivial in GC languages.</div>
+</div>
+
+<div id="tab-csharp" class="ql-tab-content" style="display:none">
+  <h3>C# &mdash; generic singly-linked list</h3>
+  <pre><code class="language-csharp">public class SLinkedList&lt;T&gt; where T : IEquatable&lt;T&gt;
+{
+    private class Node
+    {
+        public T Data;
+        public Node? Next;
+        public Node(T data, Node? next = null) { Data = data; Next = next; }
+    }
+
+    private Node? _head;
+    private int _count;
+
+    public int Count =&gt; _count;
+
+    public void PushFront(T val)
+    {
+        _head = new Node(val, _head);
+        _count++;
+    }
+
+    public T PopFront()
+    {
+        if (_head is null) throw new InvalidOperationException("empty");
+        T val = _head.Data;
+        _head = _head.Next;
+        _count--;
+        return val;
+    }
+
+    public bool Contains(T val)
+    {
+        for (var cur = _head; cur is not null; cur = cur.Next)
+            if (cur.Data.Equals(val)) return true;
+        return false;
+    }
+
+    public override string ToString()
+    {
+        var parts = new List&lt;string&gt;();
+        for (var cur = _head; cur is not null; cur = cur.Next)
+            parts.Add(cur.Data?.ToString() ?? "null");
+        parts.Add("None");
+        return string.Join(" -> ", parts);
+    }
+}
+
+var ll = new SLinkedList&lt;int&gt;();
+ll.PushFront(3); ll.PushFront(2); ll.PushFront(1);
+Console.WriteLine(ll);            // 1 -> 2 -> 3 -> None
+Console.WriteLine(ll.Contains(2)); // True</code></pre>
+  <div class="cpp-note">The <code>where T : IEquatable&lt;T&gt;</code> constraint ensures we can call <code>.Equals()</code> for <code>Contains</code>. Without it, we would fall back to the base <code>object.Equals</code> which boxes value types.</div>
+</div>
+
+<div id="tab-cpp" class="ql-tab-content" style="display:none">
+  <h3>C++ &mdash; unique_ptr ownership, raw pointer traversal</h3>
+  <pre><code class="language-cpp">#include &lt;memory&gt;
+#include &lt;iostream&gt;
+#include &lt;sstream&gt;
+
+template&lt;typename T&gt;
+class LinkedList {
+    struct Node {
+        T data;
+        std::unique_ptr&lt;Node&gt; next;
+        Node(T d, std::unique_ptr&lt;Node&gt; n = nullptr)
+            : data(std::move(d)), next(std::move(n)) {}
+    };
+
+    std::unique_ptr&lt;Node&gt; head_;
+    size_t len_ = 0;
+
+public:
+    void push_front(T val) {
+        head_ = std::make_unique&lt;Node&gt;(std::move(val), std::move(head_));
+        ++len_;
+    }
+
+    T pop_front() {
+        if (!head_) throw std::runtime_error("empty");
+        T val = std::move(head_-&gt;data);
+        head_ = std::move(head_-&gt;next);
+        --len_;
+        return val;
+    }
+
+    bool contains(const T& val) const {
+        for (const Node* cur = head_.get(); cur; cur = cur-&gt;next.get())
+            if (cur-&gt;data == val) return true;
+        return false;
+    }
+
+    size_t size() const { return len_; }
+
+    friend std::ostream& operator&lt;&lt;(std::ostream& os, const LinkedList& ll) {
+        for (const Node* cur = ll.head_.get(); cur; cur = cur-&gt;next.get())
+            os &lt;&lt; cur-&gt;data &lt;&lt; " -> ";
+        return os &lt;&lt; "None";
+    }
+};</code></pre>
+  <div class="cpp-note"><code>unique_ptr</code> owns each node. When the list destructs, the chain of <code>unique_ptr</code> destructors fires automatically. For traversal, we use <code>.get()</code> to borrow a raw pointer &mdash; no ownership transfer. A very long list may stack-overflow on destruction due to recursive destructor calls; production code uses an iterative destructor.</div>
+</div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust &mdash; Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt;</h3>
+  <pre><code class="language-rust">use std::fmt;
+
+pub struct LinkedList&lt;T&gt; {
+    head: Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt;,
+    len: usize,
+}
+
+struct Node&lt;T&gt; {
+    data: T,
+    next: Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt;,
+}
+
+impl&lt;T&gt; LinkedList&lt;T&gt; {
+    pub fn new() -&gt; Self {
+        Self { head: None, len: 0 }
+    }
+
+    pub fn push_front(&amp;mut self, val: T) {
+        let node = Box::new(Node {
+            data: val,
+            next: self.head.take(),   // take() moves old head out
+        });
+        self.head = Some(node);
+        self.len += 1;
+    }
+
+    pub fn pop_front(&amp;mut self) -&gt; Option&lt;T&gt; {
+        self.head.take().map(|node| {
+            self.head = node.next;
+            self.len -= 1;
+            node.data
+        })
+    }
+
+    pub fn contains(&amp;self, val: &amp;T) -&gt; bool
+    where T: PartialEq
+    {
+        let mut cur = &amp;self.head;
+        while let Some(node) = cur {
+            if &amp;node.data == val { return true; }
+            cur = &amp;node.next;
+        }
+        false
+    }
+
+    pub fn len(&amp;self) -&gt; usize { self.len }
+}
+
+impl&lt;T: fmt::Display&gt; fmt::Display for LinkedList&lt;T&gt; {
+    fn fmt(&amp;self, f: &amp;mut fmt::Formatter) -&gt; fmt::Result {
+        let mut cur = &amp;self.head;
+        while let Some(node) = cur {
+            write!(f, "{} -> ", node.data)?;
+            cur = &amp;node.next;
+        }
+        write!(f, "None")
+    }
+}
+
+fn main() {
+    let mut ll = LinkedList::new();
+    ll.push_front(3); ll.push_front(2); ll.push_front(1);
+    println!("{}", ll);              // 1 -> 2 -> 3 -> None
+    println!("{}", ll.contains(&amp;2)); // true
+    ll.pop_front();
+    println!("{}", ll);              // 2 -> 3 -> None
+}</code></pre>
+  <div class="cpp-note"><code>Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt;</code> works because each node has exactly one owner. The <code>.take()</code> method replaces the Option with <code>None</code> and returns the old value &mdash; this is how you &ldquo;move&rdquo; the head out without violating the borrow checker. A doubly-linked list needs shared ownership (<code>Rc&lt;RefCell&lt;&gt;&gt;</code>) or raw pointers with <code>unsafe</code>, because a node would be owned by both its predecessor and its successor.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go &mdash; pointer-based, GC-managed</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "strings"
+)
+
+type Node[T comparable] struct {
+    Data T
+    Next *Node[T]
+}
+
+type LinkedList[T comparable] struct {
+    head *Node[T]
+    len  int
+}
+
+func (ll *LinkedList[T]) PushFront(val T) {
+    ll.head = &amp;Node[T]{Data: val, Next: ll.head}
+    ll.len++
+}
+
+func (ll *LinkedList[T]) PopFront() (T, bool) {
+    if ll.head == nil {
+        var zero T
+        return zero, false
+    }
+    val := ll.head.Data
+    ll.head = ll.head.Next
+    ll.len--
+    return val, true
+}
+
+func (ll *LinkedList[T]) Contains(val T) bool {
+    for cur := ll.head; cur != nil; cur = cur.Next {
+        if cur.Data == val {
+            return true
+        }
+    }
+    return false
+}
+
+func (ll *LinkedList[T]) Len() int { return ll.len }
+
+func (ll *LinkedList[T]) String() string {
+    var parts []string
+    for cur := ll.head; cur != nil; cur = cur.Next {
+        parts = append(parts, fmt.Sprintf("%v", cur.Data))
+    }
+    parts = append(parts, "None")
+    return strings.Join(parts, " -> ")
+}
+
+func main() {
+    ll := &amp;LinkedList[int]{}
+    ll.PushFront(3); ll.PushFront(2); ll.PushFront(1)
+    fmt.Println(ll)             // 1 -> 2 -> 3 -> None
+    fmt.Println(ll.Contains(2)) // true
+    ll.PopFront()
+    fmt.Println(ll)             // 2 -> 3 -> None
+}</code></pre>
+  <div class="cpp-note">Go's garbage collector handles the dropped nodes. The <code>comparable</code> constraint lets us use <code>==</code> in <code>Contains</code>. For non-comparable types, you would pass a comparison function. The standard library's <code>container/list</code> is a doubly-linked list with <code>interface{}</code> values (no generics).</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript &mdash; class-based with generics</h3>
+  <pre><code class="language-typescript">class LNode&lt;T&gt; {
+  constructor(public data: T, public next: LNode&lt;T&gt; | null = null) {}
+}
+
+class LinkedList&lt;T&gt; {
+  private head: LNode&lt;T&gt; | null = null;
+  private _len = 0;
+
+  pushFront(val: T): void {
+    this.head = new LNode(val, this.head);
+    this._len++;
+  }
+
+  popFront(): T | undefined {
+    if (!this.head) return undefined;
+    const val = this.head.data;
+    this.head = this.head.next;
+    this._len--;
+    return val;
+  }
+
+  contains(val: T): boolean {
+    let cur = this.head;
+    while (cur) {
+      if (cur.data === val) return true;
+      cur = cur.next;
+    }
+    return false;
+  }
+
+  get length(): number { return this._len; }
+
+  toString(): string {
+    const parts: string[] = [];
+    let cur = this.head;
+    while (cur) {
+      parts.push(String(cur.data));
+      cur = cur.next;
+    }
+    parts.push("None");
+    return parts.join(" -> ");
+  }
+}
+
+const ll = new LinkedList&lt;number&gt;();
+ll.pushFront(3); ll.pushFront(2); ll.pushFront(1);
+console.log(ll.toString());    // 1 -> 2 -> 3 -> None
+console.log(ll.contains(2));   // true
+ll.popFront();
+console.log(ll.toString());    // 2 -> 3 -> None</code></pre>
+  <div class="cpp-note"><code>LNode&lt;T&gt; | null</code> is TypeScript's way of saying &ldquo;maybe a node, maybe nothing.&rdquo; The <code>===</code> check in <code>contains</code> works for primitives but uses reference equality for objects &mdash; for deep equality you would need a custom comparator.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Linked list across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Null representation</td>
+      <td>None</td><td>null (nullable ref)</td><td>nullptr / unique_ptr</td><td>Option&lt;Box&lt;&gt;&gt;</td><td>nil (*T)</td><td>null</td>
+    </tr>
+    <tr>
+      <td>Ownership model</td>
+      <td>GC</td><td>GC</td><td>unique_ptr (RAII)</td><td>Box (single owner)</td><td>GC</td><td>GC</td>
+    </tr>
+    <tr>
+      <td>Doubly-linked feasibility</td>
+      <td>trivial</td><td>trivial</td><td>raw ptr or shared_ptr</td><td>Rc&lt;RefCell&gt; or unsafe</td><td>trivial</td><td>trivial</td>
+    </tr>
+    <tr>
+      <td>Implementation difficulty</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Use-after-free protection</td>
+      <td>GC (impossible)</td><td>GC (impossible)</td><td>RAII (mostly safe)</td><td>compile-time (guaranteed)</td><td>GC (impossible)</td><td>GC (impossible)</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust makes singly-linked lists possible but doubly-linked lists painful.</strong> A singly-linked list has clear single ownership: each node owns the next. A doubly-linked list creates shared ownership (two pointers to the same node), which requires <code>Rc&lt;RefCell&lt;&gt;&gt;</code> or <code>unsafe</code>. This is by design &mdash; the compiler is telling you that doubly-linked lists are inherently tricky with memory safety.</li>
+    <li><strong>GC languages make this trivial.</strong> Python, Go, C#, and TypeScript all follow the same pattern: create a node, point to it, let GC handle cleanup. The implementations are nearly identical across all four.</li>
+    <li><strong>C++ unique_ptr is the middle ground.</strong> It gives ownership semantics without a borrow checker. The risk: a long list causes recursive destructor calls that can overflow the stack. Production code adds an iterative <code>~LinkedList()</code>.</li>
+    <li><strong>Linked lists are rarely the right choice in practice.</strong> Arrays and vectors have better cache locality. Use a linked list when you need O(1) insert/remove at known positions (with an iterator) and never need random access.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Interview or teaching:</strong> implement in the language you are studying to understand pointers/references</li>
+    <li><strong>Production singly-linked (stack, undo log):</strong> any language works; Rust's version is safe and efficient</li>
+    <li><strong>Production doubly-linked:</strong> use the stdlib (<code>std::list</code>, <code>container/list</code>, <code>LinkedList&lt;T&gt;</code>) or accept unsafe in Rust</li>
+    <li><strong>Need fast iteration:</strong> use a dynamic array instead &mdash; cache locality dominates for sequential access</li>
+  </ul>
+</div>

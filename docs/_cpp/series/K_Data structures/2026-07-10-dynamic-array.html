@@ -1,0 +1,394 @@
+---
+layout: cpp-post
+title: "Dynamic Array — Build a Growable Array From Scratch"
+description: "Contiguous memory, amortized O(1) append, growth factor. Python list vs C++ vector vs Rust Vec vs Go slice."
+date: 2026-07-10
+tags: [data-structures, array, vector, implementation]
+permalink: /cpp/dynamic-array/
+---
+
+<div id="tab-intro"  class="ql-tab-content active">
+  <h3>Contiguous memory that grows on demand</h3>
+  <p>A dynamic array stores elements in a contiguous block of memory. When the block is full, it allocates a new, larger block, copies everything over, and frees the old one. This gives O(1) random access and <em>amortized</em> O(1) append.</p>
+  <p>The key insight is the <strong>growth factor</strong>. If you double the capacity each time, the total cost of N appends is O(N) &mdash; each element is copied at most O(log N) times across all resizes. A factor of 1.5 wastes less memory but copies slightly more often.</p>
+  <p>Two numbers matter: <strong>length</strong> (how many elements are stored) and <strong>capacity</strong> (how many the current allocation can hold). When length equals capacity, the next push triggers a resize.</p>
+  <p>Every language in this series has a built-in dynamic array (Python <code>list</code>, C++ <code>vector</code>, Rust <code>Vec</code>, Go <code>slice</code>). The goal here is to build one from scratch to understand the allocation, copy, and ownership mechanics underneath.</p>
+</div>
+
+<div id="tab-python" class="ql-tab-content" style="display:none">
+  <h3>Python &mdash; ctypes raw array, not list</h3>
+  <pre><code class="language-python">import ctypes
+
+class DynArray:
+    def __init__(self):
+        self._len = 0
+        self._cap = 1
+        self._arr = self._make(self._cap)
+
+    @staticmethod
+    def _make(cap):
+        return (cap * ctypes.py_object)()
+
+    def __len__(self):
+        return self._len
+
+    def get(self, index):
+        if index &lt; 0 or index &gt;= self._len:
+            raise IndexError("index out of range")
+        return self._arr[index]
+
+    def push(self, val):
+        if self._len == self._cap:
+            self._resize(self._cap * 2)
+        self._arr[self._len] = val
+        self._len += 1
+
+    def pop(self):
+        if self._len == 0:
+            raise IndexError("pop from empty array")
+        self._len -= 1
+        val = self._arr[self._len]
+        self._arr[self._len] = None
+        return val
+
+    def _resize(self, new_cap):
+        new_arr = self._make(new_cap)
+        for i in range(self._len):
+            new_arr[i] = self._arr[i]
+        self._arr = new_arr
+        self._cap = new_cap
+
+# Usage
+a = DynArray()
+for i in range(10):
+    a.push(i)
+print(len(a), a.get(7))  # 10  7</code></pre>
+  <div class="cpp-note">We use <code>ctypes.py_object</code> to get a fixed-size C array of Python object references. This is as close to raw memory as CPython lets you get without writing a C extension. The real <code>list</code> does exactly this internally, but in C.</div>
+</div>
+
+<div id="tab-csharp" class="ql-tab-content" style="display:none">
+  <h3>C# &mdash; generic DynArray&lt;T&gt;</h3>
+  <pre><code class="language-csharp">public class DynArray&lt;T&gt;
+{
+    private T[] _buf;
+    private int _len;
+
+    public DynArray(int initialCap = 4)
+    {
+        _buf = new T[initialCap];
+        _len = 0;
+    }
+
+    public int Count =&gt; _len;
+    public int Capacity =&gt; _buf.Length;
+
+    public T this[int i]
+    {
+        get
+        {
+            if (i &lt; 0 || i &gt;= _len) throw new IndexOutOfRangeException();
+            return _buf[i];
+        }
+    }
+
+    public void Push(T val)
+    {
+        if (_len == _buf.Length) Resize(_buf.Length * 2);
+        _buf[_len++] = val;
+    }
+
+    public T Pop()
+    {
+        if (_len == 0) throw new InvalidOperationException("empty");
+        T val = _buf[--_len];
+        _buf[_len] = default!;
+        return val;
+    }
+
+    private void Resize(int newCap)
+    {
+        var newBuf = new T[newCap];
+        Array.Copy(_buf, newBuf, _len);
+        _buf = newBuf;
+    }
+}
+
+// Usage
+var a = new DynArray&lt;int&gt;();
+for (int i = 0; i &lt; 10; i++) a.Push(i);
+Console.WriteLine($"{a.Count} {a[7]}"); // 10 7</code></pre>
+  <div class="cpp-note">C#'s <code>List&lt;T&gt;</code> is implemented almost identically &mdash; an internal <code>T[]</code> with a doubling strategy. The runtime's GC handles the old array; no manual free needed.</div>
+</div>
+
+<div id="tab-cpp" class="ql-tab-content" style="display:none">
+  <h3>C++ &mdash; raw new/delete with placement</h3>
+  <pre><code class="language-cpp">#include &lt;cstddef&gt;
+#include &lt;stdexcept&gt;
+#include &lt;utility&gt;
+#include &lt;new&gt;
+
+template&lt;typename T&gt;
+class DynArray {
+    T*     buf_;
+    size_t len_;
+    size_t cap_;
+
+    void grow() {
+        size_t new_cap = cap_ == 0 ? 1 : cap_ * 2;
+        T* new_buf = static_cast&lt;T*&gt;(::operator new(new_cap * sizeof(T)));
+        for (size_t i = 0; i &lt; len_; ++i)
+            ::new (new_buf + i) T(std::move(buf_[i]));
+        for (size_t i = len_; i-- &gt; 0;)
+            buf_[i].~T();
+        ::operator delete(buf_);
+        buf_ = new_buf;
+        cap_ = new_cap;
+    }
+
+public:
+    DynArray() : buf_(nullptr), len_(0), cap_(0) {}
+    ~DynArray() {
+        for (size_t i = 0; i &lt; len_; ++i) buf_[i].~T();
+        ::operator delete(buf_);
+    }
+
+    size_t size()     const { return len_; }
+    size_t capacity() const { return cap_; }
+
+    void push(const T& val) {
+        if (len_ == cap_) grow();
+        ::new (buf_ + len_) T(val);
+        ++len_;
+    }
+
+    T pop() {
+        if (len_ == 0) throw std::out_of_range("empty");
+        --len_;
+        T val = std::move(buf_[len_]);
+        buf_[len_].~T();
+        return val;
+    }
+
+    const T& operator[](size_t i) const {
+        if (i &gt;= len_) throw std::out_of_range("index");
+        return buf_[i];
+    }
+};</code></pre>
+  <div class="cpp-note">We separate allocation (<code>::operator new</code>) from construction (placement <code>new</code>) just like <code>std::vector</code> does internally. This avoids default-constructing elements in unused capacity &mdash; important when T has expensive constructors.</div>
+</div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust &mdash; raw pointer + capacity + len</h3>
+  <pre><code class="language-rust">use std::alloc::{self, Layout};
+use std::ptr;
+
+pub struct DynArray&lt;T&gt; {
+    ptr: *mut T,
+    len: usize,
+    cap: usize,
+}
+
+impl&lt;T&gt; DynArray&lt;T&gt; {
+    pub fn new() -&gt; Self {
+        Self { ptr: ptr::null_mut(), len: 0, cap: 0 }
+    }
+
+    pub fn len(&amp;self) -&gt; usize { self.len }
+
+    pub fn push(&amp;mut self, val: T) {
+        if self.len == self.cap { self.grow(); }
+        unsafe { ptr::write(self.ptr.add(self.len), val); }
+        self.len += 1;
+    }
+
+    pub fn pop(&amp;mut self) -&gt; Option&lt;T&gt; {
+        if self.len == 0 { return None; }
+        self.len -= 1;
+        unsafe { Some(ptr::read(self.ptr.add(self.len))) }
+    }
+
+    pub fn get(&amp;self, i: usize) -&gt; Option&lt;&amp;T&gt; {
+        if i &gt;= self.len { return None; }
+        unsafe { Some(&amp;*self.ptr.add(i)) }
+    }
+
+    fn grow(&amp;mut self) {
+        let new_cap = if self.cap == 0 { 1 } else { self.cap * 2 };
+        let layout = Layout::array::&lt;T&gt;(new_cap).unwrap();
+        let new_ptr = unsafe { alloc::alloc(layout) as *mut T };
+        if !self.ptr.is_null() {
+            unsafe {
+                ptr::copy_nonoverlapping(self.ptr, new_ptr, self.len);
+                let old_layout = Layout::array::&lt;T&gt;(self.cap).unwrap();
+                alloc::dealloc(self.ptr as *mut u8, old_layout);
+            }
+        }
+        self.ptr = new_ptr;
+        self.cap = new_cap;
+    }
+}
+
+impl&lt;T&gt; Drop for DynArray&lt;T&gt; {
+    fn drop(&amp;mut self) {
+        if !self.ptr.is_null() {
+            for i in 0..self.len {
+                unsafe { ptr::drop_in_place(self.ptr.add(i)); }
+            }
+            let layout = Layout::array::&lt;T&gt;(self.cap).unwrap();
+            unsafe { alloc::dealloc(self.ptr as *mut u8, layout); }
+        }
+    }
+}</code></pre>
+  <div class="cpp-note">This mirrors how the real <code>Vec&lt;T&gt;</code> works internally. The <code>unsafe</code> blocks are unavoidable &mdash; raw pointer arithmetic is inherently unsafe in Rust. The safe API (<code>push</code>, <code>pop</code>, <code>get</code>) encapsulates all unsafety so callers never touch pointers.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go &mdash; slice internals (make, append, cap vs len)</h3>
+  <pre><code class="language-go">package main
+
+import "fmt"
+
+type DynArray[T any] struct {
+    buf []T
+    len int
+}
+
+func NewDynArray[T any]() *DynArray[T] {
+    return &amp;DynArray[T]{buf: make([]T, 1), len: 0}
+}
+
+func (a *DynArray[T]) Len() int { return a.len }
+func (a *DynArray[T]) Cap() int { return len(a.buf) }
+
+func (a *DynArray[T]) Push(val T) {
+    if a.len == len(a.buf) {
+        a.grow()
+    }
+    a.buf[a.len] = val
+    a.len++
+}
+
+func (a *DynArray[T]) Pop() (T, bool) {
+    var zero T
+    if a.len == 0 {
+        return zero, false
+    }
+    a.len--
+    val := a.buf[a.len]
+    a.buf[a.len] = zero
+    return val, true
+}
+
+func (a *DynArray[T]) Get(i int) (T, bool) {
+    var zero T
+    if i &lt; 0 || i &gt;= a.len {
+        return zero, false
+    }
+    return a.buf[i], true
+}
+
+func (a *DynArray[T]) grow() {
+    newBuf := make([]T, len(a.buf)*2)
+    copy(newBuf, a.buf[:a.len])
+    a.buf = newBuf
+}
+
+func main() {
+    a := NewDynArray[int]()
+    for i := 0; i &lt; 10; i++ {
+        a.Push(i)
+    }
+    v, _ := a.Get(7)
+    fmt.Println(a.Len(), v) // 10 7
+}</code></pre>
+  <div class="cpp-note">Go's built-in <code>append</code> does exactly this under the hood. The runtime's slice header is a struct with pointer, length, and capacity &mdash; the same three fields we declared. Growth factor is roughly 2x for small slices, tapering to 1.25x for large ones.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript &mdash; array-backed with manual capacity</h3>
+  <pre><code class="language-typescript">class DynArray&lt;T&gt; {
+  private buf: (T | undefined)[];
+  private _len = 0;
+
+  constructor(initialCap = 4) {
+    this.buf = new Array(initialCap);
+  }
+
+  get length(): number { return this._len; }
+  get capacity(): number { return this.buf.length; }
+
+  push(val: T): void {
+    if (this._len === this.buf.length) this.grow();
+    this.buf[this._len++] = val;
+  }
+
+  pop(): T | undefined {
+    if (this._len === 0) return undefined;
+    const val = this.buf[--this._len];
+    this.buf[this._len] = undefined;
+    return val;
+  }
+
+  get(i: number): T {
+    if (i &lt; 0 || i &gt;= this._len) throw new RangeError("index out of range");
+    return this.buf[i] as T;
+  }
+
+  private grow(): void {
+    const newBuf = new Array(this.buf.length * 2);
+    for (let i = 0; i &lt; this._len; i++) newBuf[i] = this.buf[i];
+    this.buf = newBuf;
+  }
+}
+
+// Usage
+const a = new DynArray&lt;number&gt;();
+for (let i = 0; i &lt; 10; i++) a.push(i);
+console.log(a.length, a.get(7)); // 10 7</code></pre>
+  <div class="cpp-note">JavaScript arrays are already dynamic and sparse, so this exercise is somewhat academic in TS. The value is understanding that under the hood, V8 optimizes dense integer arrays into contiguous C-style buffers &mdash; very similar to what we built manually in C++ and Rust.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Dynamic array across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Growth factor (stdlib)</td>
+      <td>~1.125</td><td>2x</td><td>2x (GCC) / 1.5x (MSVC)</td><td>2x</td><td>2x then 1.25x</td><td>engine-dependent</td>
+    </tr>
+    <tr>
+      <td>Memory ownership</td>
+      <td>GC</td><td>GC</td><td>manual (RAII)</td><td>manual (RAII)</td><td>GC</td><td>GC</td>
+    </tr>
+    <tr>
+      <td>Resize copies elements</td>
+      <td>memcpy (refs)</td><td>Array.Copy</td><td>move ctor</td><td>memcpy (bitwise)</td><td>copy builtin</td><td>JS engine</td>
+    </tr>
+    <tr>
+      <td>Implementation difficulty</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Bounds checking</td>
+      <td>runtime</td><td>runtime</td><td>optional (at vs [])</td><td>compile+runtime</td><td>runtime</td><td>runtime</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>C++ and Rust require separating allocation from construction.</strong> In GC languages, the runtime handles uninitialized slots. In C++ you use placement new; in Rust you use <code>ptr::write</code>. Getting this wrong causes undefined behaviour.</li>
+    <li><strong>Go's slice is the closest to a &ldquo;language-level&rdquo; dynamic array.</strong> The slice header (pointer, length, capacity) is a value type baked into the language, and <code>append</code> is a builtin &mdash; not a method on a type.</li>
+    <li><strong>Growth factor matters more than you think.</strong> Python's ~1.125 factor minimizes wasted memory but copies more often. C++ / Rust doubling wastes up to 50% capacity but gives fewer allocations. For large arrays (millions of elements), the difference is measurable.</li>
+    <li><strong>Rust's approach prevents iterator invalidation at compile time.</strong> You cannot hold a reference into a <code>Vec</code> and simultaneously push to it &mdash; the borrow checker rejects it. C++ <code>vector</code> silently invalidates iterators on reallocation, a classic source of bugs.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Need contiguous memory for FFI or SIMD:</strong> C++ <code>vector</code> or Rust <code>Vec</code> (guaranteed contiguous)</li>
+    <li><strong>Predictable memory usage:</strong> call <code>reserve</code> / <code>with_capacity</code> upfront to avoid repeated reallocations</li>
+    <li><strong>GC language, append-heavy workload:</strong> stdlib is fine &mdash; the GC reclaims old buffers efficiently</li>
+    <li><strong>Teaching or interviews:</strong> implement from scratch in C++ or Rust to understand placement new, unsafe, and RAII</li>
+  </ul>
+</div>
