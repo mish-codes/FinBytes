@@ -1,0 +1,459 @@
+---
+layout: post
+title: "pytest Mocking & Monkeypatch: The Complete Reference"
+date: 2026-07-20
+tags: [pytest, monkeypatch, mocking, unittest-mock, testing, python]
+categories: [Python, Testing]
+section: testing
+permalink: "/python/pytest-mocking/"
+---
+
+<h2>Two Tools, One Goal</h2>
+
+<p>Python gives you two ways to replace real objects during tests: pytest's built-in <code>monkeypatch</code> fixture and the standard library's <code>unittest.mock.patch</code>. They overlap, but each has a sweet spot. This reference covers both with concrete examples from financial Python code.</p>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Feature</th>
+      <th style="text-align:left; padding:0.4rem;">monkeypatch</th>
+      <th style="text-align:left; padding:0.4rem;">unittest.mock.patch</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Built into pytest</td>
+      <td style="padding:0.4rem;">Yes</td>
+      <td style="padding:0.4rem;">No (stdlib)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Scope</td>
+      <td style="padding:0.4rem;">Function only</td>
+      <td style="padding:0.4rem;">Function, class, module</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Call tracking</td>
+      <td style="padding:0.4rem;">No (you wire it yourself)</td>
+      <td style="padding:0.4rem;">Yes (call_count, call_args, etc.)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">side_effect sequences</td>
+      <td style="padding:0.4rem;">No</td>
+      <td style="padding:0.4rem;">Yes</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Env var support</td>
+      <td style="padding:0.4rem;"><code>setenv</code> / <code>delenv</code></td>
+      <td style="padding:0.4rem;"><code>patch.dict(os.environ, ...)</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Works outside pytest</td>
+      <td style="padding:0.4rem;">No</td>
+      <td style="padding:0.4rem;">Yes (unittest, plain scripts)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Rule of thumb:</strong> reach for <code>monkeypatch</code> when you need a simple replacement with no call inspection. Reach for <code>mock.patch</code> when you need to verify <em>how</em> something was called, or need <code>side_effect</code> sequences.</p>
+
+<h2>The "Patch Where It's Used" Rule</h2>
+
+<p>This is the single most common mocking mistake. When module A imports a name from module B, you must patch the name <strong>in module A's namespace</strong>, not in module B.</p>
+
+<pre><code class="language-python"># market_data.py
+def fetch_prices(ticker: str) -> dict:
+    """Calls a real API - slow, requires network."""
+    import yfinance as yf
+    data = yf.download(ticker, period="5d")
+    return data["Close"].to_dict()
+</code></pre>
+
+<pre><code class="language-python"># scanner.py
+from market_data import fetch_prices   # <-- binds name in scanner's namespace
+
+def scan_ticker(ticker: str) -> str:
+    prices = fetch_prices(ticker)       # <-- this calls scanner.fetch_prices
+    if not prices:
+        return "NO_DATA"
+    latest = list(prices.values())[-1]
+    return "BUY" if latest > 150 else "HOLD"
+</code></pre>
+
+<pre><code class="language-python"># test_scanner.py
+
+# WRONG - this patches the original, but scanner already has its own reference:
+# @patch("market_data.fetch_prices")
+
+# RIGHT - patch where it's USED:
+from unittest.mock import patch
+
+def test_scan_ticker_buy():
+    fake_prices = {"2026-07-15": 160.0, "2026-07-16": 165.0}
+    with patch("scanner.fetch_prices", return_value=fake_prices):
+        assert scan_ticker("AAPL") == "BUY"
+
+def test_scan_ticker_no_data():
+    with patch("scanner.fetch_prices", return_value={}):
+        assert scan_ticker("AAPL") == "NO_DATA"
+</code></pre>
+
+<p>Why does this happen? <code>from market_data import fetch_prices</code> copies a reference into <code>scanner</code>'s global namespace. Patching the original in <code>market_data</code> doesn't update scanner's copy. Always patch at the call site.</p>
+
+<h2>monkeypatch Patterns</h2>
+
+<h3>Replace a method on an object</h3>
+
+<pre><code class="language-python">def test_portfolio_value(monkeypatch):
+    """Replace a method with a lambda that returns a known value."""
+    import portfolio
+
+    monkeypatch.setattr(
+        portfolio.PriceFeed, "get_price",
+        lambda self, ticker: 150.0
+    )
+    pf = portfolio.Portfolio(["AAPL", "MSFT"], quantities=[10, 20])
+    # get_price always returns 150.0, so total = (10 + 20) * 150.0
+    assert pf.total_value() == 4500.0
+</code></pre>
+
+<h3>Replace by string path</h3>
+
+<pre><code class="language-python">def test_fetch_treasury_rates(monkeypatch):
+    """String path is useful when you don't want to import the module."""
+    monkeypatch.setattr(
+        "services.fred_client.fetch_series",
+        lambda series_id, start, end: [4.25, 4.30, 4.28]
+    )
+    from services.fred_client import fetch_series
+    assert fetch_series("DGS10", "2026-01-01", "2026-01-03") == [4.25, 4.30, 4.28]
+</code></pre>
+
+<h3>Environment variables</h3>
+
+<pre><code class="language-python">def test_api_key_loaded(monkeypatch):
+    """Set (or override) an environment variable for one test."""
+    monkeypatch.setenv("FRED_API_KEY", "test-key-abc123")
+
+    import os
+    assert os.environ["FRED_API_KEY"] == "test-key-abc123"
+
+def test_missing_api_key(monkeypatch):
+    """Delete an env var to test the 'not configured' path."""
+    monkeypatch.delenv("FRED_API_KEY", raising=False)
+
+    from config import get_api_key
+    with pytest.raises(EnvironmentError, match="FRED_API_KEY not set"):
+        get_api_key()
+</code></pre>
+
+<h3>Delete an attribute</h3>
+
+<pre><code class="language-python">def test_fallback_when_no_cache(monkeypatch):
+    """Test behavior when an optional dependency is absent."""
+    import services.cache_layer
+    monkeypatch.delattr(services.cache_layer, "redis_client", raising=False)
+
+    # Now cache_layer should fall back to in-memory dict
+    result = services.cache_layer.get_or_compute("key", lambda: 42)
+    assert result == 42
+</code></pre>
+
+<h3>Inline return pattern (the one-liner)</h3>
+
+<pre><code class="language-python">def test_bond_pricer(monkeypatch):
+    """Quick lambda that ignores all args and returns a fixed value."""
+    import bond_math
+    monkeypatch.setattr(bond_math, "bootstrap_spot_curve",
+                        lambda *a, **kw: [0.04, 0.042, 0.045])
+    price = bond_math.price_bond(face=1000, coupon_rate=0.05, maturity=3)
+    assert price == pytest.approx(1022.35, rel=1e-2)
+</code></pre>
+
+<h2>unittest.mock Patterns</h2>
+
+<h3>Decorator style</h3>
+
+<pre><code class="language-python">from unittest.mock import patch, MagicMock
+
+@patch("scanner.fetch_prices")
+def test_scan_returns_hold(mock_fetch):
+    mock_fetch.return_value = {"2026-07-16": 120.0}
+    result = scan_ticker("MSFT")
+    assert result == "HOLD"
+    mock_fetch.assert_called_once_with("MSFT")
+</code></pre>
+
+<h3>Context manager style</h3>
+
+<pre><code class="language-python">def test_scan_handles_timeout():
+    import requests
+    with patch("scanner.fetch_prices") as mock_fetch:
+        mock_fetch.side_effect = requests.Timeout("API timed out")
+        with pytest.raises(requests.Timeout):
+            scan_ticker("AAPL")
+</code></pre>
+
+<h3>side_effect sequences</h3>
+
+<pre><code class="language-python">@patch("risk_engine.get_spot_rate")
+def test_var_uses_multiple_rates(mock_rate):
+    """Return a different value each time the mock is called."""
+    mock_rate.side_effect = [0.04, 0.042, 0.045, 0.039]
+
+    result = risk_engine.compute_var(portfolio_id="p1", num_scenarios=4)
+    assert mock_rate.call_count == 4
+    assert result > 0
+
+@patch("risk_engine.get_spot_rate")
+def test_var_handles_api_failure(mock_rate):
+    """Return values, then raise on the 3rd call."""
+    mock_rate.side_effect = [0.04, 0.042, ConnectionError("lost connection")]
+
+    with pytest.raises(ConnectionError):
+        risk_engine.compute_var(portfolio_id="p1", num_scenarios=4)
+</code></pre>
+
+<h3>Inspecting all calls</h3>
+
+<pre><code class="language-python">@patch("alert_service.send_email")
+def test_breach_alert_emails(mock_send):
+    """Verify exactly which emails were sent."""
+    alert_service.check_limits(portfolio_id="p1")
+
+    # call_args_list stores every call as a tuple of (args, kwargs)
+    calls = mock_send.call_args_list
+    assert len(calls) == 2
+    assert calls[0].kwargs["recipient"] == "risk@firm.com"
+    assert calls[1].kwargs["recipient"] == "manager@firm.com"
+    assert "VaR breach" in calls[0].kwargs["subject"]
+</code></pre>
+
+<h2>AsyncMock: Mocking Async Functions</h2>
+
+<pre><code class="language-python">from unittest.mock import AsyncMock, patch
+import pytest
+
+# --- The code under test ---
+# market_ws.py
+async def stream_prices(session, ticker: str) -> float:
+    """Fetch the latest price from an async HTTP session."""
+    resp = await session.get(f"https://api.example.com/price/{ticker}")
+    data = await resp.json()
+    return data["price"]
+</code></pre>
+
+<pre><code class="language-python"># --- The test ---
+@pytest.mark.asyncio
+async def test_stream_prices():
+    """AsyncMock automatically handles 'await'."""
+    mock_resp = AsyncMock()
+    mock_resp.json.return_value = {"price": 189.50}
+
+    mock_session = AsyncMock()
+    mock_session.get.return_value = mock_resp
+
+    price = await stream_prices(mock_session, "AAPL")
+    assert price == 189.50
+    mock_session.get.assert_called_once_with(
+        "https://api.example.com/price/AAPL"
+    )
+</code></pre>
+
+<p><code>AsyncMock</code> is a <code>MagicMock</code> subclass. When you <code>await</code> it, it returns <code>return_value</code>. When you call it without <code>await</code>, it returns another <code>AsyncMock</code>. This matches how async code chains in practice.</p>
+
+<h2>Edge Cases That Trip People Up</h2>
+
+<h3>1. Patching a property vs a method</h3>
+
+<pre><code class="language-python">class Portfolio:
+    @property
+    def total_value(self) -> float:
+        return sum(self._holdings.values())
+
+# WRONG: this replaces the property with a plain attribute
+# monkeypatch.setattr(portfolio, "total_value", 50000.0)
+
+# RIGHT: patch on the class, replace the property itself
+from unittest.mock import PropertyMock
+
+with patch.object(type(portfolio), "total_value",
+                  new_callable=PropertyMock, return_value=50000.0):
+    assert portfolio.total_value == 50000.0
+</code></pre>
+
+<h3>2. Patching a class (mock the class, not the instance)</h3>
+
+<pre><code class="language-python"># risk.py
+from db import SessionLocal
+
+def get_positions():
+    db = SessionLocal()          # <-- this creates an instance
+    return db.query(Position).all()
+
+# test_risk.py
+@patch("risk.SessionLocal")
+def test_get_positions(MockSession):
+    mock_instance = MockSession.return_value  # the instance that () creates
+    mock_instance.query.return_value.all.return_value = [
+        Position(ticker="AAPL", qty=100)
+    ]
+    result = get_positions()
+    assert len(result) == 1
+    assert result[0].ticker == "AAPL"
+</code></pre>
+
+<h3>3. Mocking datetime.now()</h3>
+
+<pre><code class="language-python">from unittest.mock import patch
+from datetime import datetime
+
+# Freeze time for a VaR report date check
+@patch("report_generator.datetime")
+def test_report_uses_today(mock_dt):
+    mock_dt.now.return_value = datetime(2026, 7, 20, 9, 30)
+    mock_dt.side_effect = lambda *a, **kw: datetime(*a, **kw)  # keep constructors working
+
+    report = report_generator.generate_daily_var()
+    assert report["as_of_date"] == "2026-07-20"
+</code></pre>
+
+<p>Or use <code>freezegun</code> for a cleaner approach:</p>
+
+<pre><code class="language-python">from freezegun import freeze_time
+
+@freeze_time("2026-07-20 09:30:00")
+def test_report_date():
+    report = report_generator.generate_daily_var()
+    assert report["as_of_date"] == "2026-07-20"
+</code></pre>
+
+<h3>4. Patching builtins (open)</h3>
+
+<pre><code class="language-python">from unittest.mock import patch, mock_open
+
+def test_read_config():
+    config_content = '{"db_host": "localhost", "db_port": 5432}'
+    with patch("builtins.open", mock_open(read_data=config_content)):
+        from config_loader import load_config
+        cfg = load_config("config.json")
+        assert cfg["db_host"] == "localhost"
+</code></pre>
+
+<h3>5. Scope: monkeypatch is function-scoped only</h3>
+
+<pre><code class="language-python"># This DOES NOT WORK:
+# @pytest.fixture(scope="session")
+# def patched_api(monkeypatch):  <-- monkeypatch is function-scope only
+#     monkeypatch.setattr(...)
+
+# For broader scopes, use mock.patch as a fixture:
+@pytest.fixture(scope="module")
+def mock_api():
+    with patch("scanner.fetch_prices", return_value={"2026-07-16": 155.0}):
+        yield
+</code></pre>
+
+<h2>Decision Table: When to Use What</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Situation</th>
+      <th style="text-align:left; padding:0.4rem;">Recommended Tool</th>
+      <th style="text-align:left; padding:0.4rem;">Why</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Replace a function with a fixed return value</td>
+      <td style="padding:0.4rem;"><code>monkeypatch.setattr</code></td>
+      <td style="padding:0.4rem;">Simplest, no imports needed</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Set/delete environment variables</td>
+      <td style="padding:0.4rem;"><code>monkeypatch.setenv</code></td>
+      <td style="padding:0.4rem;">Built-in, auto-restores</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Verify call count or arguments</td>
+      <td style="padding:0.4rem;"><code>mock.patch</code></td>
+      <td style="padding:0.4rem;">Built-in call tracking</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Return different values on successive calls</td>
+      <td style="padding:0.4rem;"><code>mock.patch</code> + <code>side_effect</code></td>
+      <td style="padding:0.4rem;">Not possible with plain lambda</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Mock an async function</td>
+      <td style="padding:0.4rem;"><code>AsyncMock</code></td>
+      <td style="padding:0.4rem;">Handles <code>await</code> transparently</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Module or session-scoped patch</td>
+      <td style="padding:0.4rem;"><code>mock.patch</code> in a fixture</td>
+      <td style="padding:0.4rem;">monkeypatch is function-scope only</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Patch a property</td>
+      <td style="padding:0.4rem;"><code>patch.object</code> + <code>PropertyMock</code></td>
+      <td style="padding:0.4rem;">Only reliable way</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Quick fixture for a replaced dependency</td>
+      <td style="padding:0.4rem;"><code>monkeypatch</code> inside <code>@pytest.fixture</code></td>
+      <td style="padding:0.4rem;">Clean, pytest-native</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Complete Example: Mocking a QuantLab Scanner</h2>
+
+<p>Putting it all together. A scanner that fetches prices, checks a threshold, and sends an alert.</p>
+
+<pre><code class="language-python"># scanner_service.py
+from market_data import fetch_prices
+from alert_service import send_alert
+import os
+
+def run_scan(ticker: str) -> dict:
+    threshold = float(os.environ.get("ALERT_THRESHOLD", "200"))
+    prices = fetch_prices(ticker)
+    latest = list(prices.values())[-1]
+    signal = "BUY" if latest > threshold else "HOLD"
+    if signal == "BUY":
+        send_alert(f"{ticker} above {threshold}: {latest}")
+    return {"ticker": ticker, "signal": signal, "price": latest}
+</code></pre>
+
+<pre><code class="language-python"># test_scanner_service.py
+from unittest.mock import patch, call
+import pytest
+
+@patch("scanner_service.send_alert")
+@patch("scanner_service.fetch_prices")
+def test_run_scan_buy_triggers_alert(mock_fetch, mock_alert, monkeypatch):
+    monkeypatch.setenv("ALERT_THRESHOLD", "150")
+    mock_fetch.return_value = {"2026-07-16": 175.0}
+
+    result = run_scan("AAPL")
+
+    assert result["signal"] == "BUY"
+    assert result["price"] == 175.0
+    mock_fetch.assert_called_once_with("AAPL")
+    mock_alert.assert_called_once()
+    assert "175.0" in mock_alert.call_args[0][0]
+
+@patch("scanner_service.send_alert")
+@patch("scanner_service.fetch_prices")
+def test_run_scan_hold_no_alert(mock_fetch, mock_alert, monkeypatch):
+    monkeypatch.setenv("ALERT_THRESHOLD", "200")
+    mock_fetch.return_value = {"2026-07-16": 150.0}
+
+    result = run_scan("MSFT")
+
+    assert result["signal"] == "HOLD"
+    mock_alert.assert_not_called()
+</code></pre>
+
+<p>Notice both tools working together: <code>monkeypatch</code> for the env var (simple replacement), <code>mock.patch</code> for the functions (need call inspection). That's the pattern.</p>
