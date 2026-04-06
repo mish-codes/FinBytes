@@ -12,100 +12,73 @@ permalink: /misc/
 .misc-hdr { font-size:.72rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted-color, #999); margin-bottom:.6rem; padding-bottom:.5rem; border-bottom:1px solid var(--border-color, #ebebeb); display:flex; align-items:baseline; gap:.75rem; }
 .misc-hdr .sub { font-weight:400; font-size:.7rem; color:var(--text-muted-color, #bbb); letter-spacing:0; text-transform:none; }
 .misc-list { list-style:none; margin:0; padding:0; }
-.misc-list li { display:flex; align-items:baseline; gap:1rem; padding:.4rem 0; border-bottom:1px solid var(--border-color, #f4f4f4); }
+.misc-list li { padding:.5rem 0; border-bottom:1px solid var(--border-color, #f4f4f4); }
 .misc-list li:last-child { border-bottom:none; }
-.misc-date { font-size:.78rem; color:var(--text-muted-color, #ccc); white-space:nowrap; min-width:72px; }
 .misc-list a { font-size:.93rem; color:var(--text-color, #333); text-decoration:none; line-height:1.4; }
 .misc-list a:hover { color:var(--link-color, #2a7ae2); text-decoration:underline; }
+.misc-desc { display:block; font-size:.82rem; color:var(--text-muted-color, #999); margin-top:.2rem; }
 </style>
 
-<p class="misc-lede">Infrastructure, tooling, and systems that don't belong to a specific language. AWS, Terraform, FastAPI, databases, dashboards, CI/CD, and anything else that keeps the wheels turning.</p>
+<p class="misc-lede">Infrastructure, tooling, and systems. Practical references with code examples you can copy-paste.</p>
 
 <div class="misc-section" id="tech-references">
   <div class="misc-hdr">Technology references <span class="sub">from the QuantLab project</span></div>
   <ul class="misc-list">
-    <li><span class="misc-date">Reference</span><a href="{{ "/misc/aws-services/" | relative_url }}">AWS Services &mdash; S3, Lambda, API Gateway, RDS, DynamoDB, SQS, SNS, ElastiCache, CloudWatch</a></li>
-    <li><span class="misc-date">Reference</span><a href="{{ "/misc/terraform/" | relative_url }}">Terraform &mdash; Infrastructure as Code for Quant Systems</a></li>
-    <li><span class="misc-date">Reference</span><a href="{{ "/misc/fastapi/" | relative_url }}">FastAPI &mdash; Async APIs for Financial Data</a></li>
-    <li><span class="misc-date">Reference</span><a href="{{ "/misc/postgresql-sqlalchemy/" | relative_url }}">PostgreSQL &amp; SQLAlchemy &mdash; Async Database Layer</a></li>
-    <li><span class="misc-date">Reference</span><a href="{{ "/misc/streamlit/" | relative_url }}">Streamlit &mdash; Python-Only Dashboards</a></li>
-    <li><span class="misc-date">Reference</span><a href="{{ "/misc/github-actions/" | relative_url }}">GitHub Actions &amp; CI/CD &mdash; Automated Testing and Deployment</a></li>
+    <li>
+      <a href="{{ "/misc/aws-services/" | relative_url }}">AWS Services</a>
+      <span class="misc-desc">S3, Lambda, API Gateway, RDS, DynamoDB, SQS, SNS, ElastiCache, CloudWatch</span>
+    </li>
+    <li>
+      <a href="{{ "/misc/terraform/" | relative_url }}">Terraform</a>
+      <span class="misc-desc">Infrastructure as Code &mdash; init, plan, apply, state, modules</span>
+    </li>
+    <li>
+      <a href="{{ "/misc/fastapi/" | relative_url }}">FastAPI</a>
+      <span class="misc-desc">Async APIs, Pydantic models, uvicorn/gunicorn stack</span>
+    </li>
+    <li>
+      <a href="{{ "/misc/postgresql-sqlalchemy/" | relative_url }}">PostgreSQL &amp; SQLAlchemy</a>
+      <span class="misc-desc">Async ORM, Alembic migrations, Docker Compose, RDS</span>
+    </li>
+    <li>
+      <a href="{{ "/misc/streamlit/" | relative_url }}">Streamlit</a>
+      <span class="misc-desc">Python-only dashboards, secrets, multi-page apps</span>
+    </li>
+    <li>
+      <a href="{{ "/misc/github-actions/" | relative_url }}">GitHub Actions &amp; CI/CD</a>
+      <span class="misc-desc">Workflows, OIDC, monorepo patterns</span>
+    </li>
   </ul>
 </div>
 
 <div class="misc-section" id="redis">
-  <div class="misc-hdr">Redis &amp; caching <span class="sub">Jan&ndash;Feb 2026</span></div>
+  <div class="misc-hdr">Infrastructure <span class="sub">caching, queues, containers</span></div>
   <ul class="misc-list">
-    {% for p in site.posts %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% assign sl = p.slug %}
-      {% assign show = false %}
-      {% if p.tags contains "redis" or p.tags contains "caching" or p.section == "redis" %}{% assign show = true %}{% endif %}
-      {% if pd >= "2026-01-02" and pd <= "2026-02-08" %}
-        {% if sl contains "redis" or sl contains "cache" or sl contains "gunicorn" or sl contains "tracing" or sl contains "lru" or sl contains "distributed" %}{% assign show = true %}{% endif %}
-      {% endif %}
-      {% if show %}
-        <li><span class="misc-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
-      {% endif %}
-    {% endfor %}
+    <li>
+      <a href="{{ "/misc/redis-caching/" | relative_url }}">Redis &amp; Caching</a>
+      <span class="misc-desc">Data types, cache-aside pattern, TTL, LRU, pub/sub, connection pooling</span>
+    </li>
+    <li>
+      <a href="{{ "/misc/message-queues/" | relative_url }}">Message Queues &amp; RabbitMQ</a>
+      <span class="misc-desc">Exchanges, routing, pika, DLQ, RabbitMQ vs Redis vs SQS</span>
+    </li>
+    <li>
+      <a href="{{ "/misc/docker-cicd/" | relative_url }}">Docker &amp; CI/CD</a>
+      <span class="misc-desc">Multi-stage builds, docker-compose, GitHub Actions, Kubernetes basics</span>
+    </li>
   </ul>
 </div>
 
-<div class="misc-section" id="queues">
-  <div class="misc-hdr">Message queues <span class="sub">RabbitMQ, Redis pub/sub &amp; alternatives</span></div>
+<div class="misc-section" id="tools">
+  <div class="misc-hdr">Tools <span class="sub">CLI, version control</span></div>
   <ul class="misc-list">
-    {% for p in site.posts %}
-      {% assign show = false %}
-      {% if p.tags contains "rabbitmq" or p.tags contains "queues" or p.tags contains "message-queue" or p.section == "queues" %}{% assign show = true %}{% endif %}
-      {% if show %}
-        <li><span class="misc-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="misc-section" id="cli">
-  <div class="misc-hdr">CLI tools &amp; scripting <span class="sub">argparse, making scripts professional</span></div>
-  <ul class="misc-list">
-    {% for p in site.posts %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% assign sl = p.slug %}
-      {% assign show = false %}
-      {% if p.tags contains "argparse" or p.tags contains "cli" or p.section == "cli" %}{% assign show = true %}{% endif %}
-      {% if pd >= "2026-02-09" and pd <= "2026-02-28" %}
-        {% if sl contains "argparse" %}{% assign show = true %}{% endif %}
-      {% endif %}
-      {% if show %}
-        <li><span class="misc-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="misc-section" id="git">
-  <div class="misc-hdr">Git <span class="sub">workflow and setup</span></div>
-  <ul class="misc-list">
-    {% for p in site.posts %}
-      {% assign show = false %}
-      {% if p.tags contains "git" or p.section == "git" %}{% assign show = true %}{% endif %}
-      {% assign sl = p.slug %}
-      {% if sl contains "git" %}{% assign show = true %}{% endif %}
-      {% if show %}
-        <li><span class="misc-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="misc-section" id="devops">
-  <div class="misc-hdr">Docker, Kubernetes &amp; CI/CD <span class="sub">just enough for a developer</span></div>
-  <ul class="misc-list">
-    {% for p in site.posts %}
-      {% assign show = false %}
-      {% if p.tags contains "docker" or p.tags contains "kubernetes" or p.tags contains "ci-cd" or p.section == "devops" %}{% assign show = true %}{% endif %}
-      {% if show %}
-        <li><span class="misc-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
-      {% endif %}
-    {% endfor %}
+    <li>
+      <a href="{{ "/misc/argparse-cli/" | relative_url }}">argparse &amp; CLI Tools</a>
+      <span class="misc-desc">Arguments, flags, subcommands, the type=bool trap, click/typer</span>
+    </li>
+    <li>
+      <a href="{{ "/misc/git-workflow/" | relative_url }}">Git Workflow</a>
+      <span class="misc-desc">Branching, PRs, protected master, merge conflicts, commit conventions</span>
+    </li>
   </ul>
 </div>

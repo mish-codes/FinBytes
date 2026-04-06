@@ -1,0 +1,284 @@
+---
+layout: post
+title: "Redis & Caching: A Practical Reference"
+date: 2026-07-01
+tags: [redis, caching, lru, ttl, cache-aside, pub-sub, infrastructure]
+categories:
+- Infrastructure
+section: redis
+permalink: "/misc/redis-caching/"
+---
+
+<h2>Redis Is Not Just a Cache</h2>
+
+<p>Redis is an in-memory key-value data store. Most people meet it as a cache layer, but it is also a message broker (pub/sub), a session store, a rate limiter, a leaderboard engine (sorted sets), and a lightweight queue. It is single-threaded, which means every operation is atomic without explicit locking.</p>
+
+<p>Start a local instance in seconds:</p>
+
+<pre><code class="language-bash"># Run Redis in Docker (Alpine image is ~13 MB)
+docker run -d --name redis -p 6379:6379 redis:alpine
+
+# Verify it is alive
+docker exec redis redis-cli ping
+# → PONG
+
+# Interactive CLI
+docker exec -it redis redis-cli
+</code></pre>
+
+<h2>Data Types That Matter</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Type</th>
+      <th style="text-align:left; padding:0.4rem;">Use Case</th>
+      <th style="text-align:left; padding:0.4rem;">Example Command</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><strong>String</strong></td>
+      <td style="padding:0.4rem;">Cache a JSON blob, counter</td>
+      <td style="padding:0.4rem;"><code>SET key val</code> / <code>GET key</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><strong>Hash</strong></td>
+      <td style="padding:0.4rem;">Object with fields (user profile)</td>
+      <td style="padding:0.4rem;"><code>HSET user:1 name "Ada"</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><strong>List</strong></td>
+      <td style="padding:0.4rem;">Job queue, recent activity</td>
+      <td style="padding:0.4rem;"><code>LPUSH queue job1</code> / <code>RPOP queue</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><strong>Sorted Set</strong></td>
+      <td style="padding:0.4rem;">Leaderboard, priority queue</td>
+      <td style="padding:0.4rem;"><code>ZADD board 99.5 "AAPL"</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><strong>Pub/Sub</strong></td>
+      <td style="padding:0.4rem;">Real-time broadcast (fire and forget)</td>
+      <td style="padding:0.4rem;"><code>PUBLISH prices '{"AAPL":189.2}'</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Python with redis-py</h2>
+
+<p>Install: <code>pip install redis</code></p>
+
+<pre><code class="language-python">import redis
+import json
+
+# --- Connection (use a pool in production) ---
+pool = redis.ConnectionPool(host="localhost", port=6379, db=0,
+                            decode_responses=True)
+r = redis.Redis(connection_pool=pool)
+
+# --- Strings ---
+r.set("ticker:AAPL:price", "189.25")
+r.setex("ticker:AAPL:price", 60, "189.25")  # expires in 60 seconds
+price = r.get("ticker:AAPL:price")           # "189.25" (str)
+
+# --- Hashes ---
+r.hset("bond:US10Y", mapping={
+    "coupon": "4.25",
+    "maturity": "2036-03-15",
+    "price": "98.50",
+})
+coupon = r.hget("bond:US10Y", "coupon")      # "4.25"
+bond = r.hgetall("bond:US10Y")               # dict of all fields
+
+# --- Sorted Sets (leaderboard by spread) ---
+r.zadd("spreads:IG", {"AAPL": 55.2, "MSFT": 48.1, "GS": 102.7})
+top3 = r.zrangebyscore("spreads:IG", 0, 100, withscores=True)
+# [('MSFT', 48.1), ('AAPL', 55.2)]
+</code></pre>
+
+<h2>Cache-Aside Pattern</h2>
+
+<p>The most common caching pattern. The application checks the cache first. On a miss, it computes (or fetches from DB), stores the result, and returns it.</p>
+
+<pre><code class="language-python">import redis
+import json
+from sqlalchemy.orm import Session
+
+r = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+CACHE_TTL = 300  # 5 minutes
+
+def get_yield_curve(curve_date: str, db: Session) -> dict:
+    """Cache-aside: check Redis first, fall back to DB."""
+    cache_key = f"yield_curve:{curve_date}"
+
+    # 1. Check cache
+    cached = r.get(cache_key)
+    if cached is not None:
+        return json.loads(cached)  # HIT
+
+    # 2. Cache miss — query database
+    row = db.execute(
+        "SELECT data FROM yield_curves WHERE curve_date = :d",
+        {"d": curve_date},
+    ).fetchone()
+    if row is None:
+        return {}
+
+    result = row["data"]
+
+    # 3. Store in cache with TTL
+    r.setex(cache_key, CACHE_TTL, json.dumps(result))
+
+    # 4. Return
+    return result
+</code></pre>
+
+<h2>TTL Strategies</h2>
+
+<p>Different data tolerates different staleness. Set TTLs accordingly:</p>
+
+<ul>
+  <li><strong>Real-time prices:</strong> 5&ndash;15 seconds (stale prices are dangerous)</li>
+  <li><strong>Yield curves:</strong> 5&ndash;15 minutes (curves update once or twice per day, but you want fresh data during the window)</li>
+  <li><strong>Reference data</strong> (bond metadata, issuer info): 1&ndash;24 hours</li>
+  <li><strong>User sessions:</strong> 30 minutes (sliding expiration with <code>EXPIRE</code>)</li>
+</ul>
+
+<pre><code class="language-python"># Different TTLs for different data
+r.setex("price:AAPL", 10, "189.25")             # 10 seconds
+r.setex("yield_curve:2026-06-30", 900, payload)  # 15 minutes
+r.setex("ref:bond:US912828ZT09", 86400, meta)    # 24 hours
+</code></pre>
+
+<h2>LRU Eviction</h2>
+
+<p>When Redis hits its memory limit, it needs to evict keys. The most common policy is <code>allkeys-lru</code>&mdash;evict the least-recently-used key regardless of whether it has a TTL.</p>
+
+<pre><code class="language-bash"># Set max memory to 256 MB with LRU eviction
+# In redis.conf or via CLI:
+redis-cli CONFIG SET maxmemory 256mb
+redis-cli CONFIG SET maxmemory-policy allkeys-lru
+
+# Check current memory usage
+redis-cli INFO memory | grep used_memory_human
+# used_memory_human:1.23M
+</code></pre>
+
+<p>Other policies: <code>volatile-lru</code> (only evict keys with a TTL), <code>allkeys-lfu</code> (least frequently used), <code>noeviction</code> (return errors when full).</p>
+
+<h2>lru_cache vs Redis</h2>
+
+<p>Python's <code>functools.lru_cache</code> is a process-local, in-memory cache. It is fast and requires zero infrastructure. But it breaks in production:</p>
+
+<ul>
+  <li><strong>Multiple workers:</strong> Gunicorn spawns 4 workers = 4 separate caches. Each worker misses independently and queries the DB.</li>
+  <li><strong>No TTL:</strong> <code>lru_cache</code> has no built-in expiration. Data stays cached until the process restarts or the cache fills up.</li>
+  <li><strong>No invalidation:</strong> If data changes in the DB, every worker's cache is stale until eviction.</li>
+</ul>
+
+<pre><code class="language-python">from functools import lru_cache
+
+# Fine for single-process scripts or CLI tools
+@lru_cache(maxsize=128)
+def compute_spot_rate(tenor: float, par_rate: float) -> float:
+    """Expensive calculation — cache locally."""
+    # ... bootstrap logic ...
+    return spot
+
+# NOT fine for web apps with multiple workers.
+# Use Redis instead so all workers share one cache.
+</code></pre>
+
+<h2>Pub/Sub</h2>
+
+<p>Redis pub/sub is fire-and-forget: if no subscriber is listening, the message is lost. Good for real-time notifications; bad for reliable job processing (use RabbitMQ or Redis Streams for that).</p>
+
+<pre><code class="language-python"># publisher.py
+import redis, json, time
+
+r = redis.Redis(host="localhost", port=6379, decode_responses=True)
+
+while True:
+    msg = {"ticker": "AAPL", "price": 189.25, "ts": time.time()}
+    r.publish("prices", json.dumps(msg))
+    time.sleep(1)
+
+# subscriber.py
+import redis, json
+
+r = redis.Redis(host="localhost", port=6379, decode_responses=True)
+pubsub = r.pubsub()
+pubsub.subscribe("prices")
+
+for message in pubsub.listen():
+    if message["type"] == "message":
+        data = json.loads(message["data"])
+        print(f"{data['ticker']}: ${data['price']}")
+</code></pre>
+
+<h2>Common Gotchas</h2>
+
+<p><strong>1. Connection pooling.</strong> Creating a new <code>redis.Redis()</code> per request opens a new TCP connection each time. Always use a <code>ConnectionPool</code> or instantiate <code>Redis</code> once at module level.</p>
+
+<p><strong>2. Serialization.</strong> Redis stores bytes (or strings with <code>decode_responses=True</code>). For complex objects, serialize with <code>json.dumps()</code> on write and <code>json.loads()</code> on read. Do not use <code>pickle</code>&mdash;it is a security risk for untrusted data.</p>
+
+<p><strong>3. Key naming conventions.</strong> Use colons as separators: <code>entity:id:field</code>. Examples: <code>user:42:session</code>, <code>yield_curve:2026-06-30</code>, <code>price:AAPL</code>. This makes keys scannable with <code>SCAN MATCH price:*</code>.</p>
+
+<p><strong>4. KEYS vs SCAN.</strong> Never use <code>KEYS *</code> in production&mdash;it blocks Redis while scanning every key. Use <code>SCAN</code> with a cursor instead.</p>
+
+<h2>Monitoring</h2>
+
+<pre><code class="language-bash"># Memory usage
+redis-cli INFO memory
+
+# Number of connected clients
+redis-cli INFO clients | grep connected_clients
+
+# Watch every command in real time (NEVER use in production — it slows Redis)
+redis-cli MONITOR
+
+# Key count per database
+redis-cli INFO keyspace
+# db0:keys=1423,expires=890,avg_ttl=42312
+
+# Slow log (commands that took longer than 10ms)
+redis-cli SLOWLOG GET 10
+</code></pre>
+
+<h2>Quick Reference</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Task</th>
+      <th style="text-align:left; padding:0.4rem;">Command / Code</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Start Redis</td>
+      <td style="padding:0.4rem;"><code>docker run -d --name redis -p 6379:6379 redis:alpine</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Health check</td>
+      <td style="padding:0.4rem;"><code>redis-cli ping</code> &rarr; PONG</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Set with TTL</td>
+      <td style="padding:0.4rem;"><code>r.setex("key", 300, "value")</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Flush all keys</td>
+      <td style="padding:0.4rem;"><code>redis-cli FLUSHALL</code> (careful!)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Eviction policy</td>
+      <td style="padding:0.4rem;"><code>CONFIG SET maxmemory-policy allkeys-lru</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Python install</td>
+      <td style="padding:0.4rem;"><code>pip install redis</code></td>
+    </tr>
+  </tbody>
+</table>

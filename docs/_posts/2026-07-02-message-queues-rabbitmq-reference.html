@@ -1,0 +1,308 @@
+---
+layout: post
+title: "Message Queues & RabbitMQ: A Practical Reference"
+date: 2026-07-02
+tags: [rabbitmq, message-queue, pika, pub-sub, queues, amqp, infrastructure]
+categories:
+- Infrastructure
+section: queues
+permalink: "/misc/message-queues/"
+---
+
+<h2>What Message Queues Solve</h2>
+
+<p>A message queue sits between a producer (the thing generating work) and a consumer (the thing doing the work). This decoupling buys you three things:</p>
+
+<ul>
+  <li><strong>Async processing:</strong> The API returns 202 Accepted immediately. The heavy computation happens in the background.</li>
+  <li><strong>Retry and durability:</strong> If the consumer crashes, the message stays in the queue. No work is lost.</li>
+  <li><strong>Load leveling:</strong> A burst of 10,000 requests does not kill your backend. Messages queue up and consumers process them at their own pace.</li>
+</ul>
+
+<p>Without a queue, a failed downstream service means a failed user request. With a queue, the message waits until the service recovers.</p>
+
+<h2>RabbitMQ vs Redis Pub/Sub vs SQS</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Feature</th>
+      <th style="text-align:left; padding:0.4rem;">RabbitMQ</th>
+      <th style="text-align:left; padding:0.4rem;">Redis Pub/Sub</th>
+      <th style="text-align:left; padding:0.4rem;">AWS SQS</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Delivery guarantee</td>
+      <td style="padding:0.4rem;">At-least-once (with acks)</td>
+      <td style="padding:0.4rem;">At-most-once (fire and forget)</td>
+      <td style="padding:0.4rem;">At-least-once</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Persistence</td>
+      <td style="padding:0.4rem;">Yes (durable queues)</td>
+      <td style="padding:0.4rem;">No</td>
+      <td style="padding:0.4rem;">Yes (14-day retention)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Dead letter queue</td>
+      <td style="padding:0.4rem;">Built-in</td>
+      <td style="padding:0.4rem;">No</td>
+      <td style="padding:0.4rem;">Built-in</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Routing</td>
+      <td style="padding:0.4rem;">Exchanges + routing keys</td>
+      <td style="padding:0.4rem;">Channel name only</td>
+      <td style="padding:0.4rem;">Queue name or SNS fan-out</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Infrastructure</td>
+      <td style="padding:0.4rem;">Self-hosted or CloudAMQP</td>
+      <td style="padding:0.4rem;">Already have Redis? Free.</td>
+      <td style="padding:0.4rem;">Fully managed (AWS)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Best for</td>
+      <td style="padding:0.4rem;">Reliable task queues, complex routing</td>
+      <td style="padding:0.4rem;">Real-time broadcasts, ephemeral events</td>
+      <td style="padding:0.4rem;">AWS-native apps, serverless</td>
+    </tr>
+  </tbody>
+</table>
+
+<p><strong>Rule of thumb:</strong> If losing a message is acceptable (live price ticks, typing indicators), use Redis pub/sub. If losing a message means losing money or work, use RabbitMQ or SQS.</p>
+
+<h2>RabbitMQ Core Concepts</h2>
+
+<p>Messages in RabbitMQ flow through a three-stage pipeline:</p>
+
+<ol>
+  <li><strong>Producer</strong> publishes a message to an <strong>exchange</strong>.</li>
+  <li>The exchange routes the message to one or more <strong>queues</strong> based on <strong>bindings</strong> and <strong>routing keys</strong>.</li>
+  <li>A <strong>consumer</strong> pulls the message from a queue and acknowledges it when done.</li>
+</ol>
+
+<p>Exchange types:</p>
+<ul>
+  <li><strong>Direct:</strong> Route to queue whose binding key exactly matches the routing key.</li>
+  <li><strong>Fanout:</strong> Broadcast to all bound queues (ignore routing key). Classic pub/sub.</li>
+  <li><strong>Topic:</strong> Route by pattern. Routing key <code>price.equity.AAPL</code> matches binding <code>price.equity.*</code> and <code>price.#</code>.</li>
+</ul>
+
+<h2>Docker Setup</h2>
+
+<pre><code class="language-bash"># RabbitMQ with management UI
+docker run -d --name rabbitmq \
+  -p 5672:5672 \
+  -p 15672:15672 \
+  rabbitmq:3-management
+
+# Management UI: http://localhost:15672
+# Username: guest / Password: guest
+</code></pre>
+
+<p>No Docker? Use <a href="https://www.cloudamqp.com/">CloudAMQP</a>&mdash;the free "Little Lemur" plan gives you a hosted RabbitMQ instance with a connection URL. No installation required.</p>
+
+<h2>Python with Pika: Work Queue</h2>
+
+<p>Install: <code>pip install pika</code></p>
+
+<p>The work queue pattern distributes tasks across multiple consumers in round-robin fashion. Each message is processed by exactly one consumer.</p>
+
+<pre><code class="language-python"># producer.py — send a task to the work queue
+import pika
+import json
+
+connection = pika.BlockingConnection(
+    pika.ConnectionParameters("localhost")
+)
+channel = connection.channel()
+
+# Declare a durable queue (survives RabbitMQ restart)
+channel.queue_declare(queue="pricing_tasks", durable=True)
+
+task = {"bond_id": "US912828ZT09", "curve_date": "2026-06-30"}
+
+channel.basic_publish(
+    exchange="",                   # default exchange (direct to queue)
+    routing_key="pricing_tasks",   # queue name
+    body=json.dumps(task),
+    properties=pika.BasicProperties(
+        delivery_mode=2,           # persistent message
+        content_type="application/json",
+    ),
+)
+print(f"Sent: {task}")
+connection.close()
+</code></pre>
+
+<pre><code class="language-python"># consumer.py — process tasks from the queue
+import pika
+import json
+import time
+
+connection = pika.BlockingConnection(
+    pika.ConnectionParameters("localhost")
+)
+channel = connection.channel()
+channel.queue_declare(queue="pricing_tasks", durable=True)
+
+# Fair dispatch: don't give a worker more than 1 message at a time
+channel.basic_qos(prefetch_count=1)
+
+def callback(ch, method, properties, body):
+    task = json.loads(body)
+    print(f"Processing bond {task['bond_id']}...")
+    time.sleep(2)  # simulate computation
+    print(f"Done: {task['bond_id']}")
+
+    # Acknowledge: tells RabbitMQ the message is processed
+    ch.basic_ack(delivery_tag=method.delivery_tag)
+
+channel.basic_consume(queue="pricing_tasks", on_message_callback=callback)
+print("Waiting for tasks. Press Ctrl+C to exit.")
+channel.start_consuming()
+</code></pre>
+
+<p>Run two terminals with <code>python consumer.py</code> to see round-robin distribution.</p>
+
+<h2>Pub/Sub with Fanout Exchange</h2>
+
+<p>Every subscriber gets every message. Useful for broadcasting price updates to multiple downstream services.</p>
+
+<pre><code class="language-python"># fanout_publisher.py
+import pika
+import json
+
+connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
+channel = connection.channel()
+
+# Declare a fanout exchange
+channel.exchange_declare(exchange="price_feed", exchange_type="fanout")
+
+msg = {"ticker": "AAPL", "price": 189.25}
+channel.basic_publish(
+    exchange="price_feed",
+    routing_key="",        # ignored for fanout
+    body=json.dumps(msg),
+)
+print(f"Broadcast: {msg}")
+connection.close()
+
+# fanout_subscriber.py
+import pika
+import json
+
+connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
+channel = connection.channel()
+
+channel.exchange_declare(exchange="price_feed", exchange_type="fanout")
+
+# Create an exclusive, auto-delete queue (temporary, per subscriber)
+result = channel.queue_declare(queue="", exclusive=True)
+queue_name = result.method.queue
+
+# Bind the temporary queue to the fanout exchange
+channel.queue_bind(exchange="price_feed", queue=queue_name)
+
+def callback(ch, method, properties, body):
+    data = json.loads(body)
+    print(f"Received: {data['ticker']} @ ${data['price']}")
+
+channel.basic_consume(queue=queue_name, on_message_callback=callback, auto_ack=True)
+print("Listening for price broadcasts...")
+channel.start_consuming()
+</code></pre>
+
+<h2>Dead Letter Queues</h2>
+
+<p>When a consumer rejects a message (or the message expires), it goes to a dead letter exchange (DLX) instead of disappearing. This lets you inspect and retry failed messages.</p>
+
+<pre><code class="language-python">import pika
+
+connection = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
+channel = connection.channel()
+
+# 1. Declare the dead letter queue
+channel.queue_declare(queue="pricing_tasks_dlq", durable=True)
+
+# 2. Declare the dead letter exchange
+channel.exchange_declare(exchange="dlx", exchange_type="direct")
+channel.queue_bind(queue="pricing_tasks_dlq", exchange="dlx",
+                   routing_key="pricing_tasks")
+
+# 3. Declare the main queue with DLX settings
+channel.queue_declare(
+    queue="pricing_tasks",
+    durable=True,
+    arguments={
+        "x-dead-letter-exchange": "dlx",
+        "x-dead-letter-routing-key": "pricing_tasks",
+        "x-message-ttl": 60000,  # optional: messages expire after 60s
+    },
+)
+connection.close()
+</code></pre>
+
+<p>Failed messages now land in <code>pricing_tasks_dlq</code>. You can inspect them in the Management UI or consume them with a separate retry worker.</p>
+
+<h2>Acknowledgements and Durability Checklist</h2>
+
+<p>To guarantee no message loss, you need all three:</p>
+
+<ol>
+  <li><strong>Durable queue:</strong> <code>queue_declare(queue="tasks", durable=True)</code> &mdash; queue survives broker restart.</li>
+  <li><strong>Persistent messages:</strong> <code>delivery_mode=2</code> in message properties &mdash; message written to disk.</li>
+  <li><strong>Manual acknowledgement:</strong> <code>basic_ack()</code> after processing &mdash; message removed from queue only after consumer confirms.</li>
+</ol>
+
+<p>If the consumer crashes before acking, RabbitMQ redelivers the message to another consumer. This means your consumer must be <strong>idempotent</strong>&mdash;processing the same message twice must produce the same result.</p>
+
+<h2>Common Gotchas</h2>
+
+<p><strong>1. Heartbeat timeouts.</strong> Long-running tasks can cause the connection to drop. Increase the heartbeat interval or process tasks in a separate thread.</p>
+
+<p><strong>2. Queue declared differently.</strong> If a queue already exists with different settings (e.g., durable vs non-durable), RabbitMQ throws a <code>PRECONDITION_FAILED</code> error. Delete the queue first or use a new name.</p>
+
+<p><strong>3. Forgetting to ack.</strong> Without <code>basic_ack()</code>, messages pile up in "Unacked" state and are never removed. Memory usage grows until the broker crashes.</p>
+
+<p><strong>4. Connection per request.</strong> Opening a new connection for every message is expensive. Reuse connections and channels. In web apps, create one connection at startup.</p>
+
+<h2>Quick Reference</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Task</th>
+      <th style="text-align:left; padding:0.4rem;">Command / Code</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Start RabbitMQ</td>
+      <td style="padding:0.4rem;"><code>docker run -d -p 5672:5672 -p 15672:15672 rabbitmq:3-management</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Management UI</td>
+      <td style="padding:0.4rem;"><code>http://localhost:15672</code> (guest / guest)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Python install</td>
+      <td style="padding:0.4rem;"><code>pip install pika</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">List queues (CLI)</td>
+      <td style="padding:0.4rem;"><code>docker exec rabbitmq rabbitmqctl list_queues</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Purge a queue</td>
+      <td style="padding:0.4rem;"><code>docker exec rabbitmq rabbitmqctl purge_queue pricing_tasks</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Hosted (free)</td>
+      <td style="padding:0.4rem;">CloudAMQP &mdash; Little Lemur plan</td>
+    </tr>
+  </tbody>
+</table>

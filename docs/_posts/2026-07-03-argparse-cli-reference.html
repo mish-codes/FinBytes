@@ -1,0 +1,262 @@
+---
+layout: post
+title: "argparse & CLI Tools: A Practical Reference"
+date: 2026-07-03
+tags: [argparse, cli, python, scripting, infrastructure]
+categories:
+- Tools
+section: cli
+permalink: "/misc/argparse-cli/"
+---
+
+<h2>Why argparse Over sys.argv</h2>
+
+<p>You can always parse command-line arguments with <code>sys.argv</code>. It is a list of strings. But the moment you need type conversion, validation, help text, or optional flags, you are reimplementing argparse badly. Use argparse from the start&mdash;it is in the standard library and costs zero dependencies.</p>
+
+<pre><code class="language-python"># The sys.argv way (don't do this for anything non-trivial)
+import sys
+ticker = sys.argv[1]           # no validation, no help text
+days = int(sys.argv[2])        # crashes with IndexError if missing
+
+# The argparse way
+import argparse
+parser = argparse.ArgumentParser(description="Fetch historical prices")
+parser.add_argument("ticker", help="Stock ticker symbol (e.g., AAPL)")
+parser.add_argument("days", type=int, help="Number of trading days")
+args = parser.parse_args()
+# args.ticker, args.days — validated, typed, with --help for free
+</code></pre>
+
+<h2>Basic Pattern</h2>
+
+<pre><code class="language-python">import argparse
+
+parser = argparse.ArgumentParser(
+    description="Bond pricing CLI tool",
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+)
+
+# Positional argument (required, no --)
+parser.add_argument("bond_id", help="CUSIP or ISIN of the bond")
+
+# Optional arguments (--flag)
+parser.add_argument("--curve-date", default="today",
+                    help="Yield curve date (default: today)")
+parser.add_argument("--spread", type=float, default=0.0,
+                    help="Spread in basis points (default: 0)")
+parser.add_argument("--output", "-o", choices=["json", "csv", "table"],
+                    default="table", help="Output format")
+
+args = parser.parse_args()
+print(f"Pricing {args.bond_id} as of {args.curve_date}")
+print(f"Spread: {args.spread} bps, format: {args.output}")
+</code></pre>
+
+<pre><code class="language-bash"># Usage
+python price_bond.py US912828ZT09 --spread 50 --output json
+python price_bond.py --help
+</code></pre>
+
+<h2>Types and Validation</h2>
+
+<p>The <code>type</code> parameter converts the string argument to the specified type. If conversion fails, argparse prints an error and exits&mdash;no try/except needed in your code.</p>
+
+<pre><code class="language-python">from pathlib import Path
+
+parser.add_argument("--notional", type=float, help="Notional amount")
+parser.add_argument("--count", type=int, help="Number of simulations")
+parser.add_argument("--config", type=Path, help="Path to config file")
+</code></pre>
+
+<p><code>choices</code> restricts the value to an explicit set:</p>
+
+<pre><code class="language-python">parser.add_argument("--side", choices=["buy", "sell"],
+                    help="Trade side")
+parser.add_argument("--env", choices=["dev", "staging", "prod"],
+                    default="dev", help="Target environment")
+</code></pre>
+
+<h2>Boolean Flags: The type=bool Trap</h2>
+
+<p>This is the single most common argparse mistake. <strong>Do not use <code>type=bool</code></strong>:</p>
+
+<pre><code class="language-python"># WRONG — "False" is a non-empty string, which is truthy!
+parser.add_argument("--verbose", type=bool, default=False)
+# python script.py --verbose False  →  args.verbose = True  (!)
+
+# CORRECT — use store_true / store_false
+parser.add_argument("--verbose", "-v", action="store_true",
+                    help="Enable verbose output")
+parser.add_argument("--no-cache", action="store_true",
+                    help="Bypass cache and fetch fresh data")
+# python script.py --verbose        →  args.verbose = True
+# python script.py                  →  args.verbose = False
+</code></pre>
+
+<h2>Subcommands</h2>
+
+<p>For CLI tools with multiple modes, use <code>add_subparsers</code>. This is how tools like <code>git</code>, <code>docker</code>, and the QuantLab <code>rds.py</code> script work.</p>
+
+<pre><code class="language-python">"""rds.py — Manage the QuantLab RDS instance (Exercise 11 pattern)"""
+import argparse
+import subprocess
+
+
+def start(args):
+    print(f"Starting RDS instance: {args.instance_id}")
+    subprocess.run([
+        "aws", "rds", "start-db-instance",
+        "--db-instance-identifier", args.instance_id,
+        "--profile", args.profile,
+    ])
+
+
+def stop(args):
+    print(f"Stopping RDS instance: {args.instance_id}")
+    subprocess.run([
+        "aws", "rds", "stop-db-instance",
+        "--db-instance-identifier", args.instance_id,
+        "--profile", args.profile,
+    ])
+
+
+def status(args):
+    print(f"Checking status of: {args.instance_id}")
+    subprocess.run([
+        "aws", "rds", "describe-db-instances",
+        "--db-instance-identifier", args.instance_id,
+        "--query", "DBInstances[0].DBInstanceStatus",
+        "--output", "text",
+        "--profile", args.profile,
+    ])
+
+
+parser = argparse.ArgumentParser(description="Manage QuantLab RDS instance")
+parser.add_argument("--instance-id", default="quantlab-db",
+                    help="RDS instance identifier")
+parser.add_argument("--profile", default="quant-lab",
+                    help="AWS CLI profile name")
+
+subparsers = parser.add_subparsers(dest="command", required=True)
+
+sub_start = subparsers.add_parser("start", help="Start the instance")
+sub_start.set_defaults(func=start)
+
+sub_stop = subparsers.add_parser("stop", help="Stop the instance")
+sub_stop.set_defaults(func=stop)
+
+sub_status = subparsers.add_parser("status", help="Check instance status")
+sub_status.set_defaults(func=status)
+
+args = parser.parse_args()
+args.func(args)
+</code></pre>
+
+<pre><code class="language-bash"># Usage
+python rds.py start
+python rds.py stop --instance-id my-other-db
+python rds.py status --profile prod
+python rds.py --help
+python rds.py start --help
+</code></pre>
+
+<h2>Mutual Exclusion</h2>
+
+<p>When two flags cannot coexist (e.g., <code>--json</code> and <code>--csv</code>):</p>
+
+<pre><code class="language-python">group = parser.add_mutually_exclusive_group()
+group.add_argument("--json", action="store_true", help="Output as JSON")
+group.add_argument("--csv", action="store_true", help="Output as CSV")
+
+# python script.py --json --csv
+# error: argument --csv: not allowed with argument --json
+</code></pre>
+
+<h2>The if __name__ Pattern</h2>
+
+<p>Always guard the parser behind <code>if __name__ == "__main__"</code> so the module can be imported without triggering argument parsing:</p>
+
+<pre><code class="language-python">def main():
+    parser = argparse.ArgumentParser(description="Yield curve tool")
+    parser.add_argument("curve_date", help="YYYY-MM-DD")
+    parser.add_argument("--plot", action="store_true")
+    args = parser.parse_args()
+
+    curve = fetch_curve(args.curve_date)
+    if args.plot:
+        plot_curve(curve)
+    else:
+        print(curve)
+
+
+if __name__ == "__main__":
+    main()
+</code></pre>
+
+<h2>Alternatives: click and typer</h2>
+
+<p><strong>click</strong> uses decorators instead of an imperative API. It handles colors, prompts, and file arguments more cleanly than argparse. It is a dependency (<code>pip install click</code>) but is already pulled in by Flask.</p>
+
+<p><strong>typer</strong> builds on click and uses type hints to define arguments. The least boilerplate of all three. It is a good choice for new projects where you control dependencies.</p>
+
+<pre><code class="language-python"># typer equivalent of the basic argparse example
+import typer
+
+app = typer.Typer()
+
+@app.command()
+def price(
+    bond_id: str,
+    curve_date: str = "today",
+    spread: float = 0.0,
+    output: str = typer.Option("table", help="json, csv, or table"),
+):
+    """Price a bond given a curve date and spread."""
+    print(f"Pricing {bond_id} as of {curve_date}, spread={spread}")
+
+if __name__ == "__main__":
+    app()
+</code></pre>
+
+<p><strong>When to prefer argparse:</strong> Standard library only, no external deps, simple scripts. <strong>When to prefer click/typer:</strong> Larger CLI tools, multiple commands, richer UX (colors, progress bars, prompts).</p>
+
+<h2>Quick Reference</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Need</th>
+      <th style="text-align:left; padding:0.4rem;">argparse Code</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Required positional</td>
+      <td style="padding:0.4rem;"><code>add_argument("name")</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Optional with default</td>
+      <td style="padding:0.4rem;"><code>add_argument("--flag", default="x")</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Type conversion</td>
+      <td style="padding:0.4rem;"><code>add_argument("--n", type=int)</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Boolean flag</td>
+      <td style="padding:0.4rem;"><code>add_argument("--v", action="store_true")</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Restricted values</td>
+      <td style="padding:0.4rem;"><code>add_argument("--x", choices=["a","b"])</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Subcommands</td>
+      <td style="padding:0.4rem;"><code>add_subparsers(dest="cmd", required=True)</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Mutual exclusion</td>
+      <td style="padding:0.4rem;"><code>add_mutually_exclusive_group()</code></td>
+    </tr>
+  </tbody>
+</table>
