@@ -1,0 +1,500 @@
+---
+layout: post
+title: "QuantLab Phase 1 Explained: Building a Stock Risk Scanner From Scratch"
+date: 2026-04-03
+tags: [python, pytest, pydantic, fastapi, async, yfinance, claude-api, docker, postgresql, sqlalchemy, streamlit, quant-lab, explainer]
+categories:
+- Explainer
+- Python
+- Quantitative Finance
+permalink: "/2026/04/03/quantlab-phase1-explained/"
+---
+
+<h2>Part 1: What We Built and Why</h2>
+
+<p>QuantLab Phase 1 is eight exercises (01&ndash;08) that each teach one Python tool or concept, building on the last, until they all snap together into a working application: the <strong>Stock Risk Scanner</strong>.</p>
+
+<p>The scanner is a real, deployed app. You type in a list of stock tickers, and it fetches live market data, crunches a suite of risk metrics, asks an AI to write a human-readable risk narrative, saves everything to a database, and displays it on a dashboard. It lives at <a href="https://finbytes.streamlit.app">finbytes.streamlit.app</a>.</p>
+
+<p>The full tech stack:</p>
+
+<ul>
+  <li><strong>Frontend:</strong> Streamlit (hosted on Streamlit Cloud)</li>
+  <li><strong>Backend:</strong> FastAPI (hosted on Render)</li>
+  <li><strong>Database:</strong> PostgreSQL (hosted on Render)</li>
+  <li><strong>AI Narratives:</strong> Claude via the Anthropic SDK</li>
+  <li><strong>Data Source:</strong> Yahoo Finance via yfinance</li>
+  <li><strong>Testing:</strong> pytest with 27 tests</li>
+  <li><strong>CI/CD:</strong> GitHub Actions</li>
+  <li><strong>Containerization:</strong> Docker + docker-compose</li>
+</ul>
+
+<p>Why eight exercises and not one big project? Because learning one thing at a time actually works. Each exercise is small enough to finish in a day, teaches exactly one concept, and builds directly toward the capstone. By the time you reach the scanner, you've already written every piece &mdash; you're just wiring them together. No exercise is filler. Every single one contributes a real, load-bearing component to the final product. When you're done, you don't just understand the scanner &mdash; you understand the tools that built it, and you can use those tools to build anything.</p>
+
+<p>Phase 1 covers the full arc from "how to test a single function" to "how to deploy a complete web application with a database, an AI integration, and automated testing." That arc &mdash; from a single test to a production system &mdash; is what separates a tutorial from real engineering education.</p>
+
+<p>This post explains every single piece &mdash; every technology, every finance concept, every design decision &mdash; assuming you have never written a line of code or read a finance textbook. If you are twelve years old and curious, this is for you.</p>
+
+<h2>Part 2: The Python Technologies (Explain Like I'm 12)</h2>
+
+<h3>pytest &mdash; The Homework-Checking Robot (Exercise 01)</h3>
+
+<p>Imagine you finish your math homework and hand it to a robot. The robot checks every single answer instantly and tells you exactly which ones are wrong. That's pytest.</p>
+
+<p>You write tiny programs called "tests" that describe what your code <em>should</em> do. Then pytest runs them all and reports back: green checkmarks for passing, red X's for failing. If you change something and accidentally break it, the robot catches it before anyone else sees.</p>
+
+<p>Here's what a real test looks like:</p>
+
+<pre><code class="language-python">def test_daily_return_positive():
+    prices = [100.0, 105.0]
+    result = compute_daily_returns(prices)
+    assert result[0] == pytest.approx(0.05)  # 5% gain</code></pre>
+
+<p>That test says: "If the price goes from 100 to 105, the daily return should be 5%." If <code>compute_daily_returns</code> ever returns the wrong number, this test screams red. No human has to remember to check &mdash; the robot does it every time.</p>
+
+<p>Exercise 01 teaches <strong>TDD &mdash; Test-Driven Development</strong>. The trick is to write the test <em>first</em>, before the code. You follow a loop called <strong>red-green-refactor</strong>:</p>
+
+<ol>
+  <li><strong>Red</strong> &mdash; write a test that fails (because the code doesn't exist yet).</li>
+  <li><strong>Green</strong> &mdash; write the simplest code that makes the test pass.</li>
+  <li><strong>Refactor</strong> &mdash; clean up the code without breaking the test.</li>
+</ol>
+
+<p>It feels backwards at first, but it forces you to think about what your code should do before you think about how. The capstone has 27 tests. Every single one was written before the code it tests.</p>
+
+<p>Why does this matter? Because tests are permanent documentation. Comments get outdated. Documentation gets forgotten. But a test that says <code>assert calculate_var(returns, 0.95) == pytest.approx(-0.032)</code> is a guarantee that is verified every time the test suite runs. If someone changes the VaR formula and gets a different answer, the test fails immediately. The tests are the contract that the code must honor.</p>
+
+<h3>Pydantic &mdash; The Bouncer at the Door (Exercise 02)</h3>
+
+<p>Picture a bouncer at a club. Before anyone gets in, the bouncer checks: "Are you on the list? Do you meet the dress code? Is your ID valid?" If anything is off, you're turned away at the door.</p>
+
+<p>Pydantic does the same thing for data. Every piece of information entering your app passes through a Pydantic model that checks the rules. Is this supposed to be a number? Is it positive? Is this date in the future? Pydantic catches bad data at the door, before it can cause chaos inside.</p>
+
+<p>Exercise 02 covers three levels of validation:</p>
+
+<ul>
+  <li><strong>Field validators</strong> &mdash; check one field at a time ("ticker must be uppercase").</li>
+  <li><strong>Cross-field validators</strong> &mdash; check relationships between fields ("end date must be after start date").</li>
+  <li><strong>Computed fields</strong> &mdash; automatically calculate values from other fields ("total = price &times; quantity").</li>
+</ul>
+
+<p>In the capstone, models like <code>ScanRequest</code>, <code>RiskMetrics</code>, and <code>ScanResult</code> are all Pydantic. If someone tries to scan an empty ticker list or a nonsense date range, Pydantic rejects it immediately with a clear error message. No bad data gets past the bouncer.</p>
+
+<pre><code class="language-python">class ScanRequest(BaseModel):
+    tickers: list[str]           # ["AAPL", "MSFT", "TSLA"]
+    start_date: date
+    end_date: date
+
+    @field_validator("tickers")
+    def tickers_not_empty(cls, v):
+        if len(v) == 0:
+            raise ValueError("At least one ticker required")
+        return [t.upper() for t in v]</code></pre>
+
+<p>That validator runs automatically every time a <code>ScanRequest</code> is created. Empty list? Rejected. Lowercase tickers? Uppercased. The model enforces the rules so the rest of the code doesn't have to worry about bad input.</p>
+
+<h3>FastAPI &mdash; The Post Office (Exercise 03)</h3>
+
+<p>Your app needs a way to receive requests from the outside world and send back answers. FastAPI is the post office.</p>
+
+<p>Someone sends a letter (an HTTP request) to a specific address (a URL like <code>/api/scan</code>). FastAPI receives it, reads the address, routes it to the right handler function, runs the code, and sends back a reply. It's the middleman between the outside world and your Python code.</p>
+
+<p>The best part: FastAPI automatically generates a documentation page at <code>/docs</code>. You can open it in a browser, see every endpoint, try them out with real data, and inspect the request/response formats &mdash; all for free, no extra work. This is called a Swagger UI (or OpenAPI docs), and it is one of the biggest reasons FastAPI has become so popular in the Python world. You build the API, and the documentation writes itself. No separate documentation step, no docs that drift out of sync with the code.</p>
+
+<p>FastAPI also works hand-in-hand with Pydantic. When you declare that an endpoint accepts a <code>ScanRequest</code> model, FastAPI automatically validates incoming data against that model, returns clear error messages for invalid input, and shows the model's schema in the docs. Two libraries, working together, handling validation and documentation for free.</p>
+
+<p>Exercise 03 builds a toy watchlist API with hardcoded stock data. The capstone uses the same patterns for the real scanner endpoints: <code>POST /api/scan</code> to start a scan and <code>GET /api/scans/{id}</code> to retrieve results. The toy version is a bicycle with training wheels; the capstone is the same bicycle, just without the training wheels and on a real road.</p>
+
+<h3>async/await &mdash; The Multi-Table Waiter (Exercise 04)</h3>
+
+<p>Imagine a waiter at a restaurant. The slow waiter takes an order, walks to the kitchen, stands there watching the chef cook, walks back with the food, then moves to the next table. One table at a time. Painfully slow.</p>
+
+<p>The fast waiter takes an order, drops it at the kitchen, immediately goes to the next table, takes their order, drops it at the kitchen, and keeps moving. When food is ready, they grab it and deliver it. Multiple tables at once, no standing around.</p>
+
+<p>That's <code>async</code> and <code>await</code>. When your code hits something slow &mdash; waiting for a website to respond, waiting for a database query &mdash; instead of freezing, it says "I'll come back for this" and goes to do other work. <code>asyncio.gather</code> lets you kick off many slow tasks at the same time.</p>
+
+<p>Why it matters: fetching prices for 50 stocks sequentially might take 10 seconds. With <code>asyncio.gather</code>, all 50 requests fly out at once, and the total time drops to about 200 milliseconds. That's a 50&times; speedup for free.</p>
+
+<p>In the capstone, every external call &mdash; price fetching, database queries, API calls to Claude &mdash; uses async. The server can handle dozens of simultaneous users without breaking a sweat, because it never stands around waiting.</p>
+
+<p>This is one of the most practical performance improvements you can make in a web application. No fancy algorithms, no special hardware &mdash; just stop waiting for things you don't need to wait for. If your code spends most of its time waiting for network responses (which web apps do), async gives you a massive speedup for almost no extra complexity.</p>
+
+<h3>yfinance &mdash; The Pipe to Wall Street (Exercise 05)</h3>
+
+<p>yfinance is a Python library that connects to Yahoo Finance and downloads stock market data. Type in a ticker symbol like <code>AAPL</code>, pick a date range, and yfinance hands you a table of daily prices: open, high, low, close, volume.</p>
+
+<p>That raw data isn't useful by itself. You need tools to wrangle it:</p>
+
+<ul>
+  <li><strong>pandas</strong> &mdash; a library for working with tables of data (called DataFrames). Think of it as Excel inside Python.</li>
+  <li><strong>numpy</strong> &mdash; a library for fast math on arrays of numbers. It's the calculator engine underneath pandas.</li>
+</ul>
+
+<p>Exercise 05 fetches real stock data, handles messy real-world issues (stock splits, dividends, missing days), and computes basic statistics. Real-world data is never clean. Markets are closed on weekends and holidays. Companies split their stock (one share becomes two at half the price). Dividends create price jumps. yfinance provides "adjusted close" prices that account for all of this, so your calculations don't get tripped up by non-events.</p>
+
+<p>In the capstone, this becomes <code>market_data.py</code> &mdash; the module that feeds live prices into the risk engine.</p>
+
+<h3>Claude API / Anthropic SDK &mdash; The AI Analyst (Exercise 06)</h3>
+
+<p>Imagine you computed a pile of risk numbers for a stock: volatility is 32%, max drawdown is &minus;18%, Sharpe ratio is 0.45. Those numbers are accurate, but most people can't instantly feel what they mean. Now imagine handing those numbers to a smart analyst who writes: "This stock has been bouncing around a lot, lost nearly a fifth of its value at the worst point, and the return you're getting barely justifies the risk."</p>
+
+<p>That's what the Claude API does. You send it the raw metrics plus a <strong>system prompt</strong> ("You are a risk analyst writing for a general audience") and a <strong>user prompt</strong> (the actual numbers), and it sends back a human-readable narrative. The system prompt defines the persona &mdash; who Claude should pretend to be. The user prompt provides the data &mdash; what Claude should analyze. Keeping these separate makes it easy to change the tone (swap the system prompt) without changing the data pipeline.</p>
+
+<p>Exercise 06 teaches the Anthropic SDK: how to structure prompts, parse responses, handle rate limits, and &mdash; critically &mdash; <strong>graceful degradation</strong>. If the API is down or the key is missing, the scanner doesn't crash. It falls back to raw metrics with no narrative. The user still gets useful data.</p>
+
+<p>This is a pattern you'll see again and again in professional code: plan for the API to fail, because eventually it will. The Claude API adds enormous value when it works &mdash; turning dry numbers into readable insight &mdash; but the scanner is still fully functional without it. The AI narrative is the cherry on top, not the foundation. That's a deliberate design choice.</p>
+
+<p>Prompt engineering is a skill of its own. The system prompt tells Claude to be a concise risk analyst, not a creative writer. The user prompt is structured data, not free-form text. The response is parsed for specific sections. Getting consistent, useful output from an LLM requires treating it like any other API: define the contract, handle errors, test the edge cases.</p>
+
+<h3>Docker &mdash; The Lunchbox (Exercise 07)</h3>
+
+<p>You pack a perfect lunch at home: sandwich, fruit, juice box. But when you open it at school, the sandwich is squished, the juice leaked, and the fruit rolled under your desk. Docker solves this problem for code.</p>
+
+<p>A Docker container is a sealed lunchbox for your application. It holds your code, every library it needs, and the exact right version of Python &mdash; all packed together. Whether you open it on your laptop, your friend's laptop, or a cloud server, everything inside is identical. No "but it works on my machine" surprises.</p>
+
+<p>Exercise 07 introduces two key ideas:</p>
+
+<ul>
+  <li><strong>Multi-stage builds</strong> &mdash; one stage installs all the build tools (the kitchen), another stage copies only the finished product (the lunchbox). The final container is small and clean, often 10&times; smaller than if you crammed everything into one stage.</li>
+  <li><strong>docker-compose</strong> &mdash; when your app needs multiple containers running together (say, one for FastAPI and one for PostgreSQL), docker-compose starts them all with one command and wires them together automatically.</li>
+</ul>
+
+<p>In the capstone, the Dockerfile builds the FastAPI backend, and docker-compose orchestrates the backend alongside a PostgreSQL database. One command &mdash; <code>docker-compose up</code> &mdash; and the entire stack is running on your laptop, identical to how it runs in the cloud. This is how professional teams develop: everyone runs the same containers, so "works on my machine" is never an excuse.</p>
+
+<h3>SQLAlchemy + PostgreSQL &mdash; The Filing System That Never Forgets (Exercise 08)</h3>
+
+<p>PostgreSQL is a database &mdash; think of it as a giant, organized filing cabinet that can hold millions of records, answer questions in milliseconds, and let dozens of users read and write at the same time.</p>
+
+<p>But Python doesn't speak SQL (the language databases understand). <strong>SQLAlchemy</strong> is the translator. You define your data as normal Python classes, and SQLAlchemy converts them into database tables behind the scenes. When you save a Python object, it becomes a row in a table. When you query, rows come back as Python objects.</p>
+
+<p>Exercise 08 also introduces:</p>
+
+<ul>
+  <li><strong>Async sessions</strong> &mdash; non-blocking database calls, so the server isn't frozen while waiting for a query to finish.</li>
+  <li><strong>Alembic</strong> &mdash; a migration tool. When you add a new column to your model, Alembic generates a script that updates the real database schema. Like a renovation contractor who knows exactly which wall to move.</li>
+</ul>
+
+<p>In the capstone, <code>db_models.py</code> defines the scan result table, and <code>db.py</code> handles all reads and writes. Every scan result is persisted forever &mdash; even if the server restarts, the data is safe in PostgreSQL. Without this layer, every scan result would vanish the moment the server rebooted. With it, you can look up any scan from any date, build historical comparisons, and never lose a result.</p>
+
+<p>Alembic deserves special mention. As the scanner evolves, you'll want to add new columns (maybe a "sector" field or a "benchmark" comparison). You can't just change the Python class and hope the database magically updates &mdash; the database has no idea your Python code changed. Alembic bridges that gap. It generates a migration script &mdash; a step-by-step instruction set that transforms the old database schema into the new one without losing any existing data. Run <code>alembic upgrade head</code> and the database catches up. It's version control for your database structure, and every production application uses something like it.</p>
+
+<h2>Part 3: The Finance Concepts (Explain Like I'm 12)</h2>
+
+<p>You don't need a finance degree to understand these concepts. They all boil down to answering one question: <strong>"How risky is this investment?"</strong> The scanner computes all of them automatically, but knowing what they mean turns a wall of numbers into real insight.</p>
+
+<h3>Daily Returns &mdash; Today's Report Card</h3>
+
+<p>If a stock was $100 yesterday and it's $102 today, it went up 2%. That's the daily return. If it dropped to $97, the return is &minus;3%. Simple as that.</p>
+
+<pre><code>daily return = (today's price &minus; yesterday's price) / yesterday's price</code></pre>
+
+<p>We compute these for every day in the date range, giving us a long list of small percentages &mdash; the raw material for everything that follows. Every other metric in Part 3 is derived from this list of daily returns.</p>
+
+<h3>Cumulative Return &mdash; The Total Score</h3>
+
+<p>Cumulative return answers: "If I invested $100 at the start and held on until now, how much do I have?" It chains all the daily returns together.</p>
+
+<p>If the stock went up 2%, then down 1%, then up 3%, the cumulative return is not simply 2 &minus; 1 + 3 = 4%. You have to compound: 1.02 &times; 0.99 &times; 1.03 = 1.0400 &mdash; so about 4.0%. Close in this example, but over hundreds of days and larger swings, the difference between adding and compounding becomes significant. Always compound.</p>
+
+<p>The scanner shows cumulative return as a chart over time, so you can see not just the final number but the entire journey. A stock that returned 20% might have gotten there smoothly (a steady climb) or violently (a huge drop followed by a frantic recovery). The chart tells the story that the single number hides. Two stocks with identical cumulative returns can have completely different risk profiles &mdash; and the other metrics in this section (drawdown, volatility, VaR) capture exactly those differences. That is why the scanner computes all of them together. No single metric tells the whole story.</p>
+
+<h3>Max Drawdown &mdash; How Bad Did It Get?</h3>
+
+<p>Imagine you're hiking and you reach the top of a hill. Then the trail drops steeply before climbing again. Max drawdown measures the deepest valley: the biggest drop from any peak to the next trough.</p>
+
+<p>If a stock hit $150, then fell to $120 before recovering, the max drawdown is ($150 &minus; $120) / $150 = &minus;20%. This is the worst-case "I bought at the top and panicked at the bottom" scenario. Investors care about this a lot, because a big drawdown can wipe out years of gains and test your nerve.</p>
+
+<p>For context: the S&amp;P 500's max drawdown during the 2008 financial crisis was about &minus;57%. During COVID in March 2020, it was about &minus;34%. A stock with a max drawdown of &minus;15% over the same period was comparatively calm.</p>
+
+<h3>Volatility &mdash; How Much It Bounces</h3>
+
+<p>Some stocks barely move &mdash; up 0.1% one day, down 0.2% the next. Others swing wildly &mdash; up 5%, down 4%, up 6%. Volatility measures the size of those swings. Technically, it's the standard deviation of daily returns, usually annualized (multiplied by the square root of 252, the number of trading days in a year).</p>
+
+<p>Higher volatility means more uncertainty. A stock with 40% annual volatility is a roller coaster. One with 10% is a gentle train ride. Neither is "good" or "bad" by itself &mdash; it depends on how much bumping around you can stomach. A retiree living off their portfolio needs low volatility. A 25-year-old with decades ahead of them can handle more.</p>
+
+<p>For reference: large, boring companies (utilities, consumer staples) tend to have volatility around 15&ndash;20%. Tech stocks often sit around 25&ndash;35%. Meme stocks and crypto can easily hit 80&ndash;100%. The scanner computes this for each ticker so you can see at a glance which holdings are calm and which are volatile.</p>
+
+<p>One subtlety: volatility treats upside and downside swings equally. A stock that jumps 5% up is just as "volatile" as one that drops 5% down. Most investors care more about downside swings. There's a variant called <em>downside deviation</em> that only counts negative returns, but standard volatility remains the industry default because it's simple, widely understood, and used in the Sharpe ratio calculation below.</p>
+
+<h3>VaR (Value at Risk) &mdash; The "Probably Won't Lose More Than" Number</h3>
+
+<p>VaR answers a specific question: "On 95% of days, how much is the <em>most</em> I'll lose?"</p>
+
+<p>If your portfolio's daily 95% VaR is $500, it means: on a typical day, there's only a 5% chance you'll lose more than $500. It doesn't tell you what happens in that worst 5% &mdash; just where the line is.</p>
+
+<p>Think of it like weather: "There's a 95% chance it won't rain more than 2 inches." Useful, but doesn't tell you about the hurricane.</p>
+
+<p>Computing it is surprisingly straightforward: take all historical daily returns, sort them from worst to best, and find the value at the 5th percentile. That's your 95% VaR. Banks compute this number every single night for their entire portfolio. Regulators require it. Risk committees review it every morning. It's one of the most important numbers in finance.</p>
+
+<h3>CVaR (Conditional VaR) &mdash; How Bad Is the Bad Day?</h3>
+
+<p>CVaR picks up where VaR leaves off. It asks: "OK, so 5% of the time I lose more than $500. In those bad scenarios, what's the <em>average</em> loss?"</p>
+
+<p>If the CVaR is $800, it means: when things go wrong (the worst 5%), you lose $800 on average. CVaR captures the severity of tail events &mdash; the stuff VaR glosses over.</p>
+
+<p>Regulators love CVaR because it forces you to think about the worst-case, not just the threshold. Two portfolios can have the same VaR but wildly different CVaR. Portfolio A might lose $550 on its worst days. Portfolio B might lose $2,000. CVaR reveals that difference. The scanner computes both, because together they tell a much more complete risk story than either one alone.</p>
+
+<h3>Sharpe Ratio &mdash; Reward per Unit of Risk</h3>
+
+<p>Imagine two stocks. Both returned 15% last year. But Stock A barely moved (low volatility), while Stock B was a heart-attack roller coaster (high volatility). Which one is better? Stock A &mdash; same reward, less pain.</p>
+
+<p>The Sharpe ratio makes this precise:</p>
+
+<pre><code>Sharpe = (return &minus; risk-free rate) / volatility</code></pre>
+
+<p>The "risk-free rate" is what you'd earn by parking money in government bonds &mdash; zero risk, modest return. The Sharpe ratio subtracts that baseline so you're measuring the <em>extra</em> return you got for taking on the extra risk of stocks.</p>
+
+<p>A higher Sharpe means you're being better compensated for the risk you're taking. Below 1.0 is mediocre &mdash; you're not getting enough reward for the volatility you endured. Between 1.0 and 2.0 is solid. Above 2.0 is excellent and rare. The scanner computes this for every ticker so you can compare apples to apples.</p>
+
+<h3>Portfolio Weights &mdash; How You Split Your Money</h3>
+
+<p>If you have $10,000 and put $5,000 in Apple, $3,000 in Google, and $2,000 in Tesla, your weights are 50%, 30%, and 20%. Weights always add up to 100%.</p>
+
+<p>The scanner lets you set custom weights for each ticker. The risk metrics then apply to the combined portfolio, not just individual stocks. A well-diversified portfolio (money spread across different sectors) usually has lower volatility and smaller drawdowns than any single stock. This is the core idea behind diversification: don't put all your eggs in one basket, and the math will reward you with a smoother ride.</p>
+
+<h2>Part 4: The Web Stack (Explain Like I'm 12)</h2>
+
+<p>The capstone glues all eight exercises into a working application. Here's how the pieces connect. If Part 2 taught you the individual instruments, this section teaches you how they play together as an orchestra.</p>
+
+<h3>Streamlit &mdash; The Dashboard</h3>
+
+<p>Streamlit lets you build a web dashboard using nothing but Python. No HTML, no CSS, no JavaScript. You write <code>st.title("Stock Risk Scanner")</code> and a title appears. You write <code>st.line_chart(data)</code> and a chart appears. It's the fastest way to go from "I have some data" to "I have a web app."</p>
+
+<p>Streamlit Cloud hosts it for free. Push code to GitHub, and Streamlit deploys it automatically. The dashboard lives at <a href="https://finbytes.streamlit.app">finbytes.streamlit.app</a>. If you've ever built something in a Jupyter notebook and wished you could share it as a real website, Streamlit is the answer.</p>
+
+<h3>FastAPI &mdash; The Backend Brain</h3>
+
+<p>The dashboard doesn't do the heavy lifting &mdash; it's just the face. Behind the scenes, it sends requests to a FastAPI backend that does all the real work: fetching prices, crunching risk metrics, calling Claude, saving to the database. This separation is intentional. The frontend can be rebuilt in React or Vue tomorrow without touching a single line of backend code. The API is the contract between them.</p>
+
+<h3>uvicorn / gunicorn &mdash; The Waiters</h3>
+
+<p>FastAPI defines <em>what</em> to do with each request, but it needs a server program to actually listen for incoming requests and deliver them. That's where uvicorn and gunicorn come in.</p>
+
+<p><strong>uvicorn</strong> is an ASGI server &mdash; it speaks the async protocol that FastAPI uses. Think of it as a single, very fast waiter who can juggle many tables because it never blocks.</p>
+
+<p><strong>gunicorn</strong> is a process manager. It spawns multiple uvicorn workers, so instead of one waiter you have four or eight, each handling requests independently. If one worker crashes, gunicorn restarts it automatically. On Render, the production command looks something like <code>gunicorn -k uvicorn.workers.UvicornWorker app:app</code> &mdash; gunicorn manages the workers, each worker runs uvicorn, and uvicorn runs your FastAPI code.</p>
+
+<h3>PostgreSQL &mdash; The Filing Cabinet</h3>
+
+<p>Every scan result is saved permanently. If you scanned AAPL, MSFT, and TSLA last Tuesday, that result is still in the database today. The dashboard can retrieve it anytime, even if the backend restarted ten times since then. This is the difference between an app and a toy: persistence. Without a database, every scan result vanishes the moment the server restarts. With one, your app has memory.</p>
+
+<p>PostgreSQL handles concurrent access gracefully &mdash; if two users scan at the same time, both results are saved correctly without conflicts. It also supports complex queries: "show me all scans where max drawdown exceeded &minus;25%" is a one-line SQL query.</p>
+
+<h3>Render &mdash; Where the Backend Lives</h3>
+
+<p>Render is a cloud platform that runs your backend for you. Push code to GitHub, and Render automatically builds and deploys it. It's like AWS but simpler &mdash; fewer knobs, less configuration, and a generous free tier for small projects. You don't have to set up servers, configure load balancers, or manage SSL certificates. Render handles all of that.</p>
+
+<p>The scanner's FastAPI backend and PostgreSQL database both run on Render. The free tier spins down the server after 15 minutes of inactivity, which means the first request after a quiet period takes a few seconds to "wake up." That's the trade-off for free hosting &mdash; perfectly fine for a portfolio project.
+
+<p>One practical note: Render's free PostgreSQL databases expire after 90 days. When that happens, you create a new one and update the connection string. The data resets, but the application keeps running.</p>
+
+<h3>Streamlit Cloud &mdash; Where the Dashboard Lives</h3>
+
+<p>Same idea, but for the frontend. Streamlit Cloud watches your GitHub repo and redeploys whenever the dashboard code changes. Zero server management. You connect your GitHub account, point it at your repo, and every push to the main branch triggers a redeploy. It is the simplest possible deployment pipeline for a Python web app. No Docker required on the frontend side &mdash; Streamlit Cloud handles the Python environment for you.</p>
+
+<h3>GitHub Actions &mdash; The Robot Tester</h3>
+
+<p>Every time someone opens a pull request, a robot runs all 27 tests automatically. If any test fails, the PR is blocked. No broken code reaches production. It's a safety net that never sleeps.</p>
+
+<p>The workflow is defined in a YAML file in the repository. It says: "When a PR is opened, spin up a virtual machine, install Python, install dependencies, run pytest. If any test fails, mark the PR with a red X." This is called <strong>Continuous Integration</strong> (CI) &mdash; continuously checking that new code doesn't break existing code.</p>
+
+<p>Every single one of QuantLab's exercises went through this workflow: code on the <code>working</code> branch, open a PR to <code>master</code>, wait for all tests to pass, merge. Twenty pull requests, twenty green checkmarks, zero broken merges. The robot never gets tired, never forgets a test, and never merges broken code because it's Friday afternoon.</p>
+
+<h3>The Architecture &mdash; Putting It All Together</h3>
+
+<p>Now let's see how all these pieces connect. Here's how a scan request flows through the entire system, from the moment you click "Scan" to the moment results appear on screen:</p>
+
+<pre>
+User opens finbytes.streamlit.app
+       |
+       v
+  +------------+     POST /api/scan      +--------------+
+  | Streamlit  | ----------------------> |  FastAPI on  |
+  | Dashboard  |                         |   Render     |
+  |            |  <---------------------- |              |
+  |            |     { scan_id: "abc" }  +------+-------+
+  |            |                                |
+  |  polls     |                    +-----------+-----------+
+  |  until     |                    v           v           v
+  |  done      |              +----------+ +----------+ +----------+
+  |            |              | yfinance | |  NumPy   | | Claude   |
+  +------------+              | (prices) | | (risk)   | | (story)  |
+                              +----------+ +----------+ +----------+
+                                                |
+                                                v
+                                         +--------------+
+                                         | PostgreSQL   |
+                                         | (save result)|
+                                         +--------------+
+</pre>
+
+<p>Step by step:</p>
+
+<ol>
+  <li>You type tickers (like AAPL, MSFT, TSLA) and click "Scan" on the Streamlit dashboard.</li>
+  <li>The dashboard sends a <code>POST /api/scan</code> request to the FastAPI backend on Render.</li>
+  <li>FastAPI validates the input with Pydantic, immediately responds with a scan ID (HTTP 202), and starts processing in the background.</li>
+  <li>The backend fetches prices from yfinance using async (all tickers in parallel), computes risk metrics with NumPy, and requests a narrative from Claude.</li>
+  <li>Results are saved to PostgreSQL via SQLAlchemy.</li>
+  <li>The dashboard polls <code>GET /api/scans/{id}</code> every few seconds until the status is "done," then displays the metrics, charts, and AI narrative.</li>
+</ol>
+
+<p>The whole flow takes a few seconds. The user sees a progress spinner, then results. Behind the scenes, eight exercises worth of technology are working together seamlessly.</p>
+
+<p>Notice how the architecture separates concerns cleanly. The dashboard knows nothing about NumPy or SQL. The risk engine knows nothing about Streamlit or HTTP. The database knows nothing about stock prices. Each piece does its job and passes the result to the next piece. This is what makes the system maintainable &mdash; you can change any one piece without rewriting the others.</p>
+
+<p>This architecture also scales naturally. If the backend gets slow, you can add more workers on Render. If the database gets full, you can upgrade the PostgreSQL plan. If you want a mobile app instead of a web dashboard, you build a new client that talks to the same API. The backend doesn't care who's asking &mdash; it just processes requests and returns results.</p>
+
+<h2>Part 5: How the Exercises Stack Into the Capstone</h2>
+
+<p>This is the payoff. Each exercise teaches exactly one skill in isolation. In the capstone, every single one shows up, doing real work:</p>
+
+<pre>
+Exercise 01 (pytest)       -->  testing framework for all 27 tests
+Exercise 02 (Pydantic)     -->  ScanRequest, RiskMetrics, ScanResult models
+Exercise 03 (FastAPI)      -->  API endpoints (/api/scan, /api/scans/{id})
+Exercise 04 (async)        -->  concurrent price fetching, async DB calls
+Exercise 05 (yfinance)     -->  market_data.py (fetch prices)
+Exercise 06 (Claude API)   -->  narrative.py (AI risk commentary)
+Exercise 07 (Docker)       -->  Dockerfile, docker-compose.yml
+Exercise 08 (PostgreSQL)   -->  db_models.py, db.py (persistence)
+                                ─────────────────────────────────
+                           ==>  Stock Risk Scanner (capstone)
+</pre>
+
+<p>Nothing is wasted. Exercise 01's test patterns appear in every test file. Exercise 02's validators protect every endpoint. Exercise 04's async patterns run through the entire backend. Exercise 06's prompt engineering produces the AI commentary that makes the dashboard feel alive. The capstone is not a new project &mdash; it's all eight exercises wired together.</p>
+
+<p>This is the power of the exercise-first approach. You never face a blank page and think "how do I build an entire stock scanner?" Instead, you think "I already know how to validate inputs (Ex 02) and fetch data (Ex 05) and compute metrics (Ex 01) and save results (Ex 08) &mdash; I just need to connect them." The intimidating whole is just familiar parts. This is the entire pedagogical philosophy behind QuantLab: break the problem into learnable pieces, master each piece, then assemble.</p>
+
+<p>Think of it like learning to cook. Exercise 01 teaches you to follow a recipe (testing). Exercise 02 teaches you to check ingredients (validation). Exercise 03 teaches you to take orders (routing). Exercise 04 teaches you to juggle multiple dishes at once. Exercise 05 teaches you to source fresh ingredients. Exercise 06 teaches you to write the menu descriptions. Exercise 07 teaches you to pack the kitchen for travel. Exercise 08 teaches you to keep records of every meal served. By the capstone, you're running a restaurant.</p>
+
+<h2>Part 6: Key Design Patterns Worth Remembering</h2>
+
+<p>The capstone isn't just code that works &mdash; it's code that's designed to be maintained, extended, and debugged by future-you (who will have forgotten everything present-you knows). These patterns are the reason professional codebases survive for years while hobby projects fall apart after a few months.</p>
+
+<h3>HTTP 202 &mdash; Accept Now, Process Later</h3>
+
+<p>When the dashboard sends a scan request, the backend doesn't make it wait while it fetches fifty stock prices, crunches numbers, and calls an AI. Instead, it responds immediately with HTTP 202 ("Accepted") and a scan ID. The actual work happens in the background. The dashboard polls for updates.</p>
+
+<pre><code class="language-python"># Simplified version of the pattern
+@app.post("/api/scan", status_code=202)
+async def start_scan(request: ScanRequest):
+    scan_id = str(uuid4())
+    background_tasks.add_task(run_scan, scan_id, request)
+    return {"scan_id": scan_id, "status": "processing"}</code></pre>
+
+<p>This pattern is everywhere in production systems. Any time work takes more than a second or two, you accept the job, hand back a receipt, and let the client check back later. Pizza delivery works the same way: you place the order, get a confirmation number, and track it until it arrives. You don't stand at the counter watching them make it.</p>
+
+<p>In the scanner, the Streamlit dashboard sends a scan request, receives the scan ID, and enters a polling loop: "Is it done yet? Is it done yet?" Every couple of seconds, it checks. When the status changes to "done," it fetches the full results and displays them. The user sees a smooth progress experience; behind the scenes, it's just a simple poll.</p>
+
+<h3>Graceful Degradation &mdash; Bend, Don't Break</h3>
+
+<p>The Claude API might be down. The API key might be missing. The rate limit might be hit. If the narrative generator fails, the scanner does not crash. It returns all the numerical metrics with a note saying the AI narrative is unavailable. The user still gets 90% of the value.</p>
+
+<p>This is a fundamental principle: every external dependency can fail, and your app should have a plan for when it does. The scanner handles this at every layer:</p>
+
+<ul>
+  <li><strong>yfinance returns no data?</strong> Report an error for that ticker but keep scanning the others.</li>
+  <li><strong>Claude API is down?</strong> Return all numerical metrics with a note that the narrative is unavailable.</li>
+  <li><strong>Database unreachable?</strong> Log the error and return results without persisting them.</li>
+</ul>
+
+<p>Each failure is contained, never catastrophic. The user always gets something useful, even when parts of the system are misbehaving. This principle has a name in engineering: <strong>fault isolation</strong>. A failure in one subsystem should not cascade into a failure of the entire system.</p>
+
+<h3>Pure Functions &mdash; One Job Each</h3>
+
+<p>The codebase is split into modules that each do exactly one thing:</p>
+
+<ul>
+  <li><code>market_data.py</code> &mdash; fetches prices. Nothing else.</li>
+  <li><code>risk.py</code> &mdash; computes metrics. Takes numbers in, returns numbers out. No network calls, no database.</li>
+  <li><code>narrative.py</code> &mdash; calls Claude. Takes metrics in, returns text out.</li>
+</ul>
+
+<p>Each module can be tested independently, replaced independently, and understood independently. When something breaks, you know exactly where to look. Want to swap yfinance for a different data provider? Replace <code>market_data.py</code> &mdash; nothing else changes. Want to switch from Claude to GPT? Replace <code>narrative.py</code>. The rest of the system is untouched.</p>
+
+<h3>The Test Pyramid</h3>
+
+<p>Not all tests are created equal:</p>
+
+<ul>
+  <li><strong>Unit tests</strong> (fast, many) &mdash; test one function in isolation using mocks. "Does <code>risk.py</code> compute volatility correctly given these fake prices?"</li>
+  <li><strong>Integration tests</strong> (slower, fewer) &mdash; test multiple pieces working together with a real database. "Does the scan endpoint actually save results to PostgreSQL?"</li>
+</ul>
+
+<p>You want lots of fast unit tests for quick feedback and a handful of integration tests to make sure the pieces actually connect. This pyramid keeps the test suite fast enough to run on every commit.</p>
+
+<p>In the capstone, unit tests mock out yfinance (so you don't need an internet connection to test risk calculations) and mock out Claude (so you don't burn API credits on every test run). Integration tests spin up a real PostgreSQL instance and verify that scan results actually round-trip through the database correctly. The full suite runs in under 30 seconds.</p>
+
+<p>Mocking is a testing technique where you replace a real dependency with a fake one. Instead of calling the real Yahoo Finance API (which is slow, requires internet, and might return different data each time), the mock instantly returns a fixed set of prices that you chose. This makes your tests fast, deterministic, and free. The real API gets tested separately, during integration tests.</p>
+
+<h3>Separation of Concerns</h3>
+
+<p>The capstone follows a clean layering:</p>
+
+<ul>
+  <li><strong>Models</strong> (Pydantic) &mdash; define the shape of data.</li>
+  <li><strong>Data</strong> (yfinance, market_data.py) &mdash; fetch raw information.</li>
+  <li><strong>Compute</strong> (risk.py) &mdash; crunch the numbers.</li>
+  <li><strong>Present</strong> (narrative.py, Streamlit) &mdash; make it human-readable.</li>
+  <li><strong>Persist</strong> (SQLAlchemy, PostgreSQL) &mdash; save it permanently.</li>
+</ul>
+
+<p>Each layer talks only to its neighbors. The risk engine doesn't know about the database. The database doesn't know about Streamlit. If you swap PostgreSQL for MySQL, only the persistence layer changes. Everything else stays untouched.</p>
+
+<p>This isn't just tidy coding for its own sake. When a bug appears in the risk calculations, you know it's in <code>risk.py</code>. When the dashboard looks wrong, you know it's in the Streamlit code. When scan results aren't saving, you know it's in the persistence layer. Clean separation turns "something is broken somewhere" into "this specific thing is broken in this specific file." That's the difference between a 5-minute fix and a 5-hour scavenger hunt.</p>
+
+<h2>Part 7: How to Study This</h2>
+
+<p>Eight exercises plus a capstone is a lot of material. Here's a practical study plan that won't overwhelm you. The goal is not to memorize every line &mdash; it's to build mental models of how the pieces fit together. Once you have the mental model, you can always look up the syntax.</p>
+
+<ol>
+  <li>
+    <strong>Run the tests first.</strong>
+    <p>Open a terminal in any exercise folder and run <code>pytest -v</code>. Read the test names &mdash; they're written in plain English. <code>test_sharpe_ratio_with_zero_volatility</code> tells you exactly what edge case is being checked. The tests are the best documentation.</p>
+  </li>
+  <li>
+    <strong>Trace a scan request end to end.</strong>
+    <p>Start at the Streamlit dashboard code. Find where it calls the API. Jump to the FastAPI route handler. Follow the code into <code>market_data.py</code>, then <code>risk.py</code>, then <code>narrative.py</code>, then <code>db.py</code>. One full loop makes the entire architecture click. This is the single most valuable exercise you can do &mdash; it transforms abstract understanding into concrete knowledge.</p>
+  </li>
+  <li>
+    <strong>Compare the exercise to the capstone.</strong>
+    <p>Exercise 03 builds a toy watchlist API with hardcoded data. The capstone's <code>/api/scan</code> endpoint uses the same FastAPI patterns but with real data. Exercise 02's simple Pydantic models become the capstone's <code>ScanRequest</code> and <code>RiskMetrics</code>. Seeing the toy version next to the production version makes the jump feel small instead of intimidating. The patterns are the same &mdash; only the data is real.</p>
+  </li>
+  <li>
+    <strong>Change something and see what breaks.</strong>
+    <p>Delete a Pydantic validator and run the tests &mdash; watch them fail. Remove the <code>async</code> keyword from a function and see what error you get. Change a VaR confidence level from 0.95 to 0.50 and see the number change. Breaking things on purpose is the fastest way to understand why they exist.</p>
+  </li>
+  <li>
+    <strong>Draw the data flow on paper.</strong>
+    <p>Grab a pen and draw boxes for each module: market_data, risk, narrative, db. Draw arrows showing what data flows between them. Then compare your drawing to the architecture diagram in this post. If they match, you understand the system.</p>
+  </li>
+  <li>
+    <strong>Read the exercises in order.</strong>
+    <p>They build on each other intentionally. Exercise 04 (async) doesn't make sense without Exercise 03 (FastAPI). Exercise 08 (database) uses patterns from Exercise 04 (async sessions). Skipping ahead creates confusion that skipping back solves. If something in Exercise 06 feels confusing, the answer is probably in Exercise 02 or 03.</p>
+  </li>
+  <li>
+    <strong>Try building a feature.</strong>
+    <p>Once you understand the capstone, try adding something small. Maybe a new metric (like Sortino ratio, which is Sharpe but only penalizes downside volatility). You'll need to:</p>
+    <ul>
+      <li>Add the field to the Pydantic model (Exercise 02 skills)</li>
+      <li>Write the computation in risk.py (Exercise 01 and 05 skills)</li>
+      <li>Display it on the Streamlit dashboard (capstone skills)</li>
+      <li>Write a test for it (Exercise 01 skills)</li>
+    </ul>
+    <p>That's a full vertical slice through the stack. The experience is worth more than reading about it ten times.</p>
+  </li>
+</ol>
+
+<h3>What's Next?</h3>
+
+<p>Phase 1 gives you Python, web development, and equity risk metrics. <a href="/2026/04/16/quantlab-phase2-explained/">Phase 2</a> builds on this foundation with twelve more exercises, introducing AWS cloud services (S3, Lambda, SQS, SNS, Redis, WebSockets), fixed-income math (yield curves, bootstrapping, Nelson-Siegel), and credit risk (CDS pricing, hazard rates, Monte Carlo VaR). The infrastructure jumps from "run it on Render" to "deploy it on AWS with Terraform." Same ELI12 approach, bigger playground.</p>
+
+<p>If Phase 1 taught you to build a restaurant, Phase 2 teaches you to build the whole supply chain behind it. The math gets deeper, the infrastructure gets bigger, and the real-world relevance jumps from "personal portfolio tool" to "systems that banks actually run." But the learning method is the same: one exercise at a time, one concept at a time, everything building toward a capstone that ties it all together.</p>
+
+<p>The full code is open source. Every exercise, every test, every commit message, and the complete capstone are available for you to read, run, and learn from:</p>
+
+<p><a href="https://github.com/MishCodesFinBytes/quant_lab">github.com/MishCodesFinBytes/quant_lab</a></p>
+
+<p>And the live scanner is at <a href="https://finbytes.streamlit.app">finbytes.streamlit.app</a>. Try scanning a few tickers and watch the architecture from this post come to life. Start with something you know &mdash; maybe AAPL and MSFT &mdash; and read the results through the lens of the finance concepts explained in Part 3. Every number on that dashboard now means something to you.
+That is the whole point of QuantLab Phase 1.</p>
