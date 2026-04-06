@@ -1,0 +1,126 @@
+---
+layout: post
+title: "OAS, Z-Spread, and Binomial Trees: Pricing Callable Bonds"
+date: 2026-04-14
+tags: [aws, cloudwatch, oas, z-spread, binomial-tree, callable-bonds, fixed-income, quant-lab, python]
+categories:
+- AWS
+- Fixed Income
+- Derivatives
+permalink: "/2026/04/14/cloudwatch-oas-zspreads/"
+---
+
+<h2>Why Two Spreads?</h2>
+
+<p>If you price a corporate bond by discounting its cash flows off the spot curve, the spread you need to add to match the market price is the <strong>Z-spread</strong> (zero-volatility spread). It's a single number, easy to compute, and fine for bullet bonds with no embedded options.</p>
+
+<p>But many corporate bonds are <strong>callable</strong> &mdash; the issuer can redeem them early, typically at par, after a lockout period. That's an option the issuer holds, and it has value. When rates drop, the issuer calls the bond and refinances cheaper. The bondholder loses upside. The Z-spread lumps the credit spread and the option cost together. The <strong>OAS</strong> (Option-Adjusted Spread) strips the option out, giving you a purer measure of credit compensation.</p>
+
+<p>For non-callable bonds: OAS &asymp; Z-spread. For callable bonds: OAS &lt; Z-spread, because some of the Z-spread was compensating for the call option, not for credit risk.</p>
+
+<h2>The Binomial Rate Tree</h2>
+
+<p>To value the embedded option, you need a model that generates different interest rate scenarios. The simplest is a <strong>recombining binomial tree</strong>:</p>
+
+<pre><code>At each step, the rate either:
+  goes up:   r &times; exp(+&sigma; &times; &radic;&Delta;t)
+  goes down: r &times; exp(&minus;&sigma; &times; &radic;&Delta;t)
+
+Probability of each: 0.5 (risk-neutral measure).</code></pre>
+
+<p>"Recombining" means up-then-down arrives at the same rate as down-then-up. This keeps the tree from exploding exponentially &mdash; after N steps you have N+1 nodes, not 2^N.</p>
+
+<pre><code class="language-python">def build_rate_tree(short_rate, volatility, steps, dt=1.0):
+    u = np.exp(volatility * np.sqrt(dt))
+    d = 1.0 / u
+    tree = []
+    for i in range(steps + 1):
+        level = []
+        for j in range(i + 1):
+            rate = short_rate * (u ** (i - 2 * j))
+            level.append(round(rate, 6))
+        tree.append(level)
+    return tree
+</code></pre>
+
+<p>With 5% short rate and 20% volatility, the 5-step tree fans out from 5.0% at the root to a range of roughly 2.7%&ndash;9.2% at the leaves. Higher volatility means a wider range of rate outcomes, which makes the call option more valuable (more scenarios where the issuer wants to refinance).</p>
+
+<h2>Backward Induction: Pricing on the Tree</h2>
+
+<p>Bond pricing on the tree works backwards from maturity:</p>
+
+<ol>
+  <li><strong>At maturity (leaf nodes):</strong> value = face + final coupon.</li>
+  <li><strong>At each earlier node:</strong> the continuation value is the discounted expected value of the two successor nodes, plus any coupon:</li>
+</ol>
+
+<pre><code>continuation = (0.5 &times; V_up + 0.5 &times; V_down) / (1 + r &times; &Delta;t) + coupon</code></pre>
+
+<p>For a <strong>callable bond</strong>, the issuer compares continuation value to the call price at each node. If calling is cheaper, they call:</p>
+
+<pre><code>value = min(continuation, call_price + coupon)</code></pre>
+
+<p>This is where the option bites. In low-rate nodes (where the bond is worth more than par to the holder), the issuer calls. The bondholder's upside is capped. The result: the callable bond always prices at or below the non-callable.</p>
+
+<h2>Z-Spread: The Flat Approach</h2>
+
+<p>Z-spread ignores optionality entirely. It finds the constant spread z such that discounting all cash flows off the spot curve plus z matches the market price:</p>
+
+<pre><code>P = &sum; CF_i / (1 + s_i + z)^t_i = market_price</code></pre>
+
+<p>Solved numerically (Brent's method in our case):</p>
+
+<pre><code class="language-python">def calculate_z_spread(spot_curve, coupon, maturity_years, face, market_price):
+    # Interpolate spot curve, set up cash flows...
+    def objective(z_bps):
+        z = z_bps / 10000.0
+        price = sum(cf / (1 + s + z) ** t for cf, s, t in zip(cfs, spots, times))
+        return price - market_price
+
+    return round(brentq(objective, -500, 3000), 2)
+</code></pre>
+
+<p>For a 5% coupon, 5-year bond priced at 98 on a flat 5% curve, the Z-spread comes out to about 47 bps.</p>
+
+<h2>OAS: Through the Tree</h2>
+
+<p>OAS does the same thing &mdash; find the spread that equates model price to market price &mdash; but on the binomial tree. The spread is added to every rate at every node. For callable bonds, the call decision happens <em>after</em> the OAS shift, so the option value is baked into the model price rather than absorbed into the spread.</p>
+
+<pre><code class="language-python">def calculate_oas(spot_curve, coupon, maturity_years, face,
+                  call_price, market_price, volatility=0.15):
+    tree = build_rate_tree(short_rate, volatility, maturity_years)
+
+    def objective(oas_bps):
+        if call_price is not None:
+            price = price_callable_bond_on_tree(tree, coupon, face, call_price,
+                                                 oas_bps=oas_bps)
+        else:
+            shifted_tree = [[r + oas_bps/100 for r in lvl] for lvl in tree]
+            price = price_bond_on_tree(shifted_tree, coupon, face)
+        return price - market_price
+
+    return round(brentq(objective, -500, 3000), 2)
+</code></pre>
+
+<p>For the same bond with a call at par: OAS comes in significantly below the Z-spread. The difference is the option cost &mdash; what the bondholder gives up for the issuer's right to call.</p>
+
+<h3>Why OAS and Z-spread don't match exactly for non-callable bonds</h3>
+
+<p>In theory, OAS should equal Z-spread when there's no option. In practice, with a binomial tree at nonzero volatility, the rate distribution introduces convexity effects that flat discounting doesn't capture. At 20% vol, we see about a 15 bps gap. At 0% vol the tree collapses to flat discounting and the two converge. This is a real model effect, not a bug.</p>
+
+<h2>CloudWatch: Observability for the APIs</h2>
+
+<p>Exercise 19 also pairs with CloudWatch for production monitoring. The key concepts (to be wired up when we deploy):</p>
+
+<ul>
+  <li><strong>Custom metrics:</strong> publish calculation latency, spread levels, error counts as CloudWatch metrics. Lambda auto-publishes invocation count, duration, and errors, but custom metrics let you track domain-specific things like "95th percentile OAS computation time."</li>
+  <li><strong>Dashboards:</strong> single-pane-of-glass for the credit-risk platform. Widget per API: request rate, error rate, p50/p99 latency.</li>
+  <li><strong>Log Insights:</strong> structured querying over CloudWatch Logs. <code>fields @timestamp, @message | filter @message like /ERROR/ | stats count() by bin(5m)</code></li>
+  <li><strong>Alarms &rarr; SNS:</strong> if API error rate &gt; 5% for 5 minutes, publish to the existing <code>spread-alerts</code> SNS topic. Reuses the alerting infrastructure from Exercise 15.</li>
+</ul>
+
+<h2>What's Next</h2>
+
+<p>Exercise 20 is the final numbered exercise before the capstones: integration testing across the full distributed system, plus Monte Carlo portfolio credit VaR with correlated spread simulation. Then Capstone A assembles the bond pricing engine, and Capstone B builds the full credit risk platform.</p>
+
+<p>Full code: <a href="https://github.com/MishCodesFinBytes/QuantLab/tree/master/exercises/19-cloudwatch-oas">exercises/19-cloudwatch-oas</a>. 9 tests, all green.</p>
