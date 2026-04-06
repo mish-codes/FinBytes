@@ -1,0 +1,450 @@
+---
+layout: post
+title: "QuantLab Phase 2 Explained: Every Technology and Every Formula, From Scratch"
+date: 2026-04-16
+tags: [aws, quant-lab, explainer, yield-curve, credit-risk, terraform, lambda, redis, sqs, sns, websockets, monte-carlo, python]
+categories:
+- Explainer
+- AWS
+- Fixed Income
+- Credit Risk
+permalink: "/2026/04/16/quantlab-phase2-explained/"
+---
+
+<h2>Part 1: What We Built and Why</h2>
+
+<p>QuantLab Phase 2 is twelve exercises (09&ndash;20) that take you from raw government interest rate data all the way to a portfolio credit-risk system running on Amazon Web Services. Two capstones snap everything together at the end.</p>
+
+<p>The exercises split into two tracks:</p>
+
+<ul>
+  <li><strong>The Rates Track (09&ndash;14)</strong> &mdash; fetching Treasury data, storing it, and doing progressively more sophisticated math on interest-rate curves.</li>
+  <li><strong>The Credit Track (15&ndash;20)</strong> &mdash; using those curves to price credit risk: how likely is a company to default, what does that cost, and how does a whole portfolio behave under stress?</li>
+</ul>
+
+<p>Along the way, each exercise introduces a real AWS service, a real piece of infrastructure tooling, or a real piece of financial math. By the end, you have a system that can ingest live data, compute dozens of risk metrics, cache results, send alerts, stream updates to a dashboard, and deploy itself &mdash; all from code.</p>
+
+<p>This post explains every single piece, assuming you have never written a line of code or read a finance textbook. If you are twelve years old and curious, this is for you.</p>
+
+<h2>Part 2: The Cloud Technologies (Explain Like I'm 12)</h2>
+
+<h3>AWS &mdash; The Concept</h3>
+
+<p>Imagine you need a computer to run a program, but instead of buying one, you rent one from a giant company that has millions of computers sitting in warehouses around the world. That's Amazon Web Services (AWS). You only pay for the time you actually use, like renting a bike by the minute instead of buying one.</p>
+
+<p>AWS isn't one thing &mdash; it's a menu of dozens of services. Each one does a specific job. Here are the ones we used.</p>
+
+<h3>S3 &mdash; The Filing Cabinet (Exercise 10)</h3>
+
+<p>S3 stands for "Simple Storage Service." Think of it as a giant filing cabinet in the cloud. You can throw any file in there &mdash; a spreadsheet, a photo, a JSON blob of Treasury yield data &mdash; and it will keep it safe, forever, for almost no money.</p>
+
+<p>In Exercise 10, we fetch raw Treasury par yields from the FRED API (the Federal Reserve's public data service) and drop the JSON files into an S3 bucket. That bucket is our "source of truth" &mdash; the original, untouched data. Everything downstream reads from here.</p>
+
+<h3>RDS / PostgreSQL &mdash; A Spreadsheet on Steroids (Exercise 11)</h3>
+
+<p>RDS stands for "Relational Database Service." It runs a real database &mdash; in our case, PostgreSQL &mdash; on an AWS server, so you don't have to install anything yourself.</p>
+
+<p>Think of it as a spreadsheet that can hold millions of rows, answer questions in milliseconds, and let fifty people query it at the same time without breaking. In Exercise 11, we take the raw JSON from S3 and load it into structured database tables: one row per date per maturity, neatly organized.</p>
+
+<h3>Lambda &mdash; A Helper Who Only Exists When Needed (Exercises 12, 13, 14)</h3>
+
+<p>Imagine you could hire someone who appears the instant you clap your hands, does exactly the job you asked for, and then disappears. You only pay for the thirty seconds they were working. That's Lambda.</p>
+
+<p>Lambda runs your code without you having to own or manage a server. You upload a function, and AWS runs it whenever something triggers it &mdash; an API request, a timer, a new file landing in S3. When it's done, the function vanishes. No idle servers burning money.</p>
+
+<p>We use Lambda in Exercises 12, 13, and 14 to run our math: bootstrapping spot curves, computing forward rates, and fitting Nelson-Siegel/Svensson models. Each of these is a Lambda function that wakes up when called, crunches numbers, and returns a result.</p>
+
+<h3>API Gateway &mdash; The Receptionist (Exercises 12, 14)</h3>
+
+<p>API Gateway is the front door to your system. When someone (or some program) sends a request like "give me the 5-year spot rate for 2025-03-15," API Gateway receives that request, figures out which Lambda function should handle it, passes the request along, and returns the answer.</p>
+
+<p>It's like a receptionist at a hotel: you don't walk directly into the kitchen to ask for breakfast. You tell the receptionist, and they route your request to the right person.</p>
+
+<h3>DynamoDB &mdash; The Dictionary Lookup (Exercise 16)</h3>
+
+<p>DynamoDB is a database, but a different kind from PostgreSQL. It's a "key-value" store &mdash; think of an actual dictionary. You look up a word (the key) and instantly get the definition (the value). No complex queries, no joins. Just fast lookups by key.</p>
+
+<p>In Exercise 16, we use DynamoDB to store WebSocket connection IDs. When a client connects to receive live streaming data, we save their connection ID in DynamoDB so we know who to send updates to.</p>
+
+<h3>SQS &mdash; A To-Do List for Computers (Exercise 15)</h3>
+
+<p>SQS stands for "Simple Queue Service." Picture a to-do list pinned to a fridge. One person writes tasks on it; another person checks the list and works through them, one at a time. If the second person is busy or asleep, the tasks just wait on the list. Nothing gets lost.</p>
+
+<p>In Exercise 15, when new credit spread data arrives, a message gets added to the SQS queue: "Hey, recalculate the spread for BBB bonds." A Lambda function picks up that message, does the calculation, and marks the task as done. If something goes wrong, the message goes back on the list and gets retried.</p>
+
+<h3>SNS &mdash; The Megaphone (Exercise 15)</h3>
+
+<p>SNS stands for "Simple Notification Service." If SQS is a to-do list, SNS is a megaphone. You shout a message, and everyone who has signed up to listen hears it &mdash; email subscribers, other queues, Lambda functions, Slack webhooks, whatever.</p>
+
+<p>In Exercise 15, when a credit spread blows past a threshold (say, BBB spreads exceed 200 basis points), SNS fires an alert to every subscriber: "Warning &mdash; spreads are widening."</p>
+
+<h3>ElastiCache / Redis &mdash; The Sticky Note (Exercise 17)</h3>
+
+<p>Redis is an in-memory cache. "In-memory" means it lives in RAM, not on a hard drive, so it's absurdly fast &mdash; microseconds instead of milliseconds.</p>
+
+<p>Think of it as a sticky note on your monitor. You just computed the 10-year spot rate, and you know someone is going to ask for it again in five seconds. Instead of running the whole calculation again, you scribble the answer on a sticky note. Next time someone asks, you just read the note.</p>
+
+<p>ElastiCache is the AWS service that runs Redis for you. In Exercise 17, we cache bond-pricing results so repeat requests get answered instantly.</p>
+
+<h3>CloudWatch &mdash; The Security Camera (Exercise 19)</h3>
+
+<p>CloudWatch watches everything. It collects logs (what happened), metrics (how many times, how fast), and alarms (something broke). It's the security camera for your entire system.</p>
+
+<p>In Exercise 19, we set up CloudWatch dashboards to monitor OAS and Z-spread calculations: how long they take, how often they fail, and whether error rates are climbing. If a Lambda function starts timing out, CloudWatch triggers an alarm.</p>
+
+<h3>WebSocket API &mdash; A Phone Call vs. Texting (Exercise 16)</h3>
+
+<p>Normal web requests are like texting: you send a message, wait for a reply, and the conversation is over. If you want an update, you have to text again.</p>
+
+<p>A WebSocket is like a phone call: you dial once, and the line stays open. Both sides can talk whenever they want, with no delay. In Exercise 16, we use a WebSocket API so dashboards can receive live-streaming credit spread updates the instant they change, without refreshing or polling.</p>
+
+<h2>Part 3: The DevOps Technologies</h2>
+
+<h3>Docker &mdash; A Lunchbox for Code (Exercise 14 Deploy)</h3>
+
+<p>You packed a great lunch at home, but when you open it at school, the sandwich is squished and the juice leaked. Docker solves this problem for code.</p>
+
+<p>A Docker container is a sealed lunchbox. It holds your code, plus every library and tool your code needs, packed in exactly the right way. Whether you open it on your laptop, on a coworker's laptop, or on an AWS server, everything inside is identical. No "but it works on my machine" surprises.</p>
+
+<p>In Exercise 14, we package our curve-fitting Lambda as a Docker container image, so deployment is perfectly reproducible.</p>
+
+<h3>Terraform &mdash; A Blueprint for Infrastructure (Exercises 14, 18)</h3>
+
+<p>Imagine building a house by clicking buttons on a website: "create a room," "add a door," "install plumbing." Now imagine you have to build the same house twenty times. Clicking is painful. Terraform lets you write a blueprint instead.</p>
+
+<p>You describe what you want &mdash; "I need an S3 bucket, a Lambda function, an API Gateway, a database" &mdash; in a text file. Then you run <code>terraform apply</code>, and Terraform builds everything for you. Need to tear it down? <code>terraform destroy</code>. Need to change something? Edit the file and apply again. The infrastructure is <em>code</em>.</p>
+
+<pre><code class="language-hcl">resource "aws_lambda_function" "curve_fitter" {
+  function_name = "nelson-siegel-fitter"
+  runtime       = "python3.11"
+  handler       = "handler.lambda_handler"
+  memory_size   = 512
+  timeout       = 30
+}</code></pre>
+
+<p>That block creates a Lambda function. Terraform tracks what exists and what doesn't, so it only builds what's missing and updates what changed. In Exercises 14 and 18, Terraform manages the entire stack.</p>
+
+<h3>GitHub Actions + CI/CD &mdash; The Robot Deployer (Exercise 13)</h3>
+
+<p>CI/CD stands for "Continuous Integration / Continuous Deployment." It means: every time you push code to GitHub, a robot automatically runs your tests, and if they pass, deploys the new version. No human clicking "deploy" at 2 a.m.</p>
+
+<p>GitHub Actions is the robot. You write a YAML file that says: "When code is pushed to the <code>working</code> branch, install Python, run pytest, and if everything passes, deploy to AWS." The robot does exactly that, every single time.</p>
+
+<h3>OIDC &mdash; The Wristband at a Theme Park (Exercise 13)</h3>
+
+<p>When you buy a ticket at a theme park, they give you a wristband. Every ride checks the wristband instead of making you buy a new ticket. OIDC (OpenID Connect) is the wristband for GitHub Actions.</p>
+
+<p>Instead of storing long-lived AWS passwords in GitHub (dangerous), we set up a trust relationship: "AWS, please trust anyone wearing a GitHub Actions wristband from this specific repository." GitHub presents a short-lived token, AWS verifies it, and the deploy proceeds &mdash; no secrets stored anywhere.</p>
+
+<h3>Git / GitHub / Pull Requests &mdash; Infinite Undo + Collaboration</h3>
+
+<p>Git is version control. Every time you save ("commit"), Git takes a snapshot of every file. You can go back to any snapshot, compare any two, or branch off into an experiment without touching the main code.</p>
+
+<p>GitHub hosts your Git repository online and adds collaboration tools. A "Pull Request" is a proposal: "Here's what I changed. Review it, discuss it, and if it looks good, merge it in." Every exercise in QuantLab went through this workflow: work on <code>working</code>, PR to <code>master</code>, merge after review.</p>
+
+<h3>Testing with moto and fakeredis &mdash; Fake AWS for Tests</h3>
+
+<p>You don't want to hit real AWS services every time you run a test &mdash; it's slow, it costs money, and it's flaky. Instead, we use fakes.</p>
+
+<p><strong>moto</strong> is a Python library that pretends to be AWS. When your code calls "put this object in S3," moto intercepts the call and stores it in memory. Your code thinks it's talking to AWS, but it's really talking to a fake. <strong>fakeredis</strong> does the same thing for Redis.</p>
+
+<p>This means every test runs in milliseconds, with zero cloud costs, and works offline.</p>
+
+<h2>Part 4: The Finance Math (Explain Like I'm 12)</h2>
+
+<h3>4a. The Rates Track (Exercises 09&ndash;14)</h3>
+
+<h3>What Is a Yield Curve?</h3>
+
+<p>Suppose you lend money to the U.S. government. If you lend for 1 year, they pay you 4%. If you lend for 10 years, they pay you 4.5%. If you lend for 30 years, they pay you 4.8%. Plot those rates on a graph &mdash; time on the x-axis, rate on the y-axis &mdash; and you get a <em>yield curve</em>.</p>
+
+<p>The yield curve is one of the most important objects in all of finance. It tells you the price of time. Every mortgage rate, every corporate bond price, every swap, every pension liability &mdash; all of them start from this curve.</p>
+
+<h3>Par Yields &mdash; What the Treasury Publishes</h3>
+
+<p>The U.S. Treasury publishes "par yields" every business day. A par yield is the coupon rate at which a bond would trade at exactly its face value (par). If the 5-year par yield is 4%, it means a brand-new 5-year Treasury note paying a 4% coupon would trade at exactly $100.</p>
+
+<p>These are the raw ingredients. Exercise 09 fetches them from the FRED API.</p>
+
+<h3>Spot Rates and Bootstrapping &mdash; Peeling the Onion</h3>
+
+<p>Par yields mix up two things: the coupon payments you receive along the way and the big payment at the end. A <em>spot rate</em> is purer: it's the interest rate for a single payment at a specific time. "What rate do I earn if I lock my money away for exactly 5 years, with zero payments in between?"</p>
+
+<p><em>Bootstrapping</em> is how you extract spot rates from par yields. It works like peeling an onion. You already know the 1-year spot rate (it equals the 1-year par yield, because a 1-year bond only has one payment). Now take the 2-year par bond: you know its coupon, you know the 1-year spot rate for the first coupon, so you can solve for the 2-year spot rate. Repeat for 3, 5, 7, 10, 20, 30 years &mdash; each step uses everything you've already solved.</p>
+
+<pre><code class="language-python">def bootstrap_spot_rates(par_yields: dict) -&gt; dict:
+    spots = {}
+    for tenor, par_rate in sorted(par_yields.items()):
+        if tenor &lt;= 1.0:
+            spots[tenor] = par_rate
+        else:
+            # Discount all intermediate coupons using known spots
+            coupon = par_rate / 2          # semiannual
+            pv_coupons = sum(
+                coupon / (1 + spots[t] / 2) ** (2 * t)
+                for t in sorted(spots) if t &lt; tenor
+            )
+            # Solve for the spot rate at this tenor
+            remaining = (100 + coupon) / (100 - pv_coupons)
+            n = 2 * tenor
+            spots[tenor] = 2 * (remaining ** (1 / n) - 1)
+    return spots</code></pre>
+
+<p>Each step "peels" one more layer, using the rates you've already found to isolate the next unknown. Exercise 12 implements this as a Lambda function.</p>
+
+<h3>Forward Rates &mdash; What the Market Expects</h3>
+
+<p>A forward rate answers: "If I've already committed to lend for 2 years, what rate does the market imply for lending from year 2 to year 5?" It's the rate that makes you indifferent between two strategies: lend for 5 years straight, or lend for 2 then reinvest for 3.</p>
+
+<p>Mathematically, the forward rate between times <em>t1</em> and <em>t2</em> satisfies:</p>
+
+<pre><code>(1 + spot_t2)^t2 = (1 + spot_t1)^t1 &times; (1 + forward)^(t2 - t1)</code></pre>
+
+<p>Forward rates are like a weather forecast. They tell you what the market <em>expects</em> rates to be in the future. They're not always right, but they're the market's best guess today. Exercise 13 computes the full forward curve and deploys it via GitHub Actions with OIDC.</p>
+
+<h3>Nelson-Siegel / Svensson &mdash; Smooth Curves from a Few Numbers</h3>
+
+<p>Bootstrapping gives you spot rates at the specific maturities that bonds exist (1, 2, 3, 5, 7, 10, 20, 30 years). But what if you need the 4.7-year spot rate? You need a smooth curve.</p>
+
+<p>Nelson-Siegel is a formula that draws a smooth curve through (or near) all your data points using just <strong>four numbers</strong>:</p>
+
+<ul>
+  <li><strong>&beta;0</strong> &mdash; the long-term level (where rates settle in the very long run)</li>
+  <li><strong>&beta;1</strong> &mdash; the slope (how steeply rates rise or fall as maturity increases)</li>
+  <li><strong>&beta;2</strong> &mdash; the curvature (the hump or dip in the middle)</li>
+  <li><strong>&tau;</strong> &mdash; the time scale (where the hump peaks)</li>
+</ul>
+
+<p>Svensson adds two more parameters (&beta;3 and &tau;2) for a second hump, giving extra flexibility. Exercise 14 fits these models using numerical optimization, packages the solver in Docker, and deploys everything via Terraform.</p>
+
+<p>The beauty: instead of storing thousands of data points, you store four (or six) numbers, and you can reconstruct the entire curve at any maturity.</p>
+
+<h3>Cubic Spline &mdash; Connect the Dots Exactly</h3>
+
+<p>A cubic spline is the other approach: instead of a parametric formula, you connect the known data points with smooth polynomial segments. Think of bending a thin piece of metal through a set of nails &mdash; it passes through every nail and curves smoothly between them.</p>
+
+<p>Nelson-Siegel gives you an interpretable summary; a spline gives you a perfect fit. Both are useful. We implement both.</p>
+
+<h3>4b. The Credit Track (Exercises 15&ndash;20)</h3>
+
+<h3>Credit Spreads &mdash; The Fear Premium</h3>
+
+<p>A Treasury bond is considered "risk-free" &mdash; the U.S. government (almost) never defaults. A corporate bond, on the other hand, <em>might</em> default. To compensate investors for that risk, a corporate bond pays a higher rate. The difference is the <em>credit spread</em>:</p>
+
+<pre><code>credit spread = corporate yield &minus; Treasury yield</code></pre>
+
+<p>Measured in basis points (1% = 100 bps). A spread of 150 bps means the company pays 1.5% more than the government. When investors get scared, spreads widen. When they feel safe, spreads tighten. Exercise 15 computes and monitors these spreads in real time using SQS and SNS.</p>
+
+<h3>CDS &mdash; Insurance on a Bond</h3>
+
+<p>A Credit Default Swap is literally insurance. You pay a quarterly premium (the "CDS spread") to a counterparty. If the company defaults, the counterparty pays you the loss. If the company doesn't default, you've just paid premiums for nothing &mdash; like car insurance when you don't crash.</p>
+
+<p>CDS spreads are the market's cleanest measure of credit risk, because they strip out all the complications of actual bonds (coupon effects, call features, liquidity).</p>
+
+<h3>Hazard Rates and Survival Probability &mdash; The Bathtub Model</h3>
+
+<p>Imagine a bathtub with a slow leak. The water level represents the probability that a company has survived until now. The rate at which water drips out is the <em>hazard rate</em> (&lambda;). A higher hazard rate means faster dripping &mdash; more risk.</p>
+
+<p>Under a constant hazard rate:</p>
+
+<pre><code>P(survive to year T)  = exp(&minus;&lambda; &times; T)
+P(default by year T)  = 1 &minus; exp(&minus;&lambda; &times; T)</code></pre>
+
+<p>A CDS spread connects to the hazard rate through a simple relationship:</p>
+
+<pre><code>&lambda; &asymp; CDS spread / (1 &minus; recovery rate)</code></pre>
+
+<p>If the CDS spread is 200 bps (0.02) and the recovery rate is 40%, then &lambda; &asymp; 0.02 / 0.60 &asymp; 0.0333, meaning roughly a 3.3% chance of defaulting in any given year.</p>
+
+<h3>Piecewise Hazard Rates &mdash; Different Risk at Different Horizons</h3>
+
+<p>A constant hazard rate is a simplification. In reality, a company might be safe for the next year (low &lambda;) but risky five years out (high &lambda;). Piecewise hazard rates let us use a different &lambda; for each time period, like different drip rates at different heights of the bathtub. Exercise 18 builds the full piecewise term structure.</p>
+
+<h3>Expected Loss = PD &times; LGD &times; EAD &mdash; The Banker's Formula</h3>
+
+<p>Banks boil credit risk down to three numbers:</p>
+
+<ul>
+  <li><strong>PD</strong> (Probability of Default) &mdash; "What's the chance they don't pay?"</li>
+  <li><strong>LGD</strong> (Loss Given Default) &mdash; "If they don't pay, how much do I lose?" (Usually 1 &minus; recovery rate.)</li>
+  <li><strong>EAD</strong> (Exposure at Default) &mdash; "How much do they owe me?"</li>
+</ul>
+
+<pre><code>Expected Loss = PD &times; LGD &times; EAD</code></pre>
+
+<p>If a company has a 3% chance of defaulting, you'd lose 60% if it did, and they owe you $1 million, then your expected loss is 0.03 &times; 0.60 &times; $1,000,000 = <strong>$18,000</strong>. Simple multiplication, but every bank in the world runs this formula every single day.</p>
+
+<h3>Z-Spread &mdash; One Number for "How Much Extra?"</h3>
+
+<p>The Z-spread is a single number (in basis points) that you add to every point on the Treasury spot curve to make a bond's calculated price match its market price. It's like asking: "How many extra basis points, applied uniformly, explain the gap between this bond's price and a risk-free bond?"</p>
+
+<p>You find it by trial and error: guess a spread, price the bond, see if the price matches. Too high? Guess lower. Too low? Guess higher. A numerical solver does this in milliseconds. Exercise 19 implements this.</p>
+
+<h3>OAS and Binomial Trees &mdash; Strip Out the Call Option</h3>
+
+<p>Many corporate bonds are "callable" &mdash; the issuer can pay them off early. That call option is worth something to the issuer and costs the bondholder, which widens the Z-spread. But part of that spread is option cost, not credit risk.</p>
+
+<p>The OAS (Option-Adjusted Spread) strips out the option. It builds a <em>binomial tree</em> &mdash; a branching diagram of possible future interest rates (rates go up or down at each step, like a coin flip) &mdash; and prices the bond at every node, accounting for whether the issuer would rationally call at that node. The OAS is the spread that, applied inside the tree, makes the model price match the market price.</p>
+
+<p>OAS is the "clean" credit spread &mdash; pure credit risk, no option noise. Exercise 19 computes both Z-spread and OAS, monitored by CloudWatch.</p>
+
+<h3>Spread Duration / CS01 &mdash; Sensitivity to Credit Moves</h3>
+
+<p>CS01 answers: "If credit spreads move by 1 basis point, how much does my bond's price change?" It's the credit analogue of interest-rate duration. If your CS01 is $500, a 10 bps spread widening costs you $5,000.</p>
+
+<p>Portfolio managers live and die by CS01. It tells them exactly how exposed they are to credit moves. Exercise 20 computes CS01 for every position in a portfolio.</p>
+
+<h3>Monte Carlo VaR with Cholesky &mdash; Correlated Coin Flips</h3>
+
+<p>Value at Risk (VaR) answers: "What's the worst loss I should expect over the next 10 days, with 99% confidence?"</p>
+
+<p>To compute it, we simulate thousands of possible futures. Each simulation randomly wiggles every credit spread in the portfolio and reprices everything. The loss at the 99th percentile is the VaR.</p>
+
+<p>But here's the catch: credit spreads are correlated. When Ford's spread widens, GM's spread probably widens too. If you simulate them independently, you underestimate the risk of everything going wrong at the same time.</p>
+
+<p><strong>Cholesky decomposition</strong> fixes this. You start with a correlation matrix (a table of how each pair of spreads moves together), and Cholesky factorizes it into a "square root" matrix. You multiply independent random numbers by this matrix, and out come correlated random numbers. Like rolling dice that are secretly linked.</p>
+
+<pre><code class="language-python">import numpy as np
+
+def simulate_correlated_spreads(corr_matrix, n_sims, current_spreads, vols):
+    L = np.linalg.cholesky(corr_matrix)       # "square root" of correlation
+    Z = np.random.standard_normal((n_sims, len(current_spreads)))
+    correlated_Z = Z @ L.T                      # correlate the randoms
+    # Each row is one simulated scenario
+    simulated = current_spreads + vols * correlated_Z
+    return simulated</code></pre>
+
+<p>Exercise 20 runs thousands of these simulations, reprices the portfolio each time, sorts the losses, and reports VaR at 95% and 99% confidence. This is exactly what risk desks at banks do every night.</p>
+
+<h2>Part 5: The Architecture Diagram</h2>
+
+<p>Here's the full data flow, from raw data to real-time dashboards:</p>
+
+<pre>
+  ┌─────────────┐       ┌──────────┐       ┌──────────────┐
+  │  FRED API   │──────▶│  S3      │──────▶│  RDS         │
+  │ (Treasury   │ fetch │ (raw     │ seed  │ (structured  │
+  │  par yields)│       │  JSON)   │       │  tables)     │
+  └─────────────┘       └──────────┘       └──────────────┘
+       Ex 09                Ex 10               Ex 11
+                                                  │
+                         ┌────────────────────────┘
+                         ▼
+  ┌──────────────────────────────────────────────────────────────┐
+  │                    COMPUTE LAYER (Lambda)                     │
+  │                                                              │
+  │  ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐   │
+  │  │ Bootstrap   │  │ Forward      │  │ Nelson-Siegel /   │   │
+  │  │ spot curve  │─▶│ rates        │  │ Svensson fitting  │   │
+  │  │   Ex 12     │  │   Ex 13      │  │   Ex 14           │   │
+  │  └─────────────┘  └──────────────┘  └───────────────────┘   │
+  │                                                              │
+  │  ┌─────────────┐  ┌──────────────┐  ┌───────────────────┐   │
+  │  │ OAS /       │  │ Default prob │  │ Credit VaR        │   │
+  │  │ Z-spread    │  │ term struct  │  │ (Monte Carlo)     │   │
+  │  │   Ex 19     │  │   Ex 18      │  │   Ex 20           │   │
+  │  └─────────────┘  └──────────────┘  └───────────────────┘   │
+  └──────────────────────────────────────────────────────────────┘
+         │                                        │
+         │  API Gateway (REST + HTTP)             │
+         ▼                                        ▼
+  ┌──────────────┐                    ┌────────────────────┐
+  │  Redis Cache │                    │  SQS + SNS         │
+  │  (fast       │                    │  (async jobs +     │
+  │   lookups)   │                    │   email alerts)    │
+  │    Ex 17     │                    │    Ex 15           │
+  └──────────────┘                    └────────────────────┘
+                                               │
+                                               ▼
+                                      ┌────────────────────┐
+                                      │  WebSocket API     │
+                                      │  (live streaming   │
+                                      │   to dashboards)   │
+                                      │    Ex 16           │
+                                      └────────────────────┘
+
+  ═══════════════════════════════════════════════════════════════
+  INFRASTRUCTURE LAYER
+  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────┐
+  │ Terraform    │  │ GitHub       │  │ CloudWatch            │
+  │ (blueprints) │  │ Actions      │  │ (monitoring +         │
+  │ Ex 14, 18    │  │ (auto-deploy)│  │  dashboards)          │
+  │              │  │ Ex 13        │  │  Ex 19                │
+  └──────────────┘  └──────────────┘  └───────────────────────┘
+</pre>
+
+<p>And here's how the two capstones snap everything together:</p>
+
+<pre>
+  ┌─────────────────────────────────────────────────────────┐
+  │              CAPSTONE A: Bond Pricing Engine             │
+  │                                                         │
+  │  FRED → S3 → RDS → Bootstrap → Forwards → Fit curves   │
+  │         (09)  (10)  (11)  (12)     (13)      (14)      │
+  │                                                         │
+  │  Exposed via API Gateway + Lambda                       │
+  │  Cached via Redis (17)                                  │
+  │  Deployed via Terraform (14)                            │
+  │  Monitored via CloudWatch (19)                          │
+  └────────────────────────┬────────────────────────────────┘
+                           │ imports
+                           ▼
+  ┌─────────────────────────────────────────────────────────┐
+  │          CAPSTONE B: Credit Risk Platform                │
+  │                                                         │
+  │  Credit spreads (15) → Default probs (18) → OAS (19)   │
+  │                    → VaR (20)                           │
+  │                                                         │
+  │  Alerts via SQS + SNS (15)                              │
+  │  Live streaming via WebSocket (16)                      │
+  │  Full infra via Terraform modules (18)                  │
+  │  CI/CD via GitHub Actions (13)                          │
+  └─────────────────────────────────────────────────────────┘
+</pre>
+
+<h2>Part 6: How to Study This</h2>
+
+<p>Twelve exercises is a lot. Here's how to make sense of it without drowning.</p>
+
+<ol>
+  <li>
+    <strong>Trace a single request end-to-end.</strong>
+    <p>Pick a question like "What's the 5-year spot rate for 2025-03-15?" and follow the data from FRED, through S3, into RDS, through the bootstrap Lambda, out the API Gateway, and into the Redis cache. Seeing one full loop makes the whole system click.</p>
+  </li>
+  <li>
+    <strong>Separate "what" from "where."</strong>
+    <p>The finance math (bootstrapping, Nelson-Siegel, hazard rates) is "what" we compute. The AWS services (Lambda, S3, SQS) are "where" we compute it. These are independent skills. You can understand bootstrapping without knowing anything about Lambda, and vice versa. Don't try to learn both at the same time.</p>
+  </li>
+  <li>
+    <strong>Run the tests &mdash; they're specifications with real numbers.</strong>
+    <p>Every exercise has tests with concrete inputs and expected outputs. <code>test_bootstrap.py</code> literally says "given these par yields, the 5-year spot rate should be 4.52%." That's more useful than any textbook explanation.</p>
+  </li>
+  <li>
+    <strong>Compare Exercise 15 and Exercise 18.</strong>
+    <p>Both deal with default probabilities, but Ex 15 is the simple version (constant hazard rate) and Ex 18 is the realistic version (piecewise hazard rates + Terraform infrastructure). Comparing them shows how a concept evolves from "understand the idea" to "build it for production."</p>
+  </li>
+  <li>
+    <strong>Think in the two tracks.</strong>
+    <p>Rates (09&ndash;14) and Credit (15&ndash;20) are parallel tracks that merge at the capstones. Study one track at a time. The rates track is the foundation &mdash; the credit track imports its curves.</p>
+  </li>
+  <li>
+    <strong>Draw the dependency chain.</strong>
+    <p>Everything flows from the yield curve. Par yields &rarr; spot rates &rarr; forward rates &rarr; fitted curves &rarr; bond prices &rarr; credit spreads &rarr; default probabilities &rarr; portfolio VaR. Each step consumes the previous one's output. Once you see that chain, the exercises are just stops along the way.</p>
+  </li>
+  <li>
+    <strong>Read the blog posts in order.</strong>
+    <p>Each FinBytes post builds on the previous one. If something in the OAS post doesn't make sense, it's probably because a concept from the bootstrapping post is missing. Go back and fill the gap.</p>
+  </li>
+</ol>
+
+<h2>Part 7: What's Next</h2>
+
+<p><strong>Capstone A</strong> wires the rates track into a single, deployed Bond Pricing Engine &mdash; one API call gives you spot rates, forward rates, and fitted curves for any date, cached and monitored.</p>
+
+<p><strong>Capstone B</strong> layers the credit track on top: a Credit Risk Platform that computes spreads, default probabilities, OAS, and portfolio VaR, with real-time streaming and alerts.</p>
+
+<p>After that, the stretch goal is <strong>MiroFish</strong> &mdash; a swarm intelligence engine that uses multi-agent coordination to detect early signals of credit events before the market prices them in. Think of a school of fish that collectively senses a predator before any individual fish does. That's swarm intelligence applied to credit risk.</p>
+
+<p>The full code is open source:</p>
+
+<p><a href="https://github.com/MishCodesFinBytes/quant_lab">github.com/MishCodesFinBytes/quant_lab</a></p>
