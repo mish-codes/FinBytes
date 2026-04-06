@@ -2,7 +2,7 @@
 layout: page
 title: Math / Finance
 icon: fas fa-chart-line
-order: 4
+order: 5
 permalink: /math-finance/
 ---
 

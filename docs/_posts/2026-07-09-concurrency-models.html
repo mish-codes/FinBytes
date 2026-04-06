@@ -1,0 +1,339 @@
+---
+layout: post
+title: "Concurrency Models: asyncio vs goroutines vs tokio vs threads"
+date: 2026-07-09
+tags: [concurrency, asyncio, goroutines, tokio, threads, python, go, rust, typescript, csharp, cpp, comparison]
+categories:
+- Comparisons
+section: comparisons
+permalink: "/comparisons/concurrency-models/"
+---
+
+<h2>One Task, Eight Implementations</h2>
+
+<p>The task: fetch 50 URLs concurrently and collect the results. This is I/O-bound work&mdash;the CPU waits for network responses. Every modern language has a concurrency model for this, but they differ in overhead, scalability, and mental model. Here is each one, side by side.</p>
+
+<h2>1. Python asyncio (aiohttp)</h2>
+
+<pre><code class="language-python">import asyncio
+import aiohttp
+
+async def fetch(session: aiohttp.ClientSession, url: str) -> str:
+    async with session.get(url, timeout=aiohttp.ClientTimeout(total=10)) as resp:
+        return await resp.text()
+
+async def main(urls: list[str]) -> list[str]:
+    async with aiohttp.ClientSession() as session:
+        tasks = [fetch(session, url) for url in urls]
+        return await asyncio.gather(*tasks)
+
+results = asyncio.run(main(urls))
+</code></pre>
+
+<p>Single-threaded event loop. All 50 requests run on one thread, yielding control at every <code>await</code>. No parallelism, but no thread-safety bugs either.</p>
+
+<h2>2. Python threading (ThreadPoolExecutor)</h2>
+
+<pre><code class="language-python">from concurrent.futures import ThreadPoolExecutor
+import requests
+
+def fetch(url: str) -> str:
+    return requests.get(url, timeout=10).text
+
+with ThreadPoolExecutor(max_workers=20) as pool:
+    results = list(pool.map(fetch, urls))
+</code></pre>
+
+<p>Uses OS threads. The GIL (Global Interpreter Lock) prevents true parallel execution of Python bytecode, but it releases during I/O system calls. So this works fine for network-bound tasks. It does not help for CPU-bound work.</p>
+
+<h2>3. Python multiprocessing (ProcessPoolExecutor)</h2>
+
+<pre><code class="language-python">from concurrent.futures import ProcessPoolExecutor
+import requests
+
+def fetch(url: str) -> str:
+    return requests.get(url, timeout=10).text
+
+with ProcessPoolExecutor(max_workers=8) as pool:
+    results = list(pool.map(fetch, urls))
+</code></pre>
+
+<p>Each worker is a separate OS process with its own Python interpreter and its own GIL. This bypasses the GIL entirely. The cost: high memory overhead (each process copies the interpreter state) and serialization overhead when passing data between processes. Use this for CPU-bound work, not I/O.</p>
+
+<h2>The GIL, Explained</h2>
+
+<p>CPython has a mutex called the Global Interpreter Lock. Only one thread can execute Python bytecode at a time. The GIL exists because CPython's memory management (reference counting) is not thread-safe.</p>
+
+<ul>
+  <li><strong>I/O-bound:</strong> The GIL is released during system calls (network, file, sleep). Threading works fine.</li>
+  <li><strong>CPU-bound:</strong> The GIL means threads run one at a time. You get no speedup. Use <code>multiprocessing</code> or write the hot loop in C/Rust.</li>
+  <li><strong>asyncio:</strong> Single thread, no GIL contention at all. Cooperative multitasking via <code>await</code>.</li>
+</ul>
+
+<h2>4. Go (goroutines + WaitGroup + channel)</h2>
+
+<pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "io"
+    "net/http"
+    "sync"
+    "time"
+)
+
+func fetch(url string, ch chan&lt;- string, wg *sync.WaitGroup) {
+    defer wg.Done()
+    client := &amp;http.Client{Timeout: 10 * time.Second}
+    resp, err := client.Get(url)
+    if err != nil {
+        ch &lt;- fmt.Sprintf("ERROR: %s", err)
+        return
+    }
+    defer resp.Body.Close()
+    body, _ := io.ReadAll(resp.Body)
+    ch &lt;- string(body)
+}
+
+func main() {
+    urls := []string{ /* ... 50 URLs ... */ }
+    ch := make(chan string, len(urls))
+    var wg sync.WaitGroup
+
+    for _, url := range urls {
+        wg.Add(1)
+        go fetch(url, ch, &amp;wg)
+    }
+
+    go func() {
+        wg.Wait()
+        close(ch)
+    }()
+
+    var results []string
+    for body := range ch {
+        results = append(results, body)
+    }
+    fmt.Printf("Fetched %d pages\n", len(results))
+}
+</code></pre>
+
+<p>Goroutines are lightweight green threads managed by the Go runtime. They start at ~2 KB of stack (vs ~1 MB for OS threads). The runtime multiplexes thousands of goroutines onto a small pool of OS threads. Channels provide safe communication without shared mutable state.</p>
+
+<h2>5. Rust (tokio + reqwest)</h2>
+
+<pre><code class="language-rust">use reqwest::Client;
+use tokio::task::JoinSet;
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() -> Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+    let urls: Vec&lt;&amp;str&gt; = vec![ /* ... 50 URLs ... */ ];
+    let client = Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?;
+
+    let mut set = JoinSet::new();
+    for url in urls {
+        let client = client.clone();
+        let url = url.to_string();
+        set.spawn(async move {
+            client.get(&amp;url).send().await?.text().await
+        });
+    }
+
+    let mut results = Vec::new();
+    while let Some(res) = set.join_next().await {
+        match res? {
+            Ok(body) =&gt; results.push(body),
+            Err(e) =&gt; eprintln!("Error: {e}"),
+        }
+    }
+    println!("Fetched {} pages", results.len());
+    Ok(())
+}
+</code></pre>
+
+<p>tokio is an async runtime for Rust. Tasks are lightweight (similar to goroutines). The compiler enforces thread safety at compile time&mdash;you cannot accidentally share mutable state across tasks without explicit synchronization.</p>
+
+<h2>6. TypeScript (Promise.all + fetch)</h2>
+
+<pre><code class="language-typescript">async function fetchUrl(url: string): Promise&lt;string&gt; {
+    const controller = new AbortController();
+    const timeout = setTimeout(() =&gt; controller.abort(), 10_000);
+    try {
+        const resp = await fetch(url, { signal: controller.signal });
+        return await resp.text();
+    } finally {
+        clearTimeout(timeout);
+    }
+}
+
+const urls: string[] = [ /* ... 50 URLs ... */ ];
+const results = await Promise.all(urls.map(fetchUrl));
+console.log(`Fetched ${results.length} pages`);
+</code></pre>
+
+<p>JavaScript/TypeScript has a single-threaded event loop, like Python asyncio. <code>Promise.all</code> fires all requests concurrently and resolves when all complete. No threads, no GIL&mdash;just callbacks under the hood.</p>
+
+<h2>7. C# (Task.WhenAll + HttpClient)</h2>
+
+<pre><code class="language-csharp">using System.Net.Http;
+
+var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+var urls = new string[] { /* ... 50 URLs ... */ };
+
+var tasks = urls.Select(async url =&gt; {
+    var response = await client.GetAsync(url);
+    return await response.Content.ReadAsStringAsync();
+});
+
+string[] results = await Task.WhenAll(tasks);
+Console.WriteLine($"Fetched {results.Length} pages");
+</code></pre>
+
+<p>C# async/await compiles to state machines. The runtime schedules continuations on a thread pool. <code>HttpClient</code> is designed to be reused (do not create one per request&mdash;that exhausts socket handles).</p>
+
+<h2>8. C++ (std::async + std::future)</h2>
+
+<pre><code class="language-cpp">#include &lt;future&gt;
+#include &lt;vector&gt;
+#include &lt;string&gt;
+#include "httplib.h"  // cpp-httplib header-only library
+
+std::string fetch(const std::string&amp; host, const std::string&amp; path) {
+    httplib::Client cli(host);
+    cli.set_read_timeout(10);
+    auto res = cli.Get(path);
+    if (res &amp;&amp; res-&gt;status == 200) return res-&gt;body;
+    return "ERROR";
+}
+
+int main() {
+    std::vector&lt;std::pair&lt;std::string, std::string&gt;&gt; urls = {
+        {"http://example.com", "/page1"},
+        // ... 50 entries ...
+    };
+
+    std::vector&lt;std::future&lt;std::string&gt;&gt; futures;
+    for (auto&amp; [host, path] : urls) {
+        futures.push_back(std::async(std::launch::async, fetch, host, path));
+    }
+
+    std::vector&lt;std::string&gt; results;
+    for (auto&amp; f : futures) {
+        results.push_back(f.get());
+    }
+    printf("Fetched %zu pages\n", results.size());
+}
+</code></pre>
+
+<p><code>std::async</code> with <code>std::launch::async</code> spawns OS threads. There is no built-in async runtime in the C++ standard library. For production, you would use Boost.Asio, libuv, or a custom event loop.</p>
+
+<h2>Comparison Table</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Language</th>
+      <th style="text-align:left; padding:0.4rem;">Model</th>
+      <th style="text-align:left; padding:0.4rem;">I/O Perf</th>
+      <th style="text-align:left; padding:0.4rem;">CPU Perf</th>
+      <th style="text-align:left; padding:0.4rem;">Memory/Task</th>
+      <th style="text-align:left; padding:0.4rem;">Max Tasks</th>
+      <th style="text-align:left; padding:0.4rem;">Complexity</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Python asyncio</td>
+      <td style="padding:0.4rem;">Event loop (single thread)</td>
+      <td style="padding:0.4rem;">Good</td>
+      <td style="padding:0.4rem;">Poor (GIL)</td>
+      <td style="padding:0.4rem;">~1 KB</td>
+      <td style="padding:0.4rem;">100K+</td>
+      <td style="padding:0.4rem;">Medium</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Python threading</td>
+      <td style="padding:0.4rem;">OS threads</td>
+      <td style="padding:0.4rem;">Good</td>
+      <td style="padding:0.4rem;">Poor (GIL)</td>
+      <td style="padding:0.4rem;">~1 MB</td>
+      <td style="padding:0.4rem;">~1K</td>
+      <td style="padding:0.4rem;">Low</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Python multiprocessing</td>
+      <td style="padding:0.4rem;">OS processes</td>
+      <td style="padding:0.4rem;">Good</td>
+      <td style="padding:0.4rem;">Good</td>
+      <td style="padding:0.4rem;">~50 MB</td>
+      <td style="padding:0.4rem;">~100</td>
+      <td style="padding:0.4rem;">Medium</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Go goroutines</td>
+      <td style="padding:0.4rem;">Green threads (M:N)</td>
+      <td style="padding:0.4rem;">Excellent</td>
+      <td style="padding:0.4rem;">Excellent</td>
+      <td style="padding:0.4rem;">~2 KB</td>
+      <td style="padding:0.4rem;">1M+</td>
+      <td style="padding:0.4rem;">Low</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Rust tokio</td>
+      <td style="padding:0.4rem;">Async runtime (M:N)</td>
+      <td style="padding:0.4rem;">Excellent</td>
+      <td style="padding:0.4rem;">Excellent</td>
+      <td style="padding:0.4rem;">~1 KB</td>
+      <td style="padding:0.4rem;">1M+</td>
+      <td style="padding:0.4rem;">High</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">TypeScript</td>
+      <td style="padding:0.4rem;">Event loop (single thread)</td>
+      <td style="padding:0.4rem;">Good</td>
+      <td style="padding:0.4rem;">Poor</td>
+      <td style="padding:0.4rem;">~1 KB</td>
+      <td style="padding:0.4rem;">100K+</td>
+      <td style="padding:0.4rem;">Low</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">C# async</td>
+      <td style="padding:0.4rem;">Thread pool + state machines</td>
+      <td style="padding:0.4rem;">Excellent</td>
+      <td style="padding:0.4rem;">Excellent</td>
+      <td style="padding:0.4rem;">~5 KB</td>
+      <td style="padding:0.4rem;">100K+</td>
+      <td style="padding:0.4rem;">Medium</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">C++ std::async</td>
+      <td style="padding:0.4rem;">OS threads</td>
+      <td style="padding:0.4rem;">Good</td>
+      <td style="padding:0.4rem;">Excellent</td>
+      <td style="padding:0.4rem;">~1 MB</td>
+      <td style="padding:0.4rem;">~1K</td>
+      <td style="padding:0.4rem;">High</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>When to Use What</h2>
+
+<h3>I/O-bound work (API calls, database queries, file reads)</h3>
+
+<p>Use async in whatever language you are already using. Python asyncio, TypeScript Promise.all, C# Task.WhenAll, and Go goroutines all handle this well. Python threading also works but uses more memory per task.</p>
+
+<h3>CPU-bound work (data processing, compression, math)</h3>
+
+<p>Avoid Python threads&mdash;the GIL makes them useless here. Use <code>multiprocessing</code>, or better, write the hot path in Rust/C++ and call it from Python. Go and Rust handle CPU-bound concurrency natively without workarounds.</p>
+
+<h3>Mixed workloads</h3>
+
+<p>Go is the simplest choice: goroutines handle both I/O and CPU work without a separate model. Rust (tokio + rayon) is faster but more complex. In Python, combine asyncio for I/O with <code>ProcessPoolExecutor</code> for CPU-heavy stages via <code>loop.run_in_executor</code>.</p>
+
+<h3>Maximum throughput</h3>
+
+<p>Rust (tokio) and Go can sustain millions of concurrent tasks on modest hardware. C# is close behind. Python and TypeScript top out earlier due to single-threaded event loops and higher per-task overhead.</p>

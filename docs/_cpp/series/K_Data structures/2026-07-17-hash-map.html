@@ -1,0 +1,484 @@
+---
+layout: cpp-post
+title: "Hash Map — Build a Hash Table With Chaining"
+description: "Hash functions, buckets, collision resolution, load factor, rehashing."
+date: 2026-07-17
+tags: [data-structures, hash-map, hash-table, implementation]
+permalink: /cpp/hash-map-impl/
+---
+
+<div id="tab-intro"  class="ql-tab-content active">
+  <h3>From key to bucket in O(1)</h3>
+  <p>A hash map stores key-value pairs by hashing the key to an integer, then mapping that integer to a bucket index (<code>hash % num_buckets</code>). Each bucket holds a linked list of entries that hashed to the same index &mdash; this is <strong>separate chaining</strong>.</p>
+  <p>The <strong>load factor</strong> is <code>num_entries / num_buckets</code>. When it exceeds a threshold (typically 0.75), the table allocates more buckets and rehashes every entry. This keeps chains short and lookups close to O(1).</p>
+  <p>Two things make or break a hash map: the <strong>hash function</strong> (must distribute keys uniformly) and the <strong>equality function</strong> (must be consistent with hash &mdash; equal keys must produce equal hashes).</p>
+  <p>Alternative collision strategies include open addressing (linear probing, Robin Hood hashing), but chaining is the simplest to implement and reason about.</p>
+</div>
+
+<div id="tab-python" class="ql-tab-content" style="display:none">
+  <h3>Python &mdash; chaining with lists</h3>
+  <pre><code class="language-python">class HashMap:
+    def __init__(self, initial_cap=8):
+        self._buckets = [[] for _ in range(initial_cap)]
+        self._len = 0
+
+    def _bucket_index(self, key):
+        return hash(key) % len(self._buckets)
+
+    def put(self, key, value):
+        idx = self._bucket_index(key)
+        for i, (k, v) in enumerate(self._buckets[idx]):
+            if k == key:
+                self._buckets[idx][i] = (key, value)
+                return
+        self._buckets[idx].append((key, value))
+        self._len += 1
+        if self._len / len(self._buckets) &gt; 0.75:
+            self._rehash()
+
+    def get(self, key, default=None):
+        idx = self._bucket_index(key)
+        for k, v in self._buckets[idx]:
+            if k == key:
+                return v
+        return default
+
+    def delete(self, key):
+        idx = self._bucket_index(key)
+        for i, (k, v) in enumerate(self._buckets[idx]):
+            if k == key:
+                self._buckets[idx].pop(i)
+                self._len -= 1
+                return True
+        return False
+
+    def _rehash(self):
+        old = self._buckets
+        self._buckets = [[] for _ in range(len(old) * 2)]
+        self._len = 0
+        for chain in old:
+            for k, v in chain:
+                self.put(k, v)
+
+    def __len__(self):
+        return self._len
+
+m = HashMap()
+m.put("AAPL", 185.50)
+m.put("GOOG", 140.25)
+print(m.get("AAPL"))   # 185.5
+m.delete("AAPL")
+print(m.get("AAPL"))   # None</code></pre>
+  <div class="cpp-note">Python's built-in <code>hash()</code> works on any immutable type. The real <code>dict</code> uses open addressing with perturbation, not chaining &mdash; and since 3.7 it preserves insertion order by maintaining a separate dense index array.</div>
+</div>
+
+<div id="tab-csharp" class="ql-tab-content" style="display:none">
+  <h3>C# &mdash; generic HashMap with chaining</h3>
+  <pre><code class="language-csharp">public class HashMap&lt;TKey, TValue&gt; where TKey : notnull
+{
+    private record Entry(TKey Key, TValue Value);
+    private List&lt;Entry&gt;[] _buckets;
+    private int _count;
+
+    public HashMap(int cap = 8)
+    {
+        _buckets = new List&lt;Entry&gt;[cap];
+        for (int i = 0; i &lt; cap; i++) _buckets[i] = new();
+    }
+
+    public int Count =&gt; _count;
+
+    private int Index(TKey key) =&gt;
+        (key.GetHashCode() &amp; 0x7FFFFFFF) % _buckets.Length;
+
+    public void Put(TKey key, TValue value)
+    {
+        int idx = Index(key);
+        for (int i = 0; i &lt; _buckets[idx].Count; i++)
+        {
+            if (_buckets[idx][i].Key.Equals(key))
+            {
+                _buckets[idx][i] = new Entry(key, value);
+                return;
+            }
+        }
+        _buckets[idx].Add(new Entry(key, value));
+        _count++;
+        if ((double)_count / _buckets.Length &gt; 0.75) Rehash();
+    }
+
+    public TValue? Get(TKey key)
+    {
+        int idx = Index(key);
+        foreach (var e in _buckets[idx])
+            if (e.Key.Equals(key)) return e.Value;
+        return default;
+    }
+
+    public bool Delete(TKey key)
+    {
+        int idx = Index(key);
+        for (int i = 0; i &lt; _buckets[idx].Count; i++)
+        {
+            if (_buckets[idx][i].Key.Equals(key))
+            {
+                _buckets[idx].RemoveAt(i);
+                _count--;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private void Rehash()
+    {
+        var old = _buckets;
+        _buckets = new List&lt;Entry&gt;[old.Length * 2];
+        for (int i = 0; i &lt; _buckets.Length; i++) _buckets[i] = new();
+        _count = 0;
+        foreach (var chain in old)
+            foreach (var e in chain)
+                Put(e.Key, e.Value);
+    }
+}</code></pre>
+  <div class="cpp-note">We mask with <code>0x7FFFFFFF</code> to ensure a non-negative index &mdash; <code>GetHashCode()</code> can return negative values. The real <code>Dictionary&lt;K,V&gt;</code> uses open addressing with a prime-sized bucket array.</div>
+</div>
+
+<div id="tab-cpp" class="ql-tab-content" style="display:none">
+  <h3>C++ &mdash; separate chaining with std::list</h3>
+  <pre><code class="language-cpp">#include &lt;vector&gt;
+#include &lt;list&gt;
+#include &lt;functional&gt;
+#include &lt;optional&gt;
+#include &lt;utility&gt;
+
+template&lt;typename K, typename V&gt;
+class HashMap {
+    using Entry = std::pair&lt;K, V&gt;;
+    using Chain = std::list&lt;Entry&gt;;
+    std::vector&lt;Chain&gt; buckets_;
+    size_t count_ = 0;
+
+    size_t index(const K& key) const {
+        return std::hash&lt;K&gt;{}(key) % buckets_.size();
+    }
+
+    void rehash() {
+        std::vector&lt;Chain&gt; old(buckets_.size() * 2);
+        std::swap(buckets_, old);
+        count_ = 0;
+        for (auto& chain : old)
+            for (auto& [k, v] : chain)
+                put(std::move(k), std::move(v));
+    }
+
+public:
+    explicit HashMap(size_t cap = 8) : buckets_(cap) {}
+    size_t size() const { return count_; }
+
+    void put(K key, V value) {
+        size_t idx = index(key);
+        for (auto& [k, v] : buckets_[idx]) {
+            if (k == key) { v = std::move(value); return; }
+        }
+        buckets_[idx].emplace_back(std::move(key), std::move(value));
+        ++count_;
+        if (static_cast&lt;double&gt;(count_) / buckets_.size() &gt; 0.75)
+            rehash();
+    }
+
+    std::optional&lt;V&gt; get(const K& key) const {
+        size_t idx = index(key);
+        for (auto& [k, v] : buckets_[idx])
+            if (k == key) return v;
+        return std::nullopt;
+    }
+
+    bool erase(const K& key) {
+        size_t idx = index(key);
+        auto& chain = buckets_[idx];
+        for (auto it = chain.begin(); it != chain.end(); ++it) {
+            if (it-&gt;first == key) {
+                chain.erase(it); --count_; return true;
+            }
+        }
+        return false;
+    }
+};</code></pre>
+  <div class="cpp-note">The key type must support <code>std::hash&lt;K&gt;</code> and <code>operator==</code>. This is the same requirement as <code>std::unordered_map</code>. The standard library version also uses chaining, but with a single-linked list per bucket for lower memory overhead.</div>
+</div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust &mdash; Hash + Eq trait bounds</h3>
+  <pre><code class="language-rust">use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+pub struct HashMap&lt;K, V&gt; {
+    buckets: Vec&lt;Vec&lt;(K, V)&gt;&gt;,
+    count: usize,
+}
+
+impl&lt;K: Hash + Eq, V&gt; HashMap&lt;K, V&gt; {
+    pub fn new() -&gt; Self {
+        Self { buckets: (0..8).map(|_| Vec::new()).collect(), count: 0 }
+    }
+
+    fn index(&amp;self, key: &amp;K) -&gt; usize {
+        let mut h = DefaultHasher::new();
+        key.hash(&amp;mut h);
+        h.finish() as usize % self.buckets.len()
+    }
+
+    pub fn put(&amp;mut self, key: K, value: V) {
+        let idx = self.index(&amp;key);
+        for entry in &amp;mut self.buckets[idx] {
+            if entry.0 == key {
+                entry.1 = value;
+                return;
+            }
+        }
+        self.buckets[idx].push((key, value));
+        self.count += 1;
+        if self.count as f64 / self.buckets.len() as f64 &gt; 0.75 {
+            self.rehash();
+        }
+    }
+
+    pub fn get(&amp;self, key: &amp;K) -&gt; Option&lt;&amp;V&gt; {
+        let idx = self.index(key);
+        self.buckets[idx].iter()
+            .find(|(k, _)| k == key)
+            .map(|(_, v)| v)
+    }
+
+    pub fn delete(&amp;mut self, key: &amp;K) -&gt; bool {
+        let idx = self.index(key);
+        if let Some(pos) = self.buckets[idx].iter().position(|(k, _)| k == key) {
+            self.buckets[idx].swap_remove(pos);
+            self.count -= 1;
+            true
+        } else {
+            false
+        }
+    }
+
+    fn rehash(&amp;mut self) {
+        let new_cap = self.buckets.len() * 2;
+        let old = std::mem::replace(
+            &amp;mut self.buckets,
+            (0..new_cap).map(|_| Vec::new()).collect(),
+        );
+        self.count = 0;
+        for chain in old {
+            for (k, v) in chain {
+                self.put(k, v);
+            }
+        }
+    }
+
+    pub fn len(&amp;self) -&gt; usize { self.count }
+}</code></pre>
+  <div class="cpp-note">Rust requires <code>Hash + Eq</code> as trait bounds &mdash; the compiler rejects keys that do not implement both. The real <code>std::collections::HashMap</code> uses Robin Hood open addressing with SipHash (a DoS-resistant hash), not chaining.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go &mdash; comparable constraint, manual hash</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "hash/fnv"
+)
+
+type entry[K comparable, V any] struct {
+    key K
+    val V
+}
+
+type HashMap[K comparable, V any] struct {
+    buckets [][]entry[K, V]
+    count   int
+    hashFn  func(K) uint64
+}
+
+func NewHashMap[K comparable, V any](h func(K) uint64) *HashMap[K, V] {
+    return &amp;HashMap[K, V]{
+        buckets: make([][]entry[K, V], 8),
+        hashFn:  h,
+    }
+}
+
+func (m *HashMap[K, V]) index(key K) int {
+    return int(m.hashFn(key) % uint64(len(m.buckets)))
+}
+
+func (m *HashMap[K, V]) Put(key K, val V) {
+    idx := m.index(key)
+    for i := range m.buckets[idx] {
+        if m.buckets[idx][i].key == key {
+            m.buckets[idx][i].val = val
+            return
+        }
+    }
+    m.buckets[idx] = append(m.buckets[idx], entry[K, V]{key, val})
+    m.count++
+    if float64(m.count)/float64(len(m.buckets)) &gt; 0.75 {
+        m.rehash()
+    }
+}
+
+func (m *HashMap[K, V]) Get(key K) (V, bool) {
+    idx := m.index(key)
+    for _, e := range m.buckets[idx] {
+        if e.key == key { return e.val, true }
+    }
+    var zero V
+    return zero, false
+}
+
+func (m *HashMap[K, V]) Delete(key K) bool {
+    idx := m.index(key)
+    for i, e := range m.buckets[idx] {
+        if e.key == key {
+            m.buckets[idx] = append(m.buckets[idx][:i], m.buckets[idx][i+1:]...)
+            m.count--
+            return true
+        }
+    }
+    return false
+}
+
+func (m *HashMap[K, V]) rehash() {
+    old := m.buckets
+    m.buckets = make([][]entry[K, V], len(old)*2)
+    m.count = 0
+    for _, chain := range old {
+        for _, e := range chain { m.Put(e.key, e.val) }
+    }
+}
+
+func hashStr(s string) uint64 {
+    h := fnv.New64a()
+    h.Write([]byte(s))
+    return h.Sum64()
+}
+
+func main() {
+    m := NewHashMap[string, float64](hashStr)
+    m.Put("AAPL", 185.50)
+    v, _ := m.Get("AAPL")
+    fmt.Println(v) // 185.5
+}</code></pre>
+  <div class="cpp-note">Go has no <code>Hashable</code> interface and no operator overloading. You must pass a hash function explicitly for custom types. The built-in <code>map</code> uses a runtime hash that works on any <code>comparable</code> type &mdash; but this hash is not exposed to user code.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript &mdash; string-key chaining</h3>
+  <pre><code class="language-typescript">class HashMap&lt;V&gt; {
+  private buckets: [string, V][][];
+  private count = 0;
+
+  constructor(private cap = 8) {
+    this.buckets = Array.from({ length: cap }, () =&gt; []);
+  }
+
+  private hash(key: string): number {
+    let h = 0;
+    for (let i = 0; i &lt; key.length; i++) {
+      h = (h * 31 + key.charCodeAt(i)) | 0;
+    }
+    return (h &gt;&gt;&gt; 0) % this.buckets.length;
+  }
+
+  put(key: string, value: V): void {
+    const idx = this.hash(key);
+    for (const entry of this.buckets[idx]) {
+      if (entry[0] === key) { entry[1] = value; return; }
+    }
+    this.buckets[idx].push([key, value]);
+    this.count++;
+    if (this.count / this.buckets.length &gt; 0.75) this.rehash();
+  }
+
+  get(key: string): V | undefined {
+    const idx = this.hash(key);
+    for (const [k, v] of this.buckets[idx]) {
+      if (k === key) return v;
+    }
+    return undefined;
+  }
+
+  delete(key: string): boolean {
+    const idx = this.hash(key);
+    const chain = this.buckets[idx];
+    for (let i = 0; i &lt; chain.length; i++) {
+      if (chain[i][0] === key) {
+        chain.splice(i, 1);
+        this.count--;
+        return true;
+      }
+    }
+    return false;
+  }
+
+  private rehash(): void {
+    const old = this.buckets;
+    this.buckets = Array.from({ length: old.length * 2 }, () =&gt; []);
+    this.count = 0;
+    for (const chain of old)
+      for (const [k, v] of chain) this.put(k, v);
+  }
+
+  get size(): number { return this.count; }
+}
+
+const m = new HashMap&lt;number&gt;();
+m.put("AAPL", 185.50);
+console.log(m.get("AAPL")); // 185.5</code></pre>
+  <div class="cpp-note">We restrict keys to <code>string</code> because JavaScript has no universal <code>.hashCode()</code> for objects. The built-in <code>Map</code> uses identity-based hashing (reference equality for objects, value equality for primitives). For custom object keys, you would need to serialize to string first.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Hash map across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Collision strategy (stdlib)</td>
+      <td>open addressing</td><td>open addressing</td><td>chaining</td><td>Robin Hood</td><td>chaining + overflow</td><td>engine-dependent</td>
+    </tr>
+    <tr>
+      <td>Iteration order</td>
+      <td>insertion order</td><td>unspecified</td><td>unspecified</td><td>unspecified</td><td>randomised</td><td>insertion order (Map)</td>
+    </tr>
+    <tr>
+      <td>Key requirements</td>
+      <td>__hash__ + __eq__</td><td>GetHashCode + Equals</td><td>std::hash + ==</td><td>Hash + Eq traits</td><td>comparable</td><td>identity / string</td>
+    </tr>
+    <tr>
+      <td>DoS-resistant hash</td>
+      <td>&#10003; (SipHash)</td><td>&#10007;</td><td>&#10007;</td><td>&#10003; (SipHash)</td><td>&#10003; (runtime seed)</td><td>engine-dependent</td>
+    </tr>
+    <tr>
+      <td>Implementation difficulty</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Python dicts preserve insertion order since 3.7.</strong> This is a language guarantee, not an implementation detail. Go deliberately randomises iteration order to prevent code from depending on it. C++, Rust, and C# make no promise either way.</li>
+    <li><strong>DoS-resistant hashing matters for web services.</strong> An attacker who knows your hash function can craft keys that all collide, turning O(1) into O(n). Python and Rust default to SipHash; Go seeds its hash at startup. C++ and C# leave this to the developer.</li>
+    <li><strong>Go requires you to supply a hash function for custom types.</strong> There is no <code>Hashable</code> interface. The built-in <code>map</code> uses a runtime-internal hash that is not accessible to user code, making custom hash maps more verbose.</li>
+    <li><strong>Robin Hood hashing (Rust) reduces worst-case probe length</strong> by stealing from rich buckets (short probe distance) and giving to poor buckets (long probe distance). This gives more predictable performance than pure chaining.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Need ordered keys:</strong> use a tree map (not a hash map) or Python dict (insertion order only, not sorted)</li>
+    <li><strong>Public-facing API (user-supplied keys):</strong> ensure DoS-resistant hashing (Python, Rust, Go are safe by default)</li>
+    <li><strong>Custom struct as key:</strong> implement hash + equality in all languages; Go is the most work (no operator overloading)</li>
+    <li><strong>High-performance hot path:</strong> consider open addressing (fewer cache misses than chaining); Rust's standard HashMap is already Robin Hood</li>
+  </ul>
+</div>

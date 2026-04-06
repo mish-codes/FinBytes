@@ -1,0 +1,383 @@
+---
+layout: post
+title: "HTTP Clients: requests vs reqwest vs fetch vs net/http"
+date: 2026-07-13
+tags: [http, api, requests, httpx, aiohttp, reqwest, fetch, net-http, comparison]
+categories:
+- Comparisons
+section: comparisons
+permalink: "/comparisons/http-clients/"
+---
+
+<h2>Same API, Eight Clients</h2>
+
+<p>The task: GET a JSON endpoint, POST a JSON body, handle errors, and set a timeout. These are the four operations every HTTP client must do well. Here is each one in eight libraries across six languages.</p>
+
+<h2>1. Python requests (sync)</h2>
+
+<pre><code class="language-python">import requests
+
+# GET with JSON parsing
+resp = requests.get("https://api.example.com/quotes/AAPL", timeout=10)
+resp.raise_for_status()
+data = resp.json()  # {"ticker": "AAPL", "price": 189.50}
+
+# POST with JSON body
+payload = {"ticker": "AAPL", "quantity": 100, "side": "buy"}
+resp = requests.post("https://api.example.com/orders", json=payload, timeout=10)
+resp.raise_for_status()
+order = resp.json()
+
+# Error handling
+try:
+    resp = requests.get("https://api.example.com/bad", timeout=10)
+    resp.raise_for_status()
+except requests.exceptions.Timeout:
+    print("Request timed out")
+except requests.exceptions.HTTPError as e:
+    print(f"HTTP {e.response.status_code}: {e.response.text}")
+</code></pre>
+
+<p>The simplest HTTP client in any language. Synchronous, blocking, no async support. A new TCP connection per request unless you use a <code>Session</code> object for connection pooling.</p>
+
+<h2>2. Python httpx (sync + async)</h2>
+
+<pre><code class="language-python">import httpx
+
+# Sync — drop-in replacement for requests
+resp = httpx.get("https://api.example.com/quotes/AAPL", timeout=10.0)
+resp.raise_for_status()
+data = resp.json()
+
+# Async
+async with httpx.AsyncClient(timeout=10.0) as client:
+    resp = await client.get("https://api.example.com/quotes/AAPL")
+    resp.raise_for_status()
+    data = resp.json()
+
+    resp = await client.post(
+        "https://api.example.com/orders",
+        json={"ticker": "AAPL", "quantity": 100, "side": "buy"},
+    )
+    order = resp.json()
+</code></pre>
+
+<p>httpx supports both sync and async with the same API. It also handles HTTP/2, follows redirects by default, and has built-in connection pooling via the client context manager. The modern replacement for requests.</p>
+
+<h2>3. Python aiohttp (async only)</h2>
+
+<pre><code class="language-python">import aiohttp
+
+async with aiohttp.ClientSession(
+    timeout=aiohttp.ClientTimeout(total=10)
+) as session:
+    # GET
+    async with session.get("https://api.example.com/quotes/AAPL") as resp:
+        resp.raise_for_status()
+        data = await resp.json()
+
+    # POST
+    async with session.post(
+        "https://api.example.com/orders",
+        json={"ticker": "AAPL", "quantity": 100, "side": "buy"},
+    ) as resp:
+        order = await resp.json()
+</code></pre>
+
+<p>Session-based, async-only. The session manages a connection pool. Designed for high-concurrency scenarios where you make thousands of requests. More verbose than httpx but slightly lower overhead in benchmarks.</p>
+
+<h2>4. Go net/http (stdlib)</h2>
+
+<pre><code class="language-go">package main
+
+import (
+    "bytes"
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+    "time"
+)
+
+func main() {
+    client := &amp;http.Client{Timeout: 10 * time.Second}
+
+    // GET
+    resp, err := client.Get("https://api.example.com/quotes/AAPL")
+    if err != nil { panic(err) }
+    defer resp.Body.Close()
+
+    var quote struct {
+        Ticker string  `json:"ticker"`
+        Price  float64 `json:"price"`
+    }
+    json.NewDecoder(resp.Body).Decode(&amp;quote)
+    fmt.Printf("%s: %.2f\n", quote.Ticker, quote.Price)
+
+    // POST
+    body, _ := json.Marshal(map[string]any{
+        "ticker": "AAPL", "quantity": 100, "side": "buy",
+    })
+    resp, err = client.Post(
+        "https://api.example.com/orders",
+        "application/json",
+        bytes.NewReader(body),
+    )
+    if err != nil { panic(err) }
+    defer resp.Body.Close()
+
+    if resp.StatusCode &gt;= 400 {
+        b, _ := io.ReadAll(resp.Body)
+        fmt.Printf("Error %d: %s\n", resp.StatusCode, b)
+    }
+}
+</code></pre>
+
+<p>Verbose but zero external dependencies. Go's stdlib HTTP client has connection pooling, keep-alive, and redirect handling built in. You must close the response body and check status codes manually&mdash;there is no <code>raise_for_status()</code>.</p>
+
+<h2>5. Rust reqwest (async)</h2>
+
+<pre><code class="language-rust">use reqwest::Client;
+use serde::{Deserialize, Serialize};
+use std::time::Duration;
+
+#[derive(Deserialize)]
+struct Quote { ticker: String, price: f64 }
+
+#[derive(Serialize)]
+struct Order { ticker: String, quantity: i64, side: String }
+
+#[tokio::main]
+async fn main() -> Result&lt;(), reqwest::Error&gt; {
+    let client = Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()?;
+
+    // GET
+    let quote: Quote = client
+        .get("https://api.example.com/quotes/AAPL")
+        .send().await?
+        .error_for_status()?
+        .json().await?;
+    println!("{}: {:.2}", quote.ticker, quote.price);
+
+    // POST
+    let order = Order {
+        ticker: "AAPL".into(), quantity: 100, side: "buy".into(),
+    };
+    let resp = client
+        .post("https://api.example.com/orders")
+        .json(&amp;order)
+        .send().await?
+        .error_for_status()?;
+    println!("Status: {}", resp.status());
+
+    Ok(())
+}
+</code></pre>
+
+<p>Builder pattern, async by default, typed deserialization via serde. <code>error_for_status()</code> converts 4xx/5xx into errors. reqwest is effectively the only HTTP client in the Rust ecosystem&mdash;it covers sync and async, TLS, proxies, and connection pooling.</p>
+
+<h2>6. TypeScript fetch (built-in)</h2>
+
+<pre><code class="language-typescript">// GET
+const resp = await fetch("https://api.example.com/quotes/AAPL", {
+    signal: AbortSignal.timeout(10_000),
+});
+if (!resp.ok) throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
+const data = await resp.json() as { ticker: string; price: number };
+
+// POST
+const orderResp = await fetch("https://api.example.com/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ticker: "AAPL", quantity: 100, side: "buy" }),
+    signal: AbortSignal.timeout(10_000),
+});
+if (!orderResp.ok) throw new Error(`HTTP ${orderResp.status}`);
+const order = await orderResp.json();
+</code></pre>
+
+<p>Built into browsers and Node 18+. No external dependency. The timeout uses <code>AbortSignal.timeout()</code> (clean, modern API). Note: fetch does NOT throw on 4xx/5xx status codes&mdash;you must check <code>resp.ok</code> yourself. This trips up almost everyone the first time.</p>
+
+<h2>7. C# HttpClient (async)</h2>
+
+<pre><code class="language-csharp">using System.Net.Http;
+using System.Net.Http.Json;
+
+// Create ONCE and reuse (do NOT dispose per request — socket exhaustion)
+var client = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+
+// GET
+var quote = await client.GetFromJsonAsync&lt;Quote&gt;(
+    "https://api.example.com/quotes/AAPL"
+);
+Console.WriteLine($"{quote.Ticker}: {quote.Price:F2}");
+
+// POST
+var order = new Order("AAPL", 100, "buy");
+var resp = await client.PostAsJsonAsync("https://api.example.com/orders", order);
+resp.EnsureSuccessStatusCode();
+var result = await resp.Content.ReadFromJsonAsync&lt;OrderResult&gt;();
+
+// Records for deserialization
+record Quote(string Ticker, double Price);
+record Order(string Ticker, int Quantity, string Side);
+record OrderResult(string OrderId, string Status);
+</code></pre>
+
+<p><code>HttpClient</code> is async by design. The critical gotcha: do not create a new <code>HttpClient</code> per request. Each instance holds a socket pool. Creating and disposing them rapidly exhausts ephemeral ports. Use a single instance or <code>IHttpClientFactory</code> in ASP.NET Core.</p>
+
+<h2>8. C++ cpp-httplib (header-only)</h2>
+
+<pre><code class="language-cpp">#include "httplib.h"
+#include "nlohmann/json.hpp"
+
+using json = nlohmann::json;
+
+int main() {
+    httplib::Client cli("https://api.example.com");
+    cli.set_read_timeout(10);
+    cli.set_connection_timeout(5);
+
+    // GET
+    auto res = cli.Get("/quotes/AAPL");
+    if (res &amp;&amp; res-&gt;status == 200) {
+        auto data = json::parse(res-&gt;body);
+        printf("%s: %.2f\n",
+            data["ticker"].get&lt;std::string&gt;().c_str(),
+            data["price"].get&lt;double&gt;());
+    }
+
+    // POST
+    json order = {{"ticker", "AAPL"}, {"quantity", 100}, {"side", "buy"}};
+    auto post_res = cli.Post("/orders", order.dump(), "application/json");
+    if (!post_res || post_res-&gt;status &gt;= 400) {
+        printf("Error: %d\n", post_res ? post_res-&gt;status : -1);
+    }
+
+    return 0;
+}
+</code></pre>
+
+<p>cpp-httplib is a single-header library. Combined with nlohmann/json, you get a usable HTTP client in about 15 lines. The API is synchronous. For async, you would need Boost.Beast or libcurl with a custom event loop&mdash;significantly more complex.</p>
+
+<h2>Comparison Table</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Library</th>
+      <th style="text-align:left; padding:0.4rem;">Sync/Async</th>
+      <th style="text-align:left; padding:0.4rem;">Conn Pool</th>
+      <th style="text-align:left; padding:0.4rem;">Timeout</th>
+      <th style="text-align:left; padding:0.4rem;">Mock/Test</th>
+      <th style="text-align:left; padding:0.4rem;">Deps</th>
+      <th style="text-align:left; padding:0.4rem;">Lines</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">requests</td>
+      <td style="padding:0.4rem;">Sync only</td>
+      <td style="padding:0.4rem;">Via Session</td>
+      <td style="padding:0.4rem;">Simple (seconds)</td>
+      <td style="padding:0.4rem;">responses, respx</td>
+      <td style="padding:0.4rem;">1 (requests)</td>
+      <td style="padding:0.4rem;">~8</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">httpx</td>
+      <td style="padding:0.4rem;">Both</td>
+      <td style="padding:0.4rem;">Built in</td>
+      <td style="padding:0.4rem;">Granular (connect/read/write)</td>
+      <td style="padding:0.4rem;">respx, pytest-httpx</td>
+      <td style="padding:0.4rem;">1 (httpx)</td>
+      <td style="padding:0.4rem;">~10</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">aiohttp</td>
+      <td style="padding:0.4rem;">Async only</td>
+      <td style="padding:0.4rem;">Built in</td>
+      <td style="padding:0.4rem;">ClientTimeout object</td>
+      <td style="padding:0.4rem;">aioresponses</td>
+      <td style="padding:0.4rem;">1 (aiohttp)</td>
+      <td style="padding:0.4rem;">~12</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Go net/http</td>
+      <td style="padding:0.4rem;">Sync (goroutines for async)</td>
+      <td style="padding:0.4rem;">Built in</td>
+      <td style="padding:0.4rem;">Client.Timeout</td>
+      <td style="padding:0.4rem;">httptest (stdlib)</td>
+      <td style="padding:0.4rem;">0 (stdlib)</td>
+      <td style="padding:0.4rem;">~20</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">reqwest</td>
+      <td style="padding:0.4rem;">Both (async default)</td>
+      <td style="padding:0.4rem;">Built in</td>
+      <td style="padding:0.4rem;">Builder (connect/read)</td>
+      <td style="padding:0.4rem;">wiremock, mockito</td>
+      <td style="padding:0.4rem;">2 (reqwest, tokio)</td>
+      <td style="padding:0.4rem;">~15</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">fetch</td>
+      <td style="padding:0.4rem;">Async only</td>
+      <td style="padding:0.4rem;">Runtime-managed</td>
+      <td style="padding:0.4rem;">AbortSignal</td>
+      <td style="padding:0.4rem;">msw, undici mock</td>
+      <td style="padding:0.4rem;">0 (built in)</td>
+      <td style="padding:0.4rem;">~10</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">HttpClient</td>
+      <td style="padding:0.4rem;">Async (sync wrapper exists)</td>
+      <td style="padding:0.4rem;">Built in</td>
+      <td style="padding:0.4rem;">Timeout property</td>
+      <td style="padding:0.4rem;">MockHttpMessageHandler</td>
+      <td style="padding:0.4rem;">0 (BCL)</td>
+      <td style="padding:0.4rem;">~10</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">cpp-httplib</td>
+      <td style="padding:0.4rem;">Sync only</td>
+      <td style="padding:0.4rem;">Per-client</td>
+      <td style="padding:0.4rem;">read/connect separate</td>
+      <td style="padding:0.4rem;">Manual (mock server)</td>
+      <td style="padding:0.4rem;">1 header file</td>
+      <td style="padding:0.4rem;">~15</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>When to Use What</h2>
+
+<h3>Python</h3>
+
+<p><strong>Scripts and CLIs:</strong> <code>requests</code>. It is the simplest HTTP client in any language. No async needed, no context managers required for basic use.</p>
+
+<p><strong>Async APIs and new projects:</strong> <code>httpx</code>. Same API as requests but supports async, HTTP/2, and has better timeout control. The migration path from requests is trivial.</p>
+
+<p><strong>High-concurrency (thousands of requests):</strong> <code>aiohttp</code>. Slightly faster than httpx in benchmarks for pure async workloads. The session-based API is more verbose but gives fine-grained control.</p>
+
+<h3>Go</h3>
+
+<p>The stdlib <code>net/http</code> is the only option you need. It is well-designed, performant, and every Go developer knows it. Third-party wrappers like <code>resty</code> add convenience but no fundamental capability.</p>
+
+<h3>Rust</h3>
+
+<p><code>reqwest</code> is the only real choice. The ecosystem has converged on it. The builder pattern is clean, serde integration is seamless, and it handles TLS, proxies, and cookies out of the box.</p>
+
+<h3>TypeScript</h3>
+
+<p>Use <code>fetch</code>. It is built into Node 18+ and every browser. No dependency to install, no bundler configuration. Just remember: fetch does not throw on HTTP errors&mdash;check <code>resp.ok</code>.</p>
+
+<h3>C#</h3>
+
+<p><code>HttpClient</code> is the standard. Use <code>IHttpClientFactory</code> in ASP.NET Core for proper lifetime management. Never create and dispose <code>HttpClient</code> in a loop.</p>
+
+<h3>C++</h3>
+
+<p>For simple use, <code>cpp-httplib</code> (header-only, small footprint). For production systems, <code>libcurl</code> (battle-tested, every feature imaginable, terrible API) or <code>Boost.Beast</code> (async, modern, steep learning curve).</p>

@@ -2,7 +2,7 @@
 layout: page
 title: Misc
 icon: fas fa-toolbox
-order: 5
+order: 6
 permalink: /misc/
 ---
 

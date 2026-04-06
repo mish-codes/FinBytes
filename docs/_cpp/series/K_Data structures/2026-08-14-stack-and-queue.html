@@ -1,0 +1,488 @@
+---
+layout: cpp-post
+title: "Stack & Queue — LIFO, FIFO, and the Circular Buffer"
+description: "Array-backed stack and circular-buffer queue. When stdlib is enough vs when you build your own."
+date: 2026-08-14
+tags: [data-structures, stack, queue, circular-buffer, implementation]
+permalink: /cpp/stack-queue-impl/
+---
+
+<div id="tab-intro"  class="ql-tab-content active">
+  <h3>Two fundamental access patterns</h3>
+  <p>A <strong>stack</strong> is last-in, first-out (LIFO). Push adds to the top, pop removes from the top. Think of a stack of plates &mdash; you always take the top one. An array-backed stack is trivial: push appends, pop removes the last element. Both are O(1).</p>
+  <p>A <strong>queue</strong> is first-in, first-out (FIFO). Enqueue adds to the back, dequeue removes from the front. A naive array-backed queue has a problem: removing from the front shifts every element left &mdash; O(n). The fix is a <strong>circular buffer</strong>.</p>
+  <p>A circular buffer uses a fixed-size array with two indices: <code>head</code> (front) and <code>tail</code> (back). Both advance forward and wrap around using modulo. Enqueue and dequeue are both O(1) with no shifting. When the buffer fills, you can either reject new items (bounded queue) or resize (unbounded queue).</p>
+  <p>Most stdlibs have a stack (or use an array/list as one) and a deque or ring buffer for queues. The question is when the stdlib is enough versus when you need to build your own &mdash; typically for bounded queues, lock-free concurrency, or memory-constrained systems.</p>
+</div>
+
+<div id="tab-python" class="ql-tab-content" style="display:none">
+  <h3>Python &mdash; list as stack, circular buffer for queue</h3>
+  <pre><code class="language-python">class Stack:
+    def __init__(self):
+        self._data = []
+
+    def push(self, val):
+        self._data.append(val)
+
+    def pop(self):
+        if not self._data:
+            raise IndexError("pop from empty stack")
+        return self._data.pop()
+
+    def peek(self):
+        if not self._data:
+            raise IndexError("peek at empty stack")
+        return self._data[-1]
+
+    def __len__(self):
+        return len(self._data)
+
+
+class CircularQueue:
+    def __init__(self, capacity):
+        self._buf = [None] * capacity
+        self._cap = capacity
+        self._head = 0
+        self._tail = 0
+        self._size = 0
+
+    def enqueue(self, val):
+        if self._size == self._cap:
+            raise OverflowError("queue is full")
+        self._buf[self._tail] = val
+        self._tail = (self._tail + 1) % self._cap
+        self._size += 1
+
+    def dequeue(self):
+        if self._size == 0:
+            raise IndexError("dequeue from empty queue")
+        val = self._buf[self._head]
+        self._buf[self._head] = None
+        self._head = (self._head + 1) % self._cap
+        self._size -= 1
+        return val
+
+    def peek(self):
+        if self._size == 0:
+            raise IndexError("peek at empty queue")
+        return self._buf[self._head]
+
+    def is_full(self):
+        return self._size == self._cap
+
+    def __len__(self):
+        return self._size
+
+# Usage
+s = Stack()
+s.push(1); s.push(2); s.push(3)
+print(s.pop(), s.peek())  # 3 2
+
+q = CircularQueue(3)
+q.enqueue("A"); q.enqueue("B"); q.enqueue("C")
+print(q.dequeue(), q.dequeue())  # A B
+q.enqueue("D")  # wraps around
+print(q.dequeue())  # C</code></pre>
+  <div class="cpp-note">Python <code>list.append()</code> and <code>list.pop()</code> are amortized O(1), making list a perfectly fine stack. For queues, <code>list.pop(0)</code> is O(n) &mdash; use <code>collections.deque</code> in production, which is a doubly-linked list of fixed-size blocks with O(1) operations at both ends.</div>
+</div>
+
+<div id="tab-csharp" class="ql-tab-content" style="display:none">
+  <h3>C# &mdash; array-backed stack and circular queue</h3>
+  <pre><code class="language-csharp">public class Stack&lt;T&gt;
+{
+    private T[] _buf;
+    private int _top = -1;
+
+    public Stack(int cap = 16) =&gt; _buf = new T[cap];
+    public int Count =&gt; _top + 1;
+
+    public void Push(T val)
+    {
+        if (_top + 1 == _buf.Length) Array.Resize(ref _buf, _buf.Length * 2);
+        _buf[++_top] = val;
+    }
+
+    public T Pop() =&gt; _top &gt;= 0
+        ? _buf[_top--]
+        : throw new InvalidOperationException("empty");
+
+    public T Peek() =&gt; _top &gt;= 0
+        ? _buf[_top]
+        : throw new InvalidOperationException("empty");
+}
+
+public class CircularQueue&lt;T&gt;
+{
+    private readonly T[] _buf;
+    private int _head, _tail, _size;
+    private readonly int _cap;
+
+    public CircularQueue(int cap)
+    {
+        _cap = cap;
+        _buf = new T[cap];
+    }
+
+    public int Count =&gt; _size;
+    public bool IsFull =&gt; _size == _cap;
+
+    public void Enqueue(T val)
+    {
+        if (_size == _cap) throw new InvalidOperationException("full");
+        _buf[_tail] = val;
+        _tail = (_tail + 1) % _cap;
+        _size++;
+    }
+
+    public T Dequeue()
+    {
+        if (_size == 0) throw new InvalidOperationException("empty");
+        T val = _buf[_head];
+        _buf[_head] = default!;
+        _head = (_head + 1) % _cap;
+        _size--;
+        return val;
+    }
+
+    public T Peek() =&gt; _size &gt; 0
+        ? _buf[_head]
+        : throw new InvalidOperationException("empty");
+}
+
+var s = new Stack&lt;int&gt;();
+s.Push(1); s.Push(2); s.Push(3);
+Console.WriteLine($"{s.Pop()} {s.Peek()}"); // 3 2
+
+var q = new CircularQueue&lt;string&gt;(3);
+q.Enqueue("A"); q.Enqueue("B"); q.Enqueue("C");
+Console.WriteLine($"{q.Dequeue()} {q.Dequeue()}"); // A B</code></pre>
+  <div class="cpp-note">C#'s <code>System.Collections.Generic.Stack&lt;T&gt;</code> and <code>Queue&lt;T&gt;</code> are already array-backed with automatic resizing. <code>Queue&lt;T&gt;</code> uses a circular buffer internally &mdash; exactly what we built here.</div>
+</div>
+
+<div id="tab-cpp" class="ql-tab-content" style="display:none">
+  <h3>C++ &mdash; vector-backed stack and circular buffer queue</h3>
+  <pre><code class="language-cpp">#include &lt;vector&gt;
+#include &lt;stdexcept&gt;
+#include &lt;array&gt;
+#include &lt;optional&gt;
+
+template&lt;typename T&gt;
+class Stack {
+    std::vector&lt;T&gt; data_;
+public:
+    void push(T val) { data_.push_back(std::move(val)); }
+
+    T pop() {
+        if (data_.empty()) throw std::out_of_range("empty");
+        T val = std::move(data_.back());
+        data_.pop_back();
+        return val;
+    }
+
+    const T& peek() const {
+        if (data_.empty()) throw std::out_of_range("empty");
+        return data_.back();
+    }
+
+    size_t size() const { return data_.size(); }
+};
+
+template&lt;typename T, size_t Cap&gt;
+class CircularQueue {
+    std::array&lt;T, Cap&gt; buf_{};
+    size_t head_ = 0, tail_ = 0, size_ = 0;
+
+public:
+    void enqueue(T val) {
+        if (size_ == Cap) throw std::overflow_error("full");
+        buf_[tail_] = std::move(val);
+        tail_ = (tail_ + 1) % Cap;
+        ++size_;
+    }
+
+    T dequeue() {
+        if (size_ == 0) throw std::out_of_range("empty");
+        T val = std::move(buf_[head_]);
+        head_ = (head_ + 1) % Cap;
+        --size_;
+        return val;
+    }
+
+    const T& peek() const {
+        if (size_ == 0) throw std::out_of_range("empty");
+        return buf_[head_];
+    }
+
+    bool is_full() const { return size_ == Cap; }
+    size_t size() const { return size_; }
+};
+
+// Usage: Stack&lt;int&gt; s; CircularQueue&lt;std::string, 128&gt; q;</code></pre>
+  <div class="cpp-note">The template parameter <code>Cap</code> makes the circular queue fixed-size at compile time &mdash; no heap allocation, perfect for embedded or real-time systems. C++ <code>std::stack</code> is an adaptor over <code>deque</code> by default; <code>std::queue</code> is the same. Both are thin wrappers, not new data structures.</div>
+</div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust &mdash; Vec stack and VecDeque-style circular queue</h3>
+  <pre><code class="language-rust">pub struct Stack&lt;T&gt; {
+    data: Vec&lt;T&gt;,
+}
+
+impl&lt;T&gt; Stack&lt;T&gt; {
+    pub fn new() -&gt; Self { Self { data: Vec::new() } }
+    pub fn push(&amp;mut self, val: T) { self.data.push(val); }
+    pub fn pop(&amp;mut self) -&gt; Option&lt;T&gt; { self.data.pop() }
+    pub fn peek(&amp;self) -&gt; Option&lt;&amp;T&gt; { self.data.last() }
+    pub fn len(&amp;self) -&gt; usize { self.data.len() }
+}
+
+pub struct CircularQueue&lt;T&gt; {
+    buf: Vec&lt;Option&lt;T&gt;&gt;,
+    head: usize,
+    tail: usize,
+    size: usize,
+    cap: usize,
+}
+
+impl&lt;T&gt; CircularQueue&lt;T&gt; {
+    pub fn new(cap: usize) -&gt; Self {
+        let mut buf = Vec::with_capacity(cap);
+        for _ in 0..cap { buf.push(None); }
+        Self { buf, head: 0, tail: 0, size: 0, cap }
+    }
+
+    pub fn enqueue(&amp;mut self, val: T) -&gt; Result&lt;(), &amp;'static str&gt; {
+        if self.size == self.cap { return Err("queue is full"); }
+        self.buf[self.tail] = Some(val);
+        self.tail = (self.tail + 1) % self.cap;
+        self.size += 1;
+        Ok(())
+    }
+
+    pub fn dequeue(&amp;mut self) -&gt; Option&lt;T&gt; {
+        if self.size == 0 { return None; }
+        let val = self.buf[self.head].take();
+        self.head = (self.head + 1) % self.cap;
+        self.size -= 1;
+        val
+    }
+
+    pub fn peek(&amp;self) -&gt; Option&lt;&amp;T&gt; {
+        if self.size == 0 { return None; }
+        self.buf[self.head].as_ref()
+    }
+
+    pub fn is_full(&amp;self) -&gt; bool { self.size == self.cap }
+    pub fn len(&amp;self) -&gt; usize { self.size }
+}
+
+fn main() {
+    let mut s = Stack::new();
+    s.push(1); s.push(2); s.push(3);
+    println!("{} {:?}", s.pop().unwrap(), s.peek()); // 3 Some(2)
+
+    let mut q = CircularQueue::new(3);
+    q.enqueue("A").unwrap();
+    q.enqueue("B").unwrap();
+    q.enqueue("C").unwrap();
+    println!("{} {}", q.dequeue().unwrap(), q.dequeue().unwrap()); // A B
+}</code></pre>
+  <div class="cpp-note">Rust's <code>Vec</code> is a perfect stack &mdash; <code>push</code> and <code>pop</code> are built in. For queues, the stdlib provides <code>VecDeque</code>, which is a growable circular buffer. Our bounded version returns <code>Result</code> on enqueue &mdash; idiomatic Rust for fallible operations instead of throwing exceptions.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go &mdash; slice as stack, channel as concurrent queue</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "errors"
+    "fmt"
+)
+
+type Stack[T any] struct {
+    data []T
+}
+
+func (s *Stack[T]) Push(val T)       { s.data = append(s.data, val) }
+func (s *Stack[T]) Len() int         { return len(s.data) }
+
+func (s *Stack[T]) Pop() (T, error) {
+    if len(s.data) == 0 {
+        var zero T
+        return zero, errors.New("empty")
+    }
+    val := s.data[len(s.data)-1]
+    s.data = s.data[:len(s.data)-1]
+    return val, nil
+}
+
+func (s *Stack[T]) Peek() (T, error) {
+    if len(s.data) == 0 {
+        var zero T
+        return zero, errors.New("empty")
+    }
+    return s.data[len(s.data)-1], nil
+}
+
+type CircularQueue[T any] struct {
+    buf        []T
+    head, tail int
+    size, cap  int
+}
+
+func NewCircularQueue[T any](cap int) *CircularQueue[T] {
+    return &amp;CircularQueue[T]{buf: make([]T, cap), cap: cap}
+}
+
+func (q *CircularQueue[T]) Enqueue(val T) error {
+    if q.size == q.cap { return errors.New("full") }
+    q.buf[q.tail] = val
+    q.tail = (q.tail + 1) % q.cap
+    q.size++
+    return nil
+}
+
+func (q *CircularQueue[T]) Dequeue() (T, error) {
+    if q.size == 0 {
+        var zero T
+        return zero, errors.New("empty")
+    }
+    val := q.buf[q.head]
+    q.head = (q.head + 1) % q.cap
+    q.size--
+    return val, nil
+}
+
+func (q *CircularQueue[T]) Peek() (T, error) {
+    if q.size == 0 {
+        var zero T
+        return zero, errors.New("empty")
+    }
+    return q.buf[q.head], nil
+}
+
+func (q *CircularQueue[T]) IsFull() bool { return q.size == q.cap }
+func (q *CircularQueue[T]) Len() int     { return q.size }
+
+func main() {
+    s := &amp;Stack[int]{}
+    s.Push(1); s.Push(2); s.Push(3)
+    v, _ := s.Pop()
+    p, _ := s.Peek()
+    fmt.Println(v, p) // 3 2
+
+    // Go channels are concurrent bounded queues out of the box
+    ch := make(chan string, 3)
+    ch &lt;- "A"; ch &lt;- "B"; ch &lt;- "C"
+    fmt.Println(&lt;-ch, &lt;-ch) // A B
+}</code></pre>
+  <div class="cpp-note">Go slices work as stacks with <code>append</code> and reslicing. For concurrent queues, Go channels are the idiomatic choice &mdash; <code>make(chan T, n)</code> creates a bounded FIFO queue with built-in goroutine-safe blocking. No manual locking required. Our <code>CircularQueue</code> is useful for single-goroutine scenarios where channel overhead is unnecessary.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript &mdash; array stack and circular buffer queue</h3>
+  <pre><code class="language-typescript">class Stack&lt;T&gt; {
+  private data: T[] = [];
+
+  push(val: T): void { this.data.push(val); }
+
+  pop(): T | undefined { return this.data.pop(); }
+
+  peek(): T | undefined { return this.data[this.data.length - 1]; }
+
+  get size(): number { return this.data.length; }
+}
+
+class CircularQueue&lt;T&gt; {
+  private buf: (T | undefined)[];
+  private head = 0;
+  private tail = 0;
+  private _size = 0;
+
+  constructor(private cap: number) {
+    this.buf = new Array(cap);
+  }
+
+  enqueue(val: T): boolean {
+    if (this._size === this.cap) return false;
+    this.buf[this.tail] = val;
+    this.tail = (this.tail + 1) % this.cap;
+    this._size++;
+    return true;
+  }
+
+  dequeue(): T | undefined {
+    if (this._size === 0) return undefined;
+    const val = this.buf[this.head];
+    this.buf[this.head] = undefined;
+    this.head = (this.head + 1) % this.cap;
+    this._size--;
+    return val;
+  }
+
+  peek(): T | undefined {
+    return this._size &gt; 0 ? this.buf[this.head] : undefined;
+  }
+
+  get isFull(): boolean { return this._size === this.cap; }
+  get size(): number { return this._size; }
+}
+
+// Usage
+const s = new Stack&lt;number&gt;();
+s.push(1); s.push(2); s.push(3);
+console.log(s.pop(), s.peek()); // 3 2
+
+const q = new CircularQueue&lt;string&gt;(3);
+q.enqueue("A"); q.enqueue("B"); q.enqueue("C");
+console.log(q.dequeue(), q.dequeue()); // A B
+q.enqueue("D"); // wraps around
+console.log(q.dequeue()); // C</code></pre>
+  <div class="cpp-note">JavaScript <code>Array.push()</code> and <code>Array.pop()</code> make arrays perfect stacks. For queues, <code>Array.shift()</code> is O(n) because it re-indexes every element. Our circular buffer avoids this. In Node.js, if you need a production queue, consider a linked-list-based deque or a library like <code>denque</code>.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Stack &amp; queue across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Stack stdlib</td>
+      <td>list (append/pop)</td><td>Stack&lt;T&gt;</td><td>std::stack</td><td>Vec (push/pop)</td><td>slice</td><td>Array (push/pop)</td>
+    </tr>
+    <tr>
+      <td>Queue stdlib</td>
+      <td>collections.deque</td><td>Queue&lt;T&gt;</td><td>std::queue</td><td>VecDeque</td><td>channel / slice</td><td>none (Array.shift is O(n))</td>
+    </tr>
+    <tr>
+      <td>Circular buffer built-in</td>
+      <td>&#10003; (deque)</td><td>&#10003; (Queue internals)</td><td>&#10007; (deque is different)</td><td>&#10003; (VecDeque)</td><td>&#10003; (channel)</td><td>&#10007;</td>
+    </tr>
+    <tr>
+      <td>Concurrent queue</td>
+      <td>queue.Queue</td><td>ConcurrentQueue</td><td>manual (mutex)</td><td>crossbeam / mpsc</td><td>channel</td><td>N/A (single-threaded)</td>
+    </tr>
+    <tr>
+      <td>Build-your-own value</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Stack is trivially an array in every language.</strong> No language requires a custom stack implementation for normal use. The stdlib is always sufficient &mdash; <code>push</code>/<code>pop</code> on a dynamic array is O(1) amortized everywhere.</li>
+    <li><strong>Queue is where things diverge.</strong> Python, C#, and Rust have efficient deques/circular buffers in the stdlib. TypeScript has nothing &mdash; <code>Array.shift()</code> is O(n). Go sidesteps the problem with channels for concurrent use.</li>
+    <li><strong>Go channels are concurrent queues by design.</strong> A buffered channel (<code>make(chan T, n)</code>) is a bounded, goroutine-safe FIFO queue. No other language gives you this as a language primitive &mdash; it is Go's most distinctive concurrency feature.</li>
+    <li><strong>C++ std::deque is not a circular buffer.</strong> It is a sequence of fixed-size arrays. <code>std::queue</code> adapts it for FIFO access but does not expose circular-buffer semantics. For a true ring buffer, use Boost.CircularBuffer or build your own.</li>
+    <li><strong>Build your own when you need bounded capacity, lock-free access, or zero allocation.</strong> The stdlib queue in most languages is unbounded and allocates on the heap. For real-time or embedded systems, a fixed-size circular buffer with no allocation is essential.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Stack for any purpose:</strong> use the stdlib (list, Vec, vector, array) &mdash; done</li>
+    <li><strong>Single-threaded queue:</strong> Python <code>deque</code>, Rust <code>VecDeque</code>, C# <code>Queue&lt;T&gt;</code>, or build a circular buffer in TS/C++</li>
+    <li><strong>Concurrent producer-consumer:</strong> Go channel, Python <code>queue.Queue</code>, Rust <code>mpsc</code>, C# <code>ConcurrentQueue</code></li>
+    <li><strong>Lock-free high-throughput queue:</strong> build your own or use a library (Rust <code>crossbeam</code>, C++ <code>moodycamel</code>) &mdash; this is an advanced topic covered in the Queues &amp; Reliability series</li>
+    <li><strong>Bounded buffer (backpressure):</strong> build a fixed-size circular queue as shown here, or use Go's buffered channel</li>
+  </ul>
+</div>

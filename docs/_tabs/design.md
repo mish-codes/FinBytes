@@ -73,3 +73,20 @@ permalink: /design/
     {% endfor %}
   </ul>
 </div>
+
+<div class="cpp-section" id="series-k">
+  <div class="cpp-section-hdr">Data structures <span class="sub">6 posts &middot; Jul&ndash;Aug 2026</span></div>
+  <ul class="cpp-list">
+    {% for p in all_cpp %}
+      {% assign pd = p.date | date: "%Y-%m-%d" %}
+      {% if pd >= "2026-07-10" and pd <= "2026-08-14" %}
+        {% if p.tags contains "data-structures" %}
+        <li>
+          <span class="cpp-date">{{ p.date | date: "%-d %b %Y" }}</span>
+          <a href="{{ p.url | relative_url }}">{{ p.title }}</a>
+        </li>
+        {% endif %}
+      {% endif %}
+    {% endfor %}
+  </ul>
+</div>

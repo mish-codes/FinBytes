@@ -1,0 +1,428 @@
+---
+layout: cpp-post
+title: "Binary Search Tree — Insert, Search, Traverse"
+description: "BST property, recursive vs iterative, how each language handles optional children."
+date: 2026-07-31
+tags: [data-structures, bst, tree, implementation]
+permalink: /cpp/bst-impl/
+---
+
+<div id="tab-intro"  class="ql-tab-content active">
+  <h3>Ordered data with O(log n) average lookup</h3>
+  <p>A binary search tree (BST) is a binary tree where every node satisfies: <strong>left child &lt; node &lt; right child</strong>. This invariant lets you find any value by comparing and going left or right &mdash; halving the search space at each step.</p>
+  <p><strong>Insert:</strong> walk down comparing, then attach the new node as a leaf. <strong>Search:</strong> same walk, return true if found. <strong>In-order traversal:</strong> visit left, then root, then right &mdash; this yields elements in sorted order.</p>
+  <p>Average case for insert and search is O(log n), but a sorted input creates a degenerate tree (effectively a linked list) with O(n) operations. Balanced BSTs (AVL, red-black) fix this but add complexity.</p>
+  <p>The interesting language comparison is how each represents &ldquo;child might not exist&rdquo; &mdash; Python uses <code>None</code>, Rust uses <code>Option&lt;Box&lt;&gt;&gt;</code>, Go uses <code>*Node</code> (nil), and so on. This simple question reveals each language's null-safety philosophy.</p>
+</div>
+
+<div id="tab-python" class="ql-tab-content" style="display:none">
+  <h3>Python &mdash; recursive BST</h3>
+  <pre><code class="language-python">from __future__ import annotations
+from typing import Optional, List
+
+class Node:
+    __slots__ = ("val", "left", "right")
+    def __init__(self, val):
+        self.val = val
+        self.left: Optional[Node] = None
+        self.right: Optional[Node] = None
+
+class BST:
+    def __init__(self):
+        self.root: Optional[Node] = None
+
+    def insert(self, val):
+        self.root = self._insert(self.root, val)
+
+    def _insert(self, node: Optional[Node], val) -&gt; Node:
+        if node is None:
+            return Node(val)
+        if val &lt; node.val:
+            node.left = self._insert(node.left, val)
+        elif val &gt; node.val:
+            node.right = self._insert(node.right, val)
+        return node  # duplicate — no-op
+
+    def search(self, val) -&gt; bool:
+        cur = self.root
+        while cur:
+            if val == cur.val:
+                return True
+            cur = cur.left if val &lt; cur.val else cur.right
+        return False
+
+    def in_order(self) -&gt; List:
+        result = []
+        def walk(node):
+            if node:
+                walk(node.left)
+                result.append(node.val)
+                walk(node.right)
+        walk(self.root)
+        return result
+
+tree = BST()
+for v in [5, 3, 7, 1, 4]:
+    tree.insert(v)
+print(tree.in_order())    # [1, 3, 4, 5, 7]
+print(tree.search(4))     # True
+print(tree.search(6))     # False</code></pre>
+  <div class="cpp-note">Insert is recursive (cleaner), search is iterative (avoids stack depth issues on deep trees). Python's <code>None</code> acts as the null sentinel &mdash; no special type wrapping needed.</div>
+</div>
+
+<div id="tab-csharp" class="ql-tab-content" style="display:none">
+  <h3>C# &mdash; nullable reference for children</h3>
+  <pre><code class="language-csharp">public class BST&lt;T&gt; where T : IComparable&lt;T&gt;
+{
+    private class Node
+    {
+        public T Val;
+        public Node? Left, Right;
+        public Node(T val) =&gt; Val = val;
+    }
+
+    private Node? _root;
+
+    public void Insert(T val) =&gt; _root = Insert(_root, val);
+
+    private Node Insert(Node? node, T val)
+    {
+        if (node is null) return new Node(val);
+        int cmp = val.CompareTo(node.Val);
+        if (cmp &lt; 0) node.Left = Insert(node.Left, val);
+        else if (cmp &gt; 0) node.Right = Insert(node.Right, val);
+        return node;
+    }
+
+    public bool Search(T val)
+    {
+        var cur = _root;
+        while (cur is not null)
+        {
+            int cmp = val.CompareTo(cur.Val);
+            if (cmp == 0) return true;
+            cur = cmp &lt; 0 ? cur.Left : cur.Right;
+        }
+        return false;
+    }
+
+    public List&lt;T&gt; InOrder()
+    {
+        var result = new List&lt;T&gt;();
+        void Walk(Node? n)
+        {
+            if (n is null) return;
+            Walk(n.Left);
+            result.Add(n.Val);
+            Walk(n.Right);
+        }
+        Walk(_root);
+        return result;
+    }
+}
+
+var tree = new BST&lt;int&gt;();
+foreach (int v in new[] { 5, 3, 7, 1, 4 }) tree.Insert(v);
+Console.WriteLine(string.Join(", ", tree.InOrder())); // 1, 3, 4, 5, 7
+Console.WriteLine(tree.Search(4)); // True</code></pre>
+  <div class="cpp-note"><code>IComparable&lt;T&gt;</code> gives us <code>CompareTo</code> which returns negative, zero, or positive. The nullable reference (<code>Node?</code>) with <code>is null</code> / <code>is not null</code> pattern matching keeps the code clean and null-safe.</div>
+</div>
+
+<div id="tab-cpp" class="ql-tab-content" style="display:none">
+  <h3>C++ &mdash; unique_ptr for child ownership</h3>
+  <pre><code class="language-cpp">#include &lt;memory&gt;
+#include &lt;vector&gt;
+#include &lt;iostream&gt;
+
+template&lt;typename T&gt;
+class BST {
+    struct Node {
+        T val;
+        std::unique_ptr&lt;Node&gt; left, right;
+        explicit Node(T v) : val(std::move(v)) {}
+    };
+
+    std::unique_ptr&lt;Node&gt; root_;
+
+    std::unique_ptr&lt;Node&gt;&amp; find_slot(std::unique_ptr&lt;Node&gt;&amp; node, const T&amp; val) {
+        if (!node || val == node-&gt;val) return node;
+        return val &lt; node-&gt;val
+            ? find_slot(node-&gt;left, val)
+            : find_slot(node-&gt;right, val);
+    }
+
+public:
+    void insert(T val) {
+        auto&amp; slot = find_slot(root_, val);
+        if (!slot) slot = std::make_unique&lt;Node&gt;(std::move(val));
+    }
+
+    bool search(const T&amp; val) const {
+        const Node* cur = root_.get();
+        while (cur) {
+            if (val == cur-&gt;val) return true;
+            cur = (val &lt; cur-&gt;val ? cur-&gt;left : cur-&gt;right).get();
+        }
+        return false;
+    }
+
+    std::vector&lt;T&gt; in_order() const {
+        std::vector&lt;T&gt; result;
+        auto walk = [&amp;](auto&amp;&amp; self, const Node* n) -&gt; void {
+            if (!n) return;
+            self(self, n-&gt;left.get());
+            result.push_back(n-&gt;val);
+            self(self, n-&gt;right.get());
+        };
+        walk(walk, root_.get());
+        return result;
+    }
+};</code></pre>
+  <div class="cpp-note">The <code>find_slot</code> trick returns a <em>reference</em> to the <code>unique_ptr</code> where the node should live. If the slot is empty, we construct in place. This eliminates the &ldquo;parent pointer&rdquo; dance that raw-pointer BSTs often require. The C++23 deducing-this would make the const/non-const overloads cleaner.</div>
+</div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust &mdash; Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt; for children</h3>
+  <pre><code class="language-rust">pub struct BST&lt;T: Ord&gt; {
+    root: Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt;,
+}
+
+struct Node&lt;T&gt; {
+    val: T,
+    left: Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt;,
+    right: Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt;,
+}
+
+impl&lt;T: Ord&gt; BST&lt;T&gt; {
+    pub fn new() -&gt; Self { Self { root: None } }
+
+    pub fn insert(&amp;mut self, val: T) {
+        fn go&lt;T: Ord&gt;(slot: &amp;mut Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt;, val: T) {
+            match slot {
+                None =&gt; {
+                    *slot = Some(Box::new(Node { val, left: None, right: None }));
+                }
+                Some(node) =&gt; {
+                    use std::cmp::Ordering::*;
+                    match val.cmp(&amp;node.val) {
+                        Less    =&gt; go(&amp;mut node.left, val),
+                        Greater =&gt; go(&amp;mut node.right, val),
+                        Equal   =&gt; {} // duplicate — no-op
+                    }
+                }
+            }
+        }
+        go(&amp;mut self.root, val);
+    }
+
+    pub fn search(&amp;self, val: &amp;T) -&gt; bool {
+        let mut cur = &amp;self.root;
+        while let Some(node) = cur {
+            use std::cmp::Ordering::*;
+            match val.cmp(&amp;node.val) {
+                Equal   =&gt; return true,
+                Less    =&gt; cur = &amp;node.left,
+                Greater =&gt; cur = &amp;node.right,
+            }
+        }
+        false
+    }
+
+    pub fn in_order(&amp;self) -&gt; Vec&lt;T&gt;
+    where T: Clone
+    {
+        let mut result = Vec::new();
+        fn walk&lt;T: Ord + Clone&gt;(node: &amp;Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt;, out: &amp;mut Vec&lt;T&gt;) {
+            if let Some(n) = node {
+                walk(&amp;n.left, out);
+                out.push(n.val.clone());
+                walk(&amp;n.right, out);
+            }
+        }
+        walk(&amp;self.root, &amp;mut result);
+        result
+    }
+}
+
+fn main() {
+    let mut tree = BST::new();
+    for v in [5, 3, 7, 1, 4] { tree.insert(v); }
+    println!("{:?}", tree.in_order()); // [1, 3, 4, 5, 7]
+    println!("{}", tree.search(&amp;4));   // true
+}</code></pre>
+  <div class="cpp-note"><code>Option&lt;Box&lt;Node&lt;T&gt;&gt;&gt;</code> is Rust's way of saying &ldquo;maybe a heap-allocated child node.&rdquo; The <code>Ord</code> trait bound ensures keys are totally ordered. Pattern matching on <code>Ordering</code> is idiomatic and the compiler checks you handle all three cases.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go &mdash; nil pointer for absent children</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "golang.org/x/exp/constraints"
+)
+
+type Node[T constraints.Ordered] struct {
+    Val         T
+    Left, Right *Node[T]
+}
+
+type BST[T constraints.Ordered] struct {
+    root *Node[T]
+}
+
+func (t *BST[T]) Insert(val T) {
+    t.root = insert(t.root, val)
+}
+
+func insert[T constraints.Ordered](n *Node[T], val T) *Node[T] {
+    if n == nil {
+        return &amp;Node[T]{Val: val}
+    }
+    if val &lt; n.Val {
+        n.Left = insert(n.Left, val)
+    } else if val &gt; n.Val {
+        n.Right = insert(n.Right, val)
+    }
+    return n
+}
+
+func (t *BST[T]) Search(val T) bool {
+    cur := t.root
+    for cur != nil {
+        if val == cur.Val {
+            return true
+        } else if val &lt; cur.Val {
+            cur = cur.Left
+        } else {
+            cur = cur.Right
+        }
+    }
+    return false
+}
+
+func (t *BST[T]) InOrder() []T {
+    var result []T
+    var walk func(*Node[T])
+    walk = func(n *Node[T]) {
+        if n == nil { return }
+        walk(n.Left)
+        result = append(result, n.Val)
+        walk(n.Right)
+    }
+    walk(t.root)
+    return result
+}
+
+func main() {
+    t := &amp;BST[int]{}
+    for _, v := range []int{5, 3, 7, 1, 4} {
+        t.Insert(v)
+    }
+    fmt.Println(t.InOrder())  // [1 3 4 5 7]
+    fmt.Println(t.Search(4))  // true
+}</code></pre>
+  <div class="cpp-note">Go uses <code>*Node</code> where nil means &ldquo;no child.&rdquo; The <code>constraints.Ordered</code> type set (from <code>golang.org/x/exp</code>) restricts T to types that support <code>&lt;</code>, <code>&gt;</code>, <code>==</code>. In Go 1.21+ you can use <code>cmp.Ordered</code> from the standard library instead.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript &mdash; union with null</h3>
+  <pre><code class="language-typescript">class TNode&lt;T&gt; {
+  val: T;
+  left: TNode&lt;T&gt; | null = null;
+  right: TNode&lt;T&gt; | null = null;
+  constructor(val: T) { this.val = val; }
+}
+
+class BST&lt;T&gt; {
+  private root: TNode&lt;T&gt; | null = null;
+
+  constructor(private cmp: (a: T, b: T) =&gt; number) {}
+
+  insert(val: T): void {
+    this.root = this._insert(this.root, val);
+  }
+
+  private _insert(node: TNode&lt;T&gt; | null, val: T): TNode&lt;T&gt; {
+    if (!node) return new TNode(val);
+    const c = this.cmp(val, node.val);
+    if (c &lt; 0) node.left = this._insert(node.left, val);
+    else if (c &gt; 0) node.right = this._insert(node.right, val);
+    return node;
+  }
+
+  search(val: T): boolean {
+    let cur = this.root;
+    while (cur) {
+      const c = this.cmp(val, cur.val);
+      if (c === 0) return true;
+      cur = c &lt; 0 ? cur.left : cur.right;
+    }
+    return false;
+  }
+
+  inOrder(): T[] {
+    const result: T[] = [];
+    const walk = (n: TNode&lt;T&gt; | null) =&gt; {
+      if (!n) return;
+      walk(n.left);
+      result.push(n.val);
+      walk(n.right);
+    };
+    walk(this.root);
+    return result;
+  }
+}
+
+const numCmp = (a: number, b: number) =&gt; a - b;
+const tree = new BST&lt;number&gt;(numCmp);
+for (const v of [5, 3, 7, 1, 4]) tree.insert(v);
+console.log(tree.inOrder());  // [1, 3, 4, 5, 7]
+console.log(tree.search(4));  // true</code></pre>
+  <div class="cpp-note">TypeScript has no <code>Comparable</code> interface, so we pass a comparator function to the constructor. The <code>| null</code> union type is checked by the compiler with <code>strictNullChecks</code> &mdash; you cannot access <code>.val</code> on a <code>TNode&lt;T&gt; | null</code> without a null guard.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>BST across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>&ldquo;No child&rdquo; type</td>
+      <td>None</td><td>Node? (nullable)</td><td>unique_ptr (falsy)</td><td>Option&lt;Box&lt;&gt;&gt;</td><td>*Node (nil)</td><td>T | null</td>
+    </tr>
+    <tr>
+      <td>Ordering mechanism</td>
+      <td>&lt; operator</td><td>IComparable&lt;T&gt;</td><td>operator&lt;</td><td>Ord trait</td><td>constraints.Ordered</td><td>comparator fn</td>
+    </tr>
+    <tr>
+      <td>Null-safety level</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Recursive style</td>
+      <td>natural</td><td>natural</td><td>reference-to-ptr trick</td><td>match on Option</td><td>return-new-root</td><td>natural</td>
+    </tr>
+    <tr>
+      <td>Implementation difficulty</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust's Option&lt;Box&lt;&gt;&gt; makes missing children explicit and safe.</strong> You cannot accidentally dereference a None child &mdash; the compiler forces you to pattern-match. Other languages rely on runtime null checks or trust the programmer.</li>
+    <li><strong>C++'s reference-to-unique_ptr trick is elegant.</strong> By returning a reference to the slot where a node should live, insert becomes a single assignment. This avoids the &ldquo;parent pointer&rdquo; tracking that raw-pointer implementations need.</li>
+    <li><strong>Go and TypeScript require an external ordering mechanism.</strong> Go's <code>constraints.Ordered</code> only covers built-in types. TypeScript has no ordering interface at all &mdash; you must pass a comparator. Python, C#, C++, and Rust all have standard ordering protocols.</li>
+    <li><strong>In-order traversal is almost identical everywhere.</strong> Recursive tree traversal is one of the few algorithms that looks nearly the same in every language. The only variation is how you check for &ldquo;null child.&rdquo;</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Need a sorted container in production:</strong> use the stdlib balanced tree (C++ <code>std::set</code>, Rust <code>BTreeSet</code>, C# <code>SortedSet</code>, Java <code>TreeSet</code>). A plain BST degenerates on sorted input.</li>
+    <li><strong>Teaching or interviews:</strong> implement a plain BST to understand recursion and tree structure, then discuss how balancing fixes the O(n) worst case</li>
+    <li><strong>Need fast lookups but not sorted order:</strong> use a hash map instead &mdash; O(1) average beats O(log n)</li>
+    <li><strong>Frequent range queries (all values between A and B):</strong> BST or B-tree, not a hash map</li>
+  </ul>
+</div>
