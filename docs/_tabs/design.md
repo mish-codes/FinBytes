@@ -3,7 +3,7 @@ layout: page
 title: Design & Reliability
 icon: fas fa-shield-alt
 order: 3
-permalink: /cpp/
+permalink: /design/
 ---
 
 <style>
@@ -24,167 +24,12 @@ permalink: /cpp/
 .cpp-badge { font-size:.68rem; padding:1px 5px; border-radius:3px; margin-left:6px; background:var(--badge-bg, #f0fdf4); color:var(--badge-color, #27500A); white-space:nowrap; flex-shrink:0; }
 </style>
 
-<style>
-#cpp-gate {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 320px;
-  gap: 16px;
-}
-#cpp-gate p {
-  font-size: .9rem;
-  color: var(--text-muted-color, #666);
-  margin: 0;
-}
-#cpp-gate input {
-  padding: 9px 14px;
-  font-size: .95rem;
-  border: 1px solid var(--border-color, #ddd);
-  border-radius: 5px;
-  width: 220px;
-  outline: none;
-}
-#cpp-gate input:focus { border-color: var(--link-color, #2a7ae2); }
-#cpp-gate button {
-  padding: 9px 22px;
-  background: var(--link-color, #2a7ae2);
-  color: #fff;
-  border: none;
-  border-radius: 5px;
-  font-size: .9rem;
-  cursor: pointer;
-}
-#cpp-gate button:hover { background: #1a5bbf; }
-</style>
-
-<p class="cpp-lede">A learning journal — exploring C++ after years in Python and C#. Fundamentals, series deep-dives, design patterns, and system reliability, in the order I learned them.</p>
+<p class="cpp-lede">Design patterns, defensive engineering, and system reliability &mdash; with implementations in Python, C#, C++, Rust, Go, and TypeScript.</p>
 
 {% assign all_cpp = site.cpp | sort: "date" %}
 
-<div class="cpp-section" id="intro">
-  <div class="cpp-section-hdr">Getting started <span class="sub">fundamentals &middot; Jan&ndash;May 2025</span></div>
-  <ul class="cpp-list">
-    {% for p in all_cpp %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% if pd >= "2025-01-01" and pd <= "2025-05-14" %}
-        <li>
-          <span class="cpp-date">{{ p.date | date: "%-d %b %Y" }}</span>
-          <a href="{{ p.url | relative_url }}">{{ p.title }}</a>
-        </li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="cpp-section" id="series-a">
-  <div class="cpp-section-hdr">Series A &mdash; Unit testing <span class="sub">3 posts &middot; May&ndash;Jun 2025</span></div>
-  <ul class="cpp-list">
-    {% for p in all_cpp %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% if pd >= "2025-05-21" and pd <= "2025-06-04" %}
-        <li>
-          <span class="cpp-date">{{ p.date | date: "%-d %b %Y" }}</span>
-          <a href="{{ p.url | relative_url }}">{{ p.title }}</a>
-        </li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="cpp-section" id="series-b">
-  <div class="cpp-section-hdr">Series B &mdash; File I/O <span class="sub">4 posts &middot; Jun&ndash;Jul 2025</span></div>
-  <ul class="cpp-list">
-    {% for p in all_cpp %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% if pd >= "2025-06-11" and pd <= "2025-07-02" %}
-        <li>
-          <span class="cpp-date">{{ p.date | date: "%-d %b %Y" }}</span>
-          <a href="{{ p.url | relative_url }}">{{ p.title }}</a>
-        </li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="cpp-section" id="series-c">
-  <div class="cpp-section-hdr">Series C &mdash; Practical tasks <span class="sub">4 posts &middot; Jul 2025</span></div>
-  <ul class="cpp-list">
-    {% for p in all_cpp %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% if pd >= "2025-07-09" and pd <= "2025-07-30" %}
-        <li>
-          <span class="cpp-date">{{ p.date | date: "%-d %b %Y" }}</span>
-          <a href="{{ p.url | relative_url }}">{{ p.title }}</a>
-        </li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="cpp-section" id="series-d">
-  <div class="cpp-section-hdr">Series D &mdash; STL deep dive <span class="sub">3 posts &middot; Aug 2025</span></div>
-  <ul class="cpp-list">
-    {% for p in all_cpp %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% if pd >= "2025-08-06" and pd <= "2025-08-20" %}
-        <li>
-          <span class="cpp-date">{{ p.date | date: "%-d %b %Y" }}</span>
-          <a href="{{ p.url | relative_url }}">{{ p.title }}</a>
-        </li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="cpp-section" id="series-e">
-  <div class="cpp-section-hdr">Series E &mdash; Unknown unknowns <span class="sub">5 posts &middot; Aug&ndash;Sep 2025</span></div>
-  <ul class="cpp-list">
-    {% for p in all_cpp %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% if pd >= "2025-08-27" and pd <= "2025-09-24" %}
-        <li>
-          <span class="cpp-date">{{ p.date | date: "%-d %b %Y" }}</span>
-          <a href="{{ p.url | relative_url }}">{{ p.title }}</a>
-        </li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="cpp-section" id="series-f">
-  <div class="cpp-section-hdr">Series F &mdash; Speed comparisons <span class="sub">3 posts &middot; Oct 2025</span></div>
-  <ul class="cpp-list">
-    {% for p in all_cpp %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% if pd >= "2025-10-01" and pd <= "2025-10-15" %}
-        <li>
-          <span class="cpp-date">{{ p.date | date: "%-d %b %Y" }}</span>
-          <a href="{{ p.url | relative_url }}">{{ p.title }}</a>
-        </li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="cpp-section" id="series-g">
-  <div class="cpp-section-hdr">Series G &mdash; C++ mini projects <span class="sub">4 posts &middot; Oct&ndash;Nov 2025</span></div>
-  <ul class="cpp-list">
-    {% for p in all_cpp %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% if pd >= "2025-10-22" and pd <= "2025-11-12" %}
-        <li>
-          <span class="cpp-date">{{ p.date | date: "%-d %b %Y" }}</span>
-          <a href="{{ p.url | relative_url }}">{{ p.title }}</a>
-        </li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
 <div class="cpp-section" id="series-h">
-  <div class="cpp-section-hdr">Series H &mdash; Design patterns <span class="sub">8 posts &middot; Nov 2025&ndash;Jan 2026</span></div>
+  <div class="cpp-section-hdr">Design patterns <span class="sub">8 posts &middot; Nov 2025&ndash;Jan 2026</span></div>
   <ul class="cpp-list">
     {% for p in all_cpp %}
       {% assign pd = p.date | date: "%Y-%m-%d" %}
@@ -199,7 +44,7 @@ permalink: /cpp/
 </div>
 
 <div class="cpp-section" id="series-i">
-  <div class="cpp-section-hdr">Series I &mdash; Defensive engineering <span class="sub">9 posts &middot; Jan&ndash;Mar 2026</span></div>
+  <div class="cpp-section-hdr">Defensive engineering <span class="sub">9 posts &middot; Jan&ndash;Mar 2026</span></div>
   <ul class="cpp-list">
     {% for p in all_cpp %}
       {% assign pd = p.date | date: "%Y-%m-%d" %}
@@ -214,7 +59,7 @@ permalink: /cpp/
 </div>
 
 <div class="cpp-section" id="series-j">
-  <div class="cpp-section-hdr">Series J &mdash; Queues &amp; reliability <span class="sub">9 posts &middot; Mar&ndash;May 2026</span></div>
+  <div class="cpp-section-hdr">Queues &amp; reliability <span class="sub">9 posts &middot; Mar&ndash;May 2026</span></div>
   <ul class="cpp-list">
     {% for p in all_cpp %}
       {% assign pd = p.date | date: "%Y-%m-%d" %}
@@ -228,4 +73,3 @@ permalink: /cpp/
     {% endfor %}
   </ul>
 </div>
-
