@@ -57,22 +57,7 @@ permalink: /cpp/
   cursor: pointer;
 }
 #cpp-gate button:hover { background: #1a5bbf; }
-#cpp-gate .err {
-  color: #c0392b;
-  font-size: .85rem;
-  display: none;
-}
-#cpp-content { display: none; }
 </style>
-
-<div id="cpp-gate">
-  <p>This section is password protected.</p>
-  <input type="password" id="cpp-pw" placeholder="Password" onkeydown="if(event.key==='Enter')cppUnlock()" />
-  <button onclick="cppUnlock()">Enter</button>
-  <span class="err" id="cpp-err">Incorrect password</span>
-</div>
-
-<div id="cpp-content">
 
 <p class="cpp-lede">A learning journal — exploring C++ after years in Python and C#. Fundamentals, series deep-dives, design patterns, and system reliability, in the order I learned them.</p>
 
@@ -244,29 +229,3 @@ permalink: /cpp/
   </ul>
 </div>
 
-</div>
-
-<script>
-(function() {
-  var PW = 'CHANGE_ME';  /* replace with your password */
-  var KEY = 'cpp_unlocked';
-
-  function show() {
-    document.getElementById('cpp-gate').style.display = 'none';
-    document.getElementById('cpp-content').style.display = 'block';
-  }
-
-  if (sessionStorage.getItem(KEY) === PW) show();
-
-  window.cppUnlock = function() {
-    var val = document.getElementById('cpp-pw').value;
-    if (val === PW) {
-      sessionStorage.setItem(KEY, PW);
-      show();
-    } else {
-      document.getElementById('cpp-err').style.display = 'block';
-      document.getElementById('cpp-pw').value = '';
-    }
-  };
-})();
-</script>
