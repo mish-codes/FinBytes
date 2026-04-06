@@ -1,0 +1,402 @@
+---
+layout: post
+title: "Docker & CI/CD: A Practical Reference"
+date: 2026-07-05
+tags: [docker, docker-compose, ci-cd, github-actions, kubernetes, containers, infrastructure]
+categories:
+- Infrastructure
+section: devops
+permalink: "/misc/docker-cicd/"
+---
+
+<h2>Docker: Images, Containers, and Layers</h2>
+
+<p>An <strong>image</strong> is a read-only blueprint (filesystem + metadata). A <strong>container</strong> is a running instance of that image with its own writable layer on top. You can run many containers from one image, and each is isolated.</p>
+
+<p>A <strong>Dockerfile</strong> defines how to build an image. Each instruction (<code>FROM</code>, <code>RUN</code>, <code>COPY</code>) creates a layer. Docker caches layers, so order matters: put things that change rarely (system packages) at the top and things that change often (your code) at the bottom.</p>
+
+<h2>Dockerfile Best Practices</h2>
+
+<p>This is the pattern used in QuantLab Exercise 07:</p>
+
+<pre><code class="language-dockerfile"># Stage 1: Build dependencies
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Copy requirements first — this layer is cached until requirements change
+COPY requirements.txt .
+RUN pip install --no-cache-dir --target=/deps -r requirements.txt
+
+# Stage 2: Runtime image (smaller, no build tools)
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Copy installed packages from builder stage
+COPY --from=builder /deps /usr/local/lib/python3.11/site-packages
+
+# Copy application code (changes most often — last layer)
+COPY src/ ./src/
+COPY config/ ./config/
+
+# Non-root user (security)
+RUN useradd --create-home appuser
+USER appuser
+
+EXPOSE 8000
+CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+</code></pre>
+
+<p><strong>Key practices:</strong></p>
+<ul>
+  <li><strong>Multi-stage build:</strong> The builder stage installs packages. The runtime stage copies only the result. Final image has no pip, no gcc, no build artifacts.</li>
+  <li><strong>COPY requirements first:</strong> Docker caches this layer. If requirements.txt has not changed, <code>pip install</code> is skipped entirely on rebuild.</li>
+  <li><strong>Non-root user:</strong> Containers should not run as root. If someone exploits your app, they get limited permissions.</li>
+  <li><strong>.dockerignore:</strong> Exclude files that should not enter the build context.</li>
+</ul>
+
+<pre><code class="language-text"># .dockerignore
+.git
+.venv
+__pycache__
+*.pyc
+.env
+.terraform
+node_modules
+tests/
+docs/
+*.md
+</code></pre>
+
+<h2>Docker Compose: Multi-Service Setup</h2>
+
+<p>For local development, you rarely run one container in isolation. A typical setup: your app + a database + Redis.</p>
+
+<pre><code class="language-yaml"># docker-compose.yml
+version: "3.9"
+
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://quant:quant@db:5432/quantlab
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: quant
+      POSTGRES_PASSWORD: quant
+      POSTGRES_DB: quantlab
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U quant"]
+      interval: 5s
+      retries: 5
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
+
+volumes:
+  pgdata:
+</code></pre>
+
+<pre><code class="language-bash"># Start everything
+docker compose up -d
+
+# Rebuild after code changes
+docker compose up -d --build
+
+# View logs
+docker compose logs -f app
+
+# Stop and remove containers (keep volumes)
+docker compose down
+
+# Stop and remove everything including volumes
+docker compose down -v
+</code></pre>
+
+<h2>Essential Docker Commands</h2>
+
+<pre><code class="language-bash"># Build an image
+docker build -t quantlab-app:latest .
+
+# Run a container
+docker run -d --name app -p 8000:8000 quantlab-app:latest
+
+# Run with environment variables
+docker run -d --name app -p 8000:8000 \
+  -e DATABASE_URL=postgresql://... \
+  quantlab-app:latest
+
+# Execute a command in a running container
+docker exec -it app bash
+docker exec app python -c "import src; print(src.__version__)"
+
+# View logs
+docker logs -f app
+
+# List running containers
+docker ps
+
+# List all containers (including stopped)
+docker ps -a
+
+# Stop and remove
+docker stop app && docker rm app
+
+# Clean up unused images, containers, networks, volumes
+docker system prune -a
+# WARNING: removes ALL unused images. Use with care.
+</code></pre>
+
+<h2>CI/CD with GitHub Actions</h2>
+
+<p>A GitHub Actions workflow is a YAML file in <code>.github/workflows/</code>. It runs on triggers (push, PR, schedule) and executes jobs on GitHub-hosted runners.</p>
+
+<pre><code class="language-yaml"># .github/workflows/ci.yml
+name: CI
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/testdb
+        run: pytest tests/ -v --tb=short
+
+      - name: Lint
+        run: |
+          pip install ruff
+          ruff check src/
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master' && github.event_name == 'push'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to Render
+        env:
+          RENDER_API_KEY: ${{ secrets.RENDER_API_KEY }}
+        run: |
+          curl -X POST "https://api.render.com/v1/services/${{ secrets.RENDER_SERVICE_ID }}/deploys" \
+            -H "Authorization: Bearer $RENDER_API_KEY"
+</code></pre>
+
+<p><strong>How this works in QuantLab:</strong></p>
+<ul>
+  <li>Every PR to <code>master</code> triggers the <code>test</code> job: spin up Postgres, install deps, run pytest, lint with ruff.</li>
+  <li>On merge to <code>master</code>, the <code>deploy</code> job triggers a Render deployment.</li>
+  <li>Secrets (API keys, service IDs) are stored in GitHub &rarr; Settings &rarr; Secrets &rarr; Actions. Never hardcode them in YAML.</li>
+</ul>
+
+<h2>Workflow YAML Structure</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Key</th>
+      <th style="text-align:left; padding:0.4rem;">Purpose</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>name</code></td>
+      <td style="padding:0.4rem;">Workflow name shown in GitHub UI</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>on</code></td>
+      <td style="padding:0.4rem;">Triggers: <code>push</code>, <code>pull_request</code>, <code>schedule</code>, <code>workflow_dispatch</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>jobs</code></td>
+      <td style="padding:0.4rem;">Map of job IDs to job definitions. Jobs run in parallel by default.</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>needs</code></td>
+      <td style="padding:0.4rem;">Job dependency. <code>deploy</code> runs only after <code>test</code> passes.</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>runs-on</code></td>
+      <td style="padding:0.4rem;">Runner OS: <code>ubuntu-latest</code>, <code>windows-latest</code>, <code>macos-latest</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>services</code></td>
+      <td style="padding:0.4rem;">Sidecar containers (Postgres, Redis) available to the job</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>steps</code></td>
+      <td style="padding:0.4rem;">Sequential commands within a job. Each step is an action or shell command.</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>secrets</code></td>
+      <td style="padding:0.4rem;">Accessed via <code>${{ secrets.NAME }}</code>. Set in repo settings.</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>Kubernetes: Just Enough to Understand</h2>
+
+<p>Kubernetes (K8s) orchestrates containers at scale. You will not need to run it for small projects, but you should know the vocabulary because it appears in every infrastructure discussion.</p>
+
+<ul>
+  <li><strong>Pod:</strong> The smallest deployable unit. Usually one container, sometimes a sidecar (e.g., app + log collector). Pods are ephemeral&mdash;they can be killed and recreated.</li>
+  <li><strong>Deployment:</strong> Declares "I want 3 replicas of this pod." Kubernetes maintains that count. If a pod crashes, a new one is created.</li>
+  <li><strong>Service:</strong> A stable network endpoint (DNS name + IP) that routes traffic to pods. Pods come and go; the Service address does not change.</li>
+  <li><strong>ConfigMap / Secret:</strong> Inject configuration and credentials into pods without baking them into the image.</li>
+  <li><strong>Namespace:</strong> Logical isolation within a cluster (e.g., <code>dev</code>, <code>staging</code>, <code>prod</code>).</li>
+</ul>
+
+<pre><code class="language-yaml"># deployment.yml — what a K8s deployment looks like
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: quantlab-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: quantlab-api
+  template:
+    metadata:
+      labels:
+        app: quantlab-api
+    spec:
+      containers:
+        - name: api
+          image: quantlab-app:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: quantlab-secrets
+                  key: database-url
+</code></pre>
+
+<h2>When to Use What</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Tool</th>
+      <th style="text-align:left; padding:0.4rem;">Use Case</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><strong>Docker</strong></td>
+      <td style="padding:0.4rem;">Package your app into a portable, reproducible image</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><strong>Docker Compose</strong></td>
+      <td style="padding:0.4rem;">Local development with multiple services (app + DB + cache)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><strong>GitHub Actions</strong></td>
+      <td style="padding:0.4rem;">CI (test on every PR) and CD (deploy on merge to master)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><strong>Render / Railway</strong></td>
+      <td style="padding:0.4rem;">Deploy containers without managing servers (PaaS)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><strong>Kubernetes</strong></td>
+      <td style="padding:0.4rem;">Production orchestration at scale (multiple replicas, rolling deploys, auto-scaling)</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>For most projects (including QuantLab), the stack is: Docker for packaging, Compose for local dev, GitHub Actions for CI, Render for hosting. Kubernetes is for when you outgrow single-server deployments.</p>
+
+<h2>Quick Reference</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Task</th>
+      <th style="text-align:left; padding:0.4rem;">Command</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Build image</td>
+      <td style="padding:0.4rem;"><code>docker build -t app:latest .</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Run container</td>
+      <td style="padding:0.4rem;"><code>docker run -d -p 8000:8000 app:latest</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Compose up</td>
+      <td style="padding:0.4rem;"><code>docker compose up -d --build</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Compose down</td>
+      <td style="padding:0.4rem;"><code>docker compose down</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">View logs</td>
+      <td style="padding:0.4rem;"><code>docker logs -f container_name</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Shell into container</td>
+      <td style="padding:0.4rem;"><code>docker exec -it container_name bash</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Clean up</td>
+      <td style="padding:0.4rem;"><code>docker system prune -a</code></td>
+    </tr>
+  </tbody>
+</table>

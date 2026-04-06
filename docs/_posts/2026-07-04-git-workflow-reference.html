@@ -1,0 +1,298 @@
+---
+layout: post
+title: "Git Workflow: Branches, PRs, and Protected Master"
+date: 2026-07-04
+tags: [git, github, workflow, branching, pull-request, infrastructure]
+categories:
+- Tools
+section: git
+permalink: "/misc/git-workflow/"
+---
+
+<h2>The QuantLab Workflow</h2>
+
+<p>This is the actual workflow used across QuantLab and FinBytes. It is simple and it works:</p>
+
+<ol>
+  <li><strong>Work on the <code>working</code> branch.</strong> All development happens here.</li>
+  <li><strong>PR to <code>master</code>.</strong> When a feature or exercise is complete, open a pull request from <code>working</code> to <code>master</code>.</li>
+  <li><strong>Merge and sync.</strong> After the PR merges, pull <code>master</code> into <code>working</code> to stay current.</li>
+</ol>
+
+<p>No feature branches, no release branches, no gitflow. For a solo developer or small team, this is the right amount of process.</p>
+
+<pre><code class="language-bash"># Daily workflow
+git checkout working
+# ... make changes ...
+git add src/pricing.py tests/test_pricing.py
+git commit -m "feat(pricing): add OAS calculation"
+git push origin working
+
+# Open PR
+gh pr create --base master --head working \
+  --title "feat(pricing): add OAS calculation" \
+  --body "Adds OAS/Z-spread with binomial tree pricing."
+
+# After PR merges on GitHub
+git checkout master
+git pull origin master
+git checkout working
+git merge master
+git push origin working
+</code></pre>
+
+<h2>Branch Protection</h2>
+
+<p>Protect <code>master</code> so nobody (including you at 2 AM) can push directly:</p>
+
+<ol>
+  <li>GitHub &rarr; Settings &rarr; Branches &rarr; Add rule</li>
+  <li>Branch name pattern: <code>master</code></li>
+  <li>Enable: <strong>Require a pull request before merging</strong></li>
+  <li>Enable: <strong>Require status checks to pass before merging</strong> (once you have CI)</li>
+  <li>Optional: <strong>Require conversation resolution before merging</strong></li>
+</ol>
+
+<p>With protection enabled, <code>git push origin master</code> is rejected. All changes must go through a PR.</p>
+
+<h2>Daily Commands</h2>
+
+<pre><code class="language-bash"># Check what has changed
+git status                     # modified, staged, untracked files
+git diff                       # unstaged changes (working tree vs index)
+git diff --staged              # staged changes (index vs last commit)
+
+# Stage and commit
+git add src/pricing.py         # stage specific files (preferred)
+git add -A                     # stage everything (use carefully)
+git commit -m "fix(curves): handle missing 30Y tenor"
+
+# Push to remote
+git push origin working
+
+# Pull latest from remote
+git pull origin working        # fetch + merge
+git pull --rebase origin working  # fetch + rebase (cleaner history)
+</code></pre>
+
+<h2>Branching</h2>
+
+<pre><code class="language-bash"># Create and switch to a new branch
+git checkout -b feature/dlq-handler
+
+# List branches
+git branch              # local
+git branch -r           # remote
+git branch -a           # all
+
+# Switch branches
+git checkout working
+git switch working      # newer syntax (Git 2.23+)
+
+# Delete a merged branch
+git branch -d feature/dlq-handler        # safe (refuses if unmerged)
+git branch -D feature/dlq-handler        # force (even if unmerged)
+
+# Merge a branch into current
+git checkout working
+git merge feature/dlq-handler
+</code></pre>
+
+<h2>Pull Requests with gh</h2>
+
+<p>The GitHub CLI (<code>gh</code>) is faster than the browser for creating PRs:</p>
+
+<pre><code class="language-bash"># Install: https://cli.github.com/
+# Authenticate once:
+gh auth login
+
+# Create a PR
+gh pr create --base master --head working \
+  --title "feat(exercises): 20 integration testing + portfolio credit VaR" \
+  --body "Monte Carlo simulation for portfolio credit VaR with integration tests."
+
+# List open PRs
+gh pr list
+
+# View PR details
+gh pr view 47
+
+# Merge a PR
+gh pr merge 47 --merge
+
+# Check CI status on a PR
+gh pr checks 47
+</code></pre>
+
+<h2>Merge Conflicts</h2>
+
+<p>Conflicts happen when two branches modify the same lines. Git marks the conflict in the file:</p>
+
+<pre><code class="language-text">&lt;&lt;&lt;&lt;&lt;&lt;&lt; HEAD
+spread = calculate_oas(bond, curve)
+=======
+spread = calculate_z_spread(bond, curve)
+&gt;&gt;&gt;&gt;&gt;&gt;&gt; working
+</code></pre>
+
+<p>To resolve: edit the file to keep the correct version, remove the conflict markers, then:</p>
+
+<pre><code class="language-bash">git add src/pricing.py
+git commit -m "fix: resolve merge conflict in pricing.py"
+</code></pre>
+
+<p>To abort a merge that has gone wrong: <code>git merge --abort</code></p>
+
+<h2>Useful Commands</h2>
+
+<pre><code class="language-bash"># Compact log
+git log --oneline -20
+# afb3f7e Merge pull request #47 from MishCodesFinBytes/working
+# 039ccdd feat(exercises): 20 integration testing + portfolio credit VaR
+
+# See what changed in a specific commit
+git show afb3f7e
+
+# Compare branches
+git diff master...working
+
+# Stash uncommitted changes (switch branches without committing)
+git stash
+git checkout master
+# ... do something ...
+git checkout working
+git stash pop
+
+# List stashes
+git stash list
+
+# Undo the last commit (keep changes staged)
+git reset --soft HEAD~1
+
+# Amend the last commit message (only if not pushed)
+git commit --amend -m "fix(curves): correct tenor interpolation"
+</code></pre>
+
+<h2>.gitignore</h2>
+
+<p>What to exclude from version control. Start with this and adjust:</p>
+
+<pre><code class="language-gitignore"># Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# Environment and secrets
+.env
+.env.*
+credentials.json
+*.pem
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Infrastructure
+.terraform/
+*.tfstate
+*.tfstate.backup
+terraform.tfvars
+
+# Node (if applicable)
+node_modules/
+package-lock.json
+
+# Data files (large)
+*.csv
+*.parquet
+!tests/fixtures/*.csv
+</code></pre>
+
+<h2>Commit Message Conventions</h2>
+
+<p>Use a prefix that describes the type of change:</p>
+
+<ul>
+  <li><code>feat:</code> &mdash; new feature or capability</li>
+  <li><code>fix:</code> &mdash; bug fix</li>
+  <li><code>chore:</code> &mdash; maintenance (deps, config, CI)</li>
+  <li><code>refactor:</code> &mdash; code restructuring (no behavior change)</li>
+  <li><code>docs:</code> &mdash; documentation only</li>
+  <li><code>test:</code> &mdash; adding or fixing tests</li>
+</ul>
+
+<p>Optional scope in parentheses: <code>feat(pricing): add OAS calculation</code></p>
+
+<p>For AI-assisted commits, add a co-author trailer:</p>
+
+<pre><code class="language-text">feat(exercises): 20 integration testing + portfolio credit VaR
+
+Co-Authored-By: Claude Opus 4.6 (1M context) &lt;noreply@anthropic.com&gt;
+</code></pre>
+
+<h2>Common Mistakes</h2>
+
+<p><strong>1. Committing secrets.</strong> An <code>.env</code> file with API keys pushed to a public repo is compromised forever (even if you delete it later, it is in git history). Use <code>.gitignore</code> and check <code>git status</code> before every commit.</p>
+
+<p><strong>2. Force-pushing to master.</strong> <code>git push --force origin master</code> rewrites history for everyone. With branch protection enabled, GitHub blocks this. Never do it.</p>
+
+<p><strong>3. Not pulling before pushing.</strong> If your local branch is behind the remote, <code>git push</code> is rejected. Always <code>git pull</code> first.</p>
+
+<p><strong>4. Giant commits.</strong> A commit that touches 40 files across 5 features is impossible to review or revert. Commit early, commit often, one logical change per commit.</p>
+
+<p><strong>5. Forgetting to switch branches.</strong> Accidentally committing to <code>master</code> when you meant <code>working</code>. Fix with <code>git reset --soft HEAD~1</code>, switch branches, then recommit.</p>
+
+<h2>Quick Reference</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Task</th>
+      <th style="text-align:left; padding:0.4rem;">Command</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">See what changed</td>
+      <td style="padding:0.4rem;"><code>git status</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Stage specific files</td>
+      <td style="padding:0.4rem;"><code>git add file1.py file2.py</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Commit</td>
+      <td style="padding:0.4rem;"><code>git commit -m "feat: description"</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Push</td>
+      <td style="padding:0.4rem;"><code>git push origin working</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Create PR</td>
+      <td style="padding:0.4rem;"><code>gh pr create --base master --head working</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Sync after merge</td>
+      <td style="padding:0.4rem;"><code>git pull origin master && git merge master</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Stash changes</td>
+      <td style="padding:0.4rem;"><code>git stash</code> / <code>git stash pop</code></td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;">Compact log</td>
+      <td style="padding:0.4rem;"><code>git log --oneline -10</code></td>
+    </tr>
+  </tbody>
+</table>
