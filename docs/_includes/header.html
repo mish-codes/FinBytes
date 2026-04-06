@@ -78,6 +78,9 @@ a.nav-dropdown-item{display:block}
 
       <div class="trigger">
 
+        <!-- Quant Lab (first) -->
+        <a class="page-link" href="{{ "/quant-lab/" | relative_url }}">Quant Lab</a>
+
         <!-- Python -->
         <div class="nav-dropdown">
           <a class="page-link nav-dropdown-toggle" href="{{ "/python/" | relative_url }}">Python <span class="nav-caret">&#9662;</span></a>
@@ -93,8 +96,6 @@ a.nav-dropdown-item{display:block}
           </div>
         </div>
 
-        <!-- C++ -->
-        <a class="page-link" href="{{ "/cpp/" | relative_url }}">C++</a>
         <!-- Design & reliability -->
         <div class="nav-dropdown">
           <a class="page-link nav-dropdown-toggle" href="{{ "/cpp/solid-principles/" | relative_url }}">Design &amp; reliability <span class="nav-caret">&#9662;</span></a>
@@ -169,48 +170,6 @@ a.nav-dropdown-item{display:block}
             </div>
           </div>
         </div>
-
-        <!-- Cheatsheets -->
-        <div class="nav-dropdown">
-          <a class="page-link nav-dropdown-toggle" href="{{ "/cheatsheets/" | relative_url }}">Cheatsheets <span class="nav-caret">&#9662;</span></a>
-          <div class="nav-dropdown-menu">
-            <div class="nav-has-sub">Languages <span class="nav-sub-caret">&#9656;</span>
-              <div class="nav-submenu nav-submenu-left">
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/python-cheatsheet.pdf" | relative_url }}" target="_blank">Python <span class="nav-badge">PDF</span></a>
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/pandas-cheatsheet.pdf" | relative_url }}" target="_blank">pandas <span class="nav-badge">PDF</span></a>
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/csharp-cheatsheet.pdf" | relative_url }}" target="_blank">C# <span class="nav-badge">PDF</span></a>
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/cpp-cheatsheet.pdf" | relative_url }}" target="_blank">C++ <span class="nav-badge">PDF</span></a>
-              </div>
-            </div>
-            <div class="nav-has-sub">Testing <span class="nav-sub-caret">&#9656;</span>
-              <div class="nav-submenu nav-submenu-left">
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/pytest-cheatsheet.pdf" | relative_url }}" target="_blank">pytest <span class="nav-badge">PDF</span></a>
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/monkeypatch-cheatsheet.pdf" | relative_url }}" target="_blank">monkeypatch <span class="nav-badge">PDF</span></a>
-              </div>
-            </div>
-            <div class="nav-has-sub">Tools &amp; infrastructure <span class="nav-sub-caret">&#9656;</span>
-              <div class="nav-submenu nav-submenu-left">
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/git-cheatsheet.pdf" | relative_url }}" target="_blank">Git <span class="nav-badge">PDF</span></a>
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/redis-cheatsheet.pdf" | relative_url }}" target="_blank">Redis <span class="nav-badge">PDF</span></a>
-              </div>
-            </div>
-            <div class="nav-has-sub">Design patterns <span class="nav-sub-caret">&#9656;</span>
-              <div class="nav-submenu nav-submenu-left">
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/design-patterns-python-cheatsheet.pdf" | relative_url }}" target="_blank">Python <span class="nav-badge">PDF</span></a>
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/design-patterns-csharp-cheatsheet.pdf" | relative_url }}" target="_blank">C# <span class="nav-badge">PDF</span></a>
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/design-patterns-cpp-cheatsheet.pdf" | relative_url }}" target="_blank">C++ <span class="nav-badge">PDF</span></a>
-              </div>
-            </div>
-            <div class="nav-has-sub">Reliability <span class="nav-sub-caret">&#9656;</span>
-              <div class="nav-submenu nav-submenu-left">
-                <a class="nav-dropdown-item" href="{{ "/assets/cheatsheets/queues-reliability-cheatsheet.pdf" | relative_url }}" target="_blank">Queues &amp; reliability <span class="nav-badge">PDF</span></a>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Quant Lab -->
-        <a class="page-link" href="{{ "/quant-lab/" | relative_url }}">Quant Lab</a>
 
         <!-- About -->
         {% assign about_page = site.pages | where: "path", "_pages/2024-10-30-about.html" | first %}
