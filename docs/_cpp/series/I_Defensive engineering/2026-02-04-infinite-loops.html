@@ -138,3 +138,243 @@ Watchdog wd(std::chrono::seconds(10));
 for (auto& trade : trades) { price(trade); wd.heartbeat(); }</code></pre>
   <div class="cpp-note">NaN causes infinite loops in numerical code. <code>NaN != NaN</code> is always true, so <code>while (abs(x) > tol)</code> loops forever if x becomes NaN. Always add <code>std::isfinite(x)</code> to convergence checks.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust loop guards and timeouts</h3>
+  <h4>Iteration caps and NaN guards</h4>
+  <pre><code class="language-rust">/// Newton-Raphson with iteration cap and NaN guard.
+fn newton_raphson(
+    f:  impl Fn(f64) -&gt; f64,
+    df: impl Fn(f64) -&gt; f64,
+    x0: f64,
+    tol: f64,
+    max_iter: usize,
+) -&gt; Result&lt;f64, String&gt; {
+    let mut x = x0;
+    for i in 0..max_iter {
+        if !x.is_finite() {
+            return Err(format!("NaN/Inf at iteration {i}"));
+        }
+        let fx = f(x);
+        if fx.abs() &lt; tol { return Ok(x); }
+        let dfx = df(x);
+        if dfx.abs() &lt; 1e-15 {
+            return Err("Zero derivative".into());
+        }
+        x -= fx / dfx;
+    }
+    Err(format!("No convergence after {max_iter} iterations"))
+}</code></pre>
+
+  <h4>Async timeout with tokio</h4>
+  <pre><code class="language-rust">use tokio::time::{timeout, Duration};
+
+async fn price_with_timeout(trade: &Trade) -&gt; Result&lt;f64, String&gt; {
+    match timeout(Duration::from_secs(5), compute_price(trade)).await {
+        Ok(result) =&gt; result,
+        Err(_)     =&gt; Err("Pricing timed out after 5s".into()),
+    }
+}
+
+// Watchdog via crossbeam channel
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration as StdDuration, Instant};
+
+struct Watchdog {
+    last_beat: Arc&lt;AtomicI64&gt;,
+}
+
+impl Watchdog {
+    fn new(timeout: StdDuration) -&gt; Self {
+        let last_beat = Arc::new(AtomicI64::new(
+            Instant::now().elapsed().as_nanos() as i64
+        ));
+        let lb = Arc::clone(&last_beat);
+        let timeout_ns = timeout.as_nanos() as i64;
+
+        thread::spawn(move || {
+            let start = Instant::now();
+            loop {
+                thread::sleep(StdDuration::from_millis(500));
+                let now = start.elapsed().as_nanos() as i64;
+                let last = lb.load(Ordering::Relaxed);
+                if now - last &gt; timeout_ns {
+                    eprintln!("WATCHDOG: no heartbeat - aborting");
+                    std::process::abort();
+                }
+            }
+        });
+        Self { last_beat }
+    }
+
+    fn heartbeat(&self) {
+        // Update with current elapsed time
+        self.last_beat.store(0, Ordering::Relaxed); // simplified
+    }
+}</code></pre>
+  <div class="cpp-note">Rust's <code>Result</code> type forces callers to handle convergence failure explicitly &mdash; you cannot accidentally ignore a "no convergence" error. The <code>tokio::time::timeout</code> wrapper makes async timeouts a one-liner. For CPU-bound loops, use iteration caps just like C++.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go timeout and loop guards</h3>
+  <h4>Context-based timeouts</h4>
+  <pre><code class="language-go">package main
+
+import (
+    "context"
+    "fmt"
+    "math"
+    "time"
+)
+
+// Newton-Raphson with iteration cap
+func newtonRaphson(f, df func(float64) float64, x0, tol float64, maxIter int) (float64, error) {
+    x := x0
+    for i := 0; i &lt; maxIter; i++ {
+        if math.IsNaN(x) || math.IsInf(x, 0) {
+            return 0, fmt.Errorf("NaN/Inf at iteration %d", i)
+        }
+        fx := f(x)
+        if math.Abs(fx) &lt; tol { return x, nil }
+        dfx := df(x)
+        if math.Abs(dfx) &lt; 1e-15 {
+            return 0, fmt.Errorf("zero derivative at iteration %d", i)
+        }
+        x -= fx / dfx
+    }
+    return 0, fmt.Errorf("no convergence after %d iterations", maxIter)
+}
+
+// Context timeout for async operations
+func priceWithTimeout(ctx context.Context, trade Trade) (float64, error) {
+    ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+    defer cancel()
+
+    resultCh := make(chan float64, 1)
+    errCh    := make(chan error, 1)
+
+    go func() {
+        price, err := computePrice(trade)
+        if err != nil { errCh &lt;- err; return }
+        resultCh &lt;- price
+    }()
+
+    select {
+    case price := &lt;-resultCh:
+        return price, nil
+    case err := &lt;-errCh:
+        return 0, err
+    case &lt;-ctx.Done():
+        return 0, fmt.Errorf("pricing timed out: %w", ctx.Err())
+    }
+}
+
+// Deadlock detection: Go's runtime detects when all goroutines are blocked
+// "fatal error: all goroutines are asleep - deadlock!"
+// Use go run -race to detect data races that might cause hangs</code></pre>
+  <div class="cpp-note">Go's <code>context.Context</code> is the standard way to propagate timeouts and cancellation through call chains. The <code>select</code> statement with <code>ctx.Done()</code> makes it impossible to forget the timeout path. Go's runtime also detects global deadlocks automatically.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript timeout and loop guards</h3>
+  <h4>AbortController and iteration caps</h4>
+  <pre><code class="language-typescript">// Newton-Raphson with iteration cap
+function newtonRaphson(
+  f:  (x: number) =&gt; number,
+  df: (x: number) =&gt; number,
+  x0: number,
+  tol = 1e-8,
+  maxIter = 100,
+): number {
+  let x = x0;
+  for (let i = 0; i &lt; maxIter; i++) {
+    if (!Number.isFinite(x)) throw new Error(`NaN/Inf at iteration ${i}`);
+    const fx = f(x);
+    if (Math.abs(fx) &lt; tol) return x;
+    const dfx = df(x);
+    if (Math.abs(dfx) &lt; 1e-15) throw new Error("Zero derivative");
+    x -= fx / dfx;
+  }
+  throw new Error(`No convergence after ${maxIter} iterations`);
+}
+
+// Async timeout with AbortController
+async function priceWithTimeout(
+  trade: Trade,
+  timeoutMs = 5000,
+): Promise&lt;number&gt; {
+  const controller = new AbortController();
+  const timer = setTimeout(() =&gt; controller.abort(), timeoutMs);
+
+  try {
+    return await computePrice(trade, controller.signal);
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(`Pricing timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Promise.race as timeout wrapper
+function withTimeout&lt;T&gt;(promise: Promise&lt;T&gt;, ms: number): Promise&lt;T&gt; {
+  const timeout = new Promise&lt;never&gt;((_, reject) =&gt;
+    setTimeout(() =&gt; reject(new Error(`Timed out after ${ms}ms`)), ms)
+  );
+  return Promise.race([promise, timeout]);
+}
+
+const price = await withTimeout(computePrice(trade), 5000);</code></pre>
+  <div class="cpp-note">JavaScript is single-threaded, so true deadlocks between threads are impossible. However, the event loop can hang if a synchronous computation runs too long. Use <code>AbortController</code> (modern standard) for cancellation, and <code>Promise.race</code> for simple timeouts. Worker threads can deadlock on shared <code>SharedArrayBuffer</code> locks.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Infinite loop and hang prevention across languages</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Timeout mechanism</td>
+      <td>signal / threading</td><td>CancellationToken</td><td>watchdog thread</td><td>tokio::timeout</td><td>context.Context</td><td>AbortController</td>
+    </tr>
+    <tr>
+      <td>Timeout ergonomics</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Deadlock detection</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>NaN loop risk</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Cancellation propagation</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Go</strong> has the best timeout story &mdash; <code>context.Context</code> propagates deadlines through every layer of the call stack. The runtime also detects global deadlocks automatically (all goroutines blocked).</li>
+    <li><strong>Rust</strong> forces you to handle timeout results via <code>Result</code> &mdash; you cannot accidentally ignore a timeout. The borrow checker also prevents some deadlock patterns by disallowing shared mutable state without synchronisation.</li>
+    <li><strong>C#</strong> <code>CancellationToken</code> is well-integrated into the async ecosystem. Every async API in .NET accepts one, making timeout propagation natural.</li>
+    <li><strong>TypeScript</strong> is single-threaded, so classical deadlocks are rare, but the event loop can freeze on synchronous computation. <code>AbortController</code> is the modern cancellation primitive.</li>
+    <li><strong>NaN-induced infinite loops</strong> affect all languages equally &mdash; IEEE 754 is universal. Every language needs explicit <code>isFinite</code>/<code>IsNaN</code> checks in convergence loops.</li>
+    <li><strong>C++</strong> has the weakest built-in timeout support; you must build watchdog threads manually. ThreadSanitiser helps detect deadlocks but is a development-only tool.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Microservices with cascading timeouts:</strong> Go (context propagation) or C# (CancellationToken)</li>
+    <li><strong>Numerical algorithms:</strong> all languages need iteration caps + NaN guards &mdash; no language is exempt</li>
+    <li><strong>Real-time systems:</strong> C++ or Rust (watchdog threads, no GC pauses that mask hangs)</li>
+    <li><strong>Async I/O pipelines:</strong> TypeScript (AbortController) or Rust (tokio)</li>
+  </ul>
+</div>

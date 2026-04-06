@@ -108,3 +108,239 @@ public:
 };</code></pre>
   <div class="cpp-note">The best way to avoid race conditions is to avoid shared mutable state. Thread confinement (each object owned by exactly one thread, communication via queues) eliminates the entire class of problem. It is the design principle behind actor systems and most high-performance market data systems.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust thread safety</h3>
+  <h4>The borrow checker prevents data races at compile time</h4>
+  <pre><code class="language-rust">use std::sync::{Arc, Mutex, RwLock};
+use std::thread;
+
+// This will NOT compile - Rust prevents shared mutable access:
+// let mut position = 0.0;
+// thread::spawn(|| position += 100.0);  // ERROR: cannot borrow as mutable
+// println!("{position}");                // while also borrowed here
+
+// Fix: wrap in Arc&lt;Mutex&gt; for shared mutable state
+fn safe_position_update() {
+    let position = Arc::new(Mutex::new(0.0_f64));
+
+    let handles: Vec&lt;_&gt; = (0..10).map(|_| {
+        let pos = Arc::clone(&position);
+        thread::spawn(move || {
+            let mut guard = pos.lock().unwrap();
+            *guard += 100.0;
+            // guard dropped here - lock released automatically (RAII)
+        })
+    }).collect();
+
+    for h in handles { h.join().unwrap(); }
+    println!("Final: {}", *position.lock().unwrap());  // always 1000.0
+}
+
+// RwLock for read-heavy workloads
+struct PositionCache {
+    data: RwLock&lt;std::collections::HashMap&lt;String, f64&gt;&gt;,
+}
+
+impl PositionCache {
+    fn get(&self, sym: &str) -&gt; Option&lt;f64&gt; {
+        let guard = self.data.read().unwrap();  // many readers OK
+        guard.get(sym).copied()
+    }
+    fn set(&self, sym: String, qty: f64) {
+        let mut guard = self.data.write().unwrap();  // exclusive write
+        guard.insert(sym, qty);
+    }
+}</code></pre>
+
+  <h4>Message passing with channels</h4>
+  <pre><code class="language-rust">use std::sync::mpsc;
+
+enum PosMsg {
+    Add(String, f64),
+    Get(String, mpsc::Sender&lt;f64&gt;),
+}
+
+fn position_manager() -&gt; mpsc::Sender&lt;PosMsg&gt; {
+    let (tx, rx) = mpsc::channel();
+
+    thread::spawn(move || {
+        let mut positions = std::collections::HashMap::new();
+        for msg in rx {
+            match msg {
+                PosMsg::Add(sym, qty) =&gt; {
+                    *positions.entry(sym).or_insert(0.0) += qty;
+                }
+                PosMsg::Get(sym, reply) =&gt; {
+                    let qty = positions.get(&sym).copied().unwrap_or(0.0);
+                    let _ = reply.send(qty);
+                }
+            }
+        }
+    });
+
+    tx  // single owner of state - no races possible
+}</code></pre>
+  <div class="cpp-note">Rust's ownership system makes data races a <em>compile error</em>, not a runtime bug. The <code>Send</code> and <code>Sync</code> traits are automatically derived &mdash; a type that is not safe to share across threads simply will not compile if you try. This eliminates the entire class of race conditions that ThreadSanitiser detects in C++.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go thread safety</h3>
+  <h4>Goroutines and channels &mdash; "share by communicating"</h4>
+  <pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "sync"
+)
+
+// BAD: shared mutable state without synchronisation
+type UnsafePosition struct {
+    Quantity float64  // data race: multiple goroutines read/write
+}
+
+// GOOD: mutex protection
+type SafePosition struct {
+    mu       sync.RWMutex
+    quantity float64
+}
+
+func (p *SafePosition) Add(qty float64) {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+    p.quantity += qty
+}
+
+func (p *SafePosition) Get() float64 {
+    p.mu.RLock()
+    defer p.mu.RUnlock()
+    return p.quantity
+}
+
+// BEST: channel-based message passing
+type posMsg struct {
+    sym string
+    qty float64
+}
+
+func positionManager(updates &lt;-chan posMsg, queries &lt;-chan string, replies chan&lt;- float64) {
+    positions := make(map[string]float64)
+    for {
+        select {
+        case msg := &lt;-updates:
+            positions[msg.sym] += msg.qty
+        case sym := &lt;-queries:
+            replies &lt;- positions[sym]
+        }
+    }
+}
+
+// Race detector: go run -race main.go
+// Detects data races at runtime with ~5-10x overhead.
+// Run ALL tests with: go test -race ./...</code></pre>
+  <div class="cpp-note">Go's motto is "don't communicate by sharing memory; share memory by communicating." Channels are the primary concurrency primitive. The <code>-race</code> flag enables the built-in race detector &mdash; run it on every test. Unlike Rust, Go does not prevent races at compile time; the race detector is a runtime tool.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript thread safety</h3>
+  <h4>Single-threaded by default &mdash; races still possible</h4>
+  <pre><code class="language-typescript">// JavaScript is single-threaded (event loop), so classical data races
+// between threads are impossible in the main thread.
+
+// BUT: logical races still happen with async code
+class UnsafeCache {
+  private cache = new Map&lt;string, number&gt;();
+
+  async getOrFetch(key: string): Promise&lt;number&gt; {
+    if (this.cache.has(key)) return this.cache.get(key)!;
+    // Two concurrent calls can both reach here before either caches
+    const value = await fetchPrice(key);  // yields to event loop
+    this.cache.set(key, value);           // duplicate fetch
+    return value;
+  }
+}
+
+// Fix: track in-flight promises
+class SafeCache {
+  private cache = new Map&lt;string, number&gt;();
+  private inflight = new Map&lt;string, Promise&lt;number&gt;&gt;();
+
+  async getOrFetch(key: string): Promise&lt;number&gt; {
+    if (this.cache.has(key)) return this.cache.get(key)!;
+    if (this.inflight.has(key)) return this.inflight.get(key)!;
+
+    const promise = fetchPrice(key).then((value) =&gt; {
+      this.cache.set(key, value);
+      this.inflight.delete(key);
+      return value;
+    });
+    this.inflight.set(key, promise);
+    return promise;
+  }
+}
+
+// Worker threads: true shared memory races ARE possible
+import { Worker, isMainThread, parentPort } from "worker_threads";
+
+// SharedArrayBuffer + Atomics for thread-safe shared memory
+if (isMainThread) {
+  const buffer = new SharedArrayBuffer(8);
+  const view = new Float64Array(buffer);
+  Atomics.store(view, 0, 100.0);  // atomic write
+
+  const worker = new Worker(__filename, { workerData: buffer });
+} else {
+  // worker reads atomically
+  const view = new Float64Array(workerData);
+  const price = Atomics.load(view, 0);  // atomic read
+}</code></pre>
+  <div class="cpp-note">JavaScript's single-threaded event loop eliminates classical data races, but async logical races (TOCTOU) are common and subtle. With Worker threads and <code>SharedArrayBuffer</code>, true data races become possible &mdash; use <code>Atomics</code> for synchronisation. There is no built-in race detector for JavaScript.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Race condition prevention across languages</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Compile-time race prevention</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Runtime race detection</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Channel / message passing</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Lock ergonomics</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Concurrency model</td>
+      <td>GIL (threads) / asyncio</td><td>async/await + threads</td><td>threads + atomics</td><td>Send/Sync + ownership</td><td>goroutines + channels</td><td>event loop + workers</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust</strong> is the only language that prevents data races at compile time. The <code>Send</code>/<code>Sync</code> trait system makes it impossible to share mutable state across threads without synchronisation. This is a fundamental advantage over every other language here.</li>
+    <li><strong>Go</strong> has the best runtime race detector and the most ergonomic channel-based concurrency. The <code>-race</code> flag should be on for every test run. Go's motto "share by communicating" is the right default.</li>
+    <li><strong>C++</strong> ThreadSanitiser (TSan) is powerful but has ~5x overhead and can miss races that do not occur during the test run. It detects, not prevents.</li>
+    <li><strong>TypeScript</strong> avoids most races by being single-threaded, but async logical races (double-fetch, TOCTOU) are common. Worker threads with <code>SharedArrayBuffer</code> reintroduce true data races.</li>
+    <li><strong>Python</strong>'s GIL prevents true data races between threads for CPython, but this is an implementation detail, not a guarantee. Multiprocessing and async code can still have logical races.</li>
+    <li><strong>C#</strong> has good concurrent collections (<code>ConcurrentDictionary</code>, <code>Channel&lt;T&gt;</code>) but no compile-time or runtime race detector built into the platform.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Race-free by construction:</strong> Rust (compile-time prevention via ownership)</li>
+    <li><strong>Best runtime safety net:</strong> Go (<code>-race</code> detector) or C++ (ThreadSanitiser)</li>
+    <li><strong>High-concurrency services:</strong> Go (goroutines + channels) or Rust (async + ownership)</li>
+    <li><strong>Avoid concurrency complexity:</strong> TypeScript (single-threaded event loop)</li>
+    <li><strong>Enterprise with concurrent collections:</strong> C# (<code>ConcurrentDictionary</code>, <code>Channel&lt;T&gt;</code>)</li>
+  </ul>
+</div>

@@ -133,3 +133,238 @@ public:
 };</code></pre>
   <div class="cpp-note"><code>std::optional&lt;Trade&gt;</code> is cleaner than a raw pointer (which the caller might forget to null-check) or an exception (which is not appropriate for "not found"). Always return optional for queries that may find nothing.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust repository pattern</h3>
+  <pre><code class="language-rust">use std::collections::HashMap;
+
+#[derive(Clone)]
+struct Trade {
+    id:       String,
+    symbol:   String,
+    notional: f64,
+    status:   String,
+}
+
+trait TradeRepository {
+    fn find_by_id(&self, id: &str) -> Option&lt;&Trade&gt;;
+    fn find_by_symbol(&self, symbol: &str) -> Vec&lt;&Trade&gt;;
+    fn save(&mut self, trade: Trade);
+}
+
+struct InMemoryTradeRepo {
+    store: HashMap&lt;String, Trade&gt;,
+}
+
+impl InMemoryTradeRepo {
+    fn new() -> Self { Self { store: HashMap::new() } }
+}
+
+impl TradeRepository for InMemoryTradeRepo {
+    fn find_by_id(&self, id: &str) -> Option&lt;&Trade&gt; {
+        self.store.get(id)
+    }
+
+    fn find_by_symbol(&self, symbol: &str) -> Vec&lt;&Trade&gt; {
+        self.store.values().filter(|t| t.symbol == symbol).collect()
+    }
+
+    fn save(&mut self, trade: Trade) {
+        self.store.insert(trade.id.clone(), trade);
+    }
+}
+
+struct TradeService&lt;R: TradeRepository&gt; {
+    repo: R,
+}
+
+impl&lt;R: TradeRepository&gt; TradeService&lt;R&gt; {
+    fn new(repo: R) -> Self { Self { repo } }
+
+    fn execute_trade(&mut self, trade_id: &str) -> Result&lt;(), String&gt; {
+        let trade = self.repo.find_by_id(trade_id)
+            .ok_or_else(|| format!("Trade not found: {trade_id}"))?
+            .clone();
+        let mut updated = trade;
+        updated.status = "EXECUTED".into();
+        self.repo.save(updated);
+        Ok(())
+    }
+}
+
+// Test with fake &mdash; no database
+let mut repo = InMemoryTradeRepo::new();
+repo.save(Trade {
+    id: "T001".into(), symbol: "AAPL".into(),
+    notional: 100_000.0, status: "PENDING".into(),
+});
+let mut service = TradeService::new(repo);
+service.execute_trade("T001").unwrap();</code></pre>
+  <div class="cpp-note">Rust's trait-based repository returns <code>Option&lt;&Trade&gt;</code> &mdash; the caller must handle the "not found" case or the code does not compile. The generic <code>TradeService&lt;R: TradeRepository&gt;</code> is monomorphised at compile time, so there is no virtual dispatch cost. For runtime flexibility (e.g., swapping repo implementations via config), use <code>Box&lt;dyn TradeRepository&gt;</code> instead.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go repository pattern</h3>
+  <pre><code class="language-go">package main
+
+import "fmt"
+
+type Trade struct {
+    ID       string
+    Symbol   string
+    Notional float64
+    Status   string
+}
+
+type TradeRepository interface {
+    FindByID(id string) (*Trade, error)
+    FindBySymbol(symbol string) []Trade
+    Save(trade Trade) error
+}
+
+type InMemoryTradeRepo struct {
+    store map[string]Trade
+}
+
+func NewInMemoryTradeRepo() *InMemoryTradeRepo {
+    return &InMemoryTradeRepo{store: make(map[string]Trade)}
+}
+
+func (r *InMemoryTradeRepo) FindByID(id string) (*Trade, error) {
+    t, ok := r.store[id]
+    if !ok { return nil, fmt.Errorf("trade not found: %s", id) }
+    return &t, nil
+}
+
+func (r *InMemoryTradeRepo) FindBySymbol(symbol string) []Trade {
+    var result []Trade
+    for _, t := range r.store {
+        if t.Symbol == symbol { result = append(result, t) }
+    }
+    return result
+}
+
+func (r *InMemoryTradeRepo) Save(trade Trade) error {
+    r.store[trade.ID] = trade
+    return nil
+}
+
+type TradeService struct {
+    repo TradeRepository
+}
+
+func (s *TradeService) ExecuteTrade(tradeID string) error {
+    t, err := s.repo.FindByID(tradeID)
+    if err != nil { return err }
+    t.Status = "EXECUTED"
+    return s.repo.Save(*t)
+}
+
+// Test with fake
+repo := NewInMemoryTradeRepo()
+repo.Save(Trade{ID: "T001", Symbol: "AAPL", Notional: 100_000, Status: "PENDING"})
+svc := &TradeService{repo: repo}
+svc.ExecuteTrade("T001")</code></pre>
+  <div class="cpp-note">Go's implicit interfaces make the repository pattern particularly clean. The <code>TradeService</code> depends on the <code>TradeRepository</code> interface &mdash; any struct with the right methods satisfies it. In tests, pass an in-memory fake. In production, pass a Postgres implementation. No registration, no DI container needed.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript repository pattern</h3>
+  <pre><code class="language-typescript">interface Trade {
+  id: string;
+  symbol: string;
+  notional: number;
+  status: string;
+}
+
+interface TradeRepository {
+  findById(id: string): Trade | undefined;
+  findBySymbol(symbol: string): Trade[];
+  save(trade: Trade): void;
+}
+
+class InMemoryTradeRepo implements TradeRepository {
+  private store = new Map&lt;string, Trade&gt;();
+
+  findById(id: string): Trade | undefined {
+    return this.store.get(id);
+  }
+
+  findBySymbol(symbol: string): Trade[] {
+    return [...this.store.values()].filter(t => t.symbol === symbol);
+  }
+
+  save(trade: Trade): void {
+    this.store.set(trade.id, { ...trade });
+  }
+}
+
+class TradeService {
+  constructor(private repo: TradeRepository) {}
+
+  executeTrade(tradeId: string): void {
+    const trade = this.repo.findById(tradeId);
+    if (!trade) throw new Error(`Trade not found: ${tradeId}`);
+    this.repo.save({ ...trade, status: "EXECUTED" });
+  }
+}
+
+// Test with fake &mdash; no database
+const repo = new InMemoryTradeRepo();
+repo.save({ id: "T001", symbol: "AAPL", notional: 100_000, status: "PENDING" });
+const svc = new TradeService(repo);
+svc.executeTrade("T001");
+console.log(repo.findById("T001")?.status); // "EXECUTED"</code></pre>
+  <div class="cpp-note">TypeScript's structural typing means any object with <code>findById</code>, <code>findBySymbol</code>, and <code>save</code> methods satisfies <code>TradeRepository</code> &mdash; no <code>implements</code> keyword required (though it helps catch errors early). The spread operator (<code>{ ...trade }</code>) creates shallow copies, avoiding shared-reference mutations between the repo and caller.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Repository pattern across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Query flexibility</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Testing ease</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>ORM / data mapper support</td>
+      <td>SQLAlchemy</td><td>EF Core</td><td>manual</td><td>Diesel / SQLx</td><td>GORM / sqlx</td><td>Prisma / TypeORM</td>
+    </tr>
+    <tr>
+      <td>Type safety on queries</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Null-safety for "not found"</td>
+      <td>Optional</td><td>nullable ref</td><td>std::optional</td><td>Option&lt;T&gt;</td><td>(*T, error)</td><td>T | undefined</td>
+    </tr>
+    <tr>
+      <td>Boilerplate</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>C# with EF Core is the gold standard</strong> for the repository pattern in enterprise systems. LINQ queries, change tracking, migrations, and strong typing all work together. The repository abstraction layer is thin because EF Core already provides collection-like semantics.</li>
+    <li><strong>Go's implicit interfaces make testing trivial.</strong> Define a small interface with only the methods your service needs. The in-memory fake satisfies it automatically. No DI framework, no mocking library &mdash; just a struct with the right methods.</li>
+    <li><strong>Rust's <code>Option&lt;T&gt;</code> forces callers to handle "not found"</strong> &mdash; you cannot accidentally dereference a null result. Combined with <code>Result&lt;T, E&gt;</code> for database errors, error handling is exhaustive at compile time.</li>
+    <li><strong>TypeScript's structural typing allows quick test doubles.</strong> Pass any object literal that matches the interface shape &mdash; no class needed. This makes tests extremely concise but can hide mismatches if a method is accidentally omitted.</li>
+    <li><strong>C++ has the weakest ORM ecosystem.</strong> Most C++ repository implementations use raw SQL or thin wrappers. The upside: full control over query performance. The downside: more boilerplate and no change tracking.</li>
+  </ul>
+
+  <h4>Decision guide for the Repository pattern</h4>
+  <ul>
+    <li><strong>Enterprise CRUD with rich queries:</strong> C# + EF Core or Python + SQLAlchemy</li>
+    <li><strong>Microservice with simple persistence:</strong> Go (minimal boilerplate, easy testing)</li>
+    <li><strong>Type-safe SQL at compile time:</strong> Rust + SQLx (queries checked against the schema at build time)</li>
+    <li><strong>Full-stack shared models:</strong> TypeScript + Prisma (schema-first, generated types)</li>
+    <li><strong>High-performance, low-level control:</strong> C++ with manual SQL or memory-mapped storage</li>
+  </ul>
+</div>

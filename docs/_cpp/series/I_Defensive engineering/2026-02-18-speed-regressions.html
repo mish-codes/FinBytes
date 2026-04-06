@@ -103,3 +103,211 @@ if failures:
     print("REGRESSION FAILURES:"); [print(f) for f in failures]; sys.exit(1)</code></pre>
   <div class="cpp-note">Store benchmark baselines in version control. Run benchmarks on a dedicated CI runner (not a shared agent) for reproducible results. Use statistical tests (Mann-Whitney U) rather than a simple ratio for robust detection of genuine regressions vs noise.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust performance regression testing</h3>
+  <h4>Criterion.rs for statistical benchmarking</h4>
+  <pre><code class="language-rust">// Cargo.toml:
+// [dev-dependencies]
+// criterion = { version = "0.5", features = ["html_reports"] }
+//
+// [[bench]]
+// name = "pricer_bench"
+// harness = false
+
+use criterion::{criterion_group, criterion_main, Criterion};
+
+fn bench_single_price(c: &mut Criterion) {
+    let pricer = BlackScholesPricer::new();
+    let trade = OptionTrade { s: 100.0, k: 100.0, t: 1.0, r: 0.05, sigma: 0.2 };
+
+    c.bench_function("single_price", |b| {
+        b.iter(|| pricer.price(&trade))
+    });
+}
+
+fn bench_batch_price(c: &mut Criterion) {
+    let pricer = BlackScholesPricer::new();
+    let trades: Vec&lt;OptionTrade&gt; = (0..1000)
+        .map(|i| OptionTrade { s: 100.0 + i as f64, k: 100.0, t: 1.0, r: 0.05, sigma: 0.2 })
+        .collect();
+
+    c.bench_function("batch_1000", |b| {
+        b.iter(|| {
+            trades.iter().map(|t| pricer.price(t)).sum::&lt;f64&gt;()
+        })
+    });
+}
+
+criterion_group!(benches, bench_single_price, bench_batch_price);
+criterion_main!(benches);</code></pre>
+
+  <h4>CI integration with cargo-criterion</h4>
+  <pre><code class="language-bash"># Run benchmarks and compare against baseline
+cargo bench -- --save-baseline main
+# After changes:
+cargo bench -- --baseline main
+# Criterion reports: "Performance has regressed by +15.2%"
+
+# In CI (GitHub Actions):
+# - Store baseline as artifact
+# - Compare PR benchmarks against main baseline
+# - Fail if regression exceeds threshold</code></pre>
+  <div class="cpp-note">Criterion.rs uses statistical analysis (bootstrap confidence intervals) to distinguish real regressions from noise &mdash; no manual threshold tuning needed. It also generates HTML reports with histograms. Rust's zero-cost abstractions mean benchmark results closely match production performance.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go benchmark regression testing</h3>
+  <h4>Built-in testing.B benchmarks</h4>
+  <pre><code class="language-go">package pricer
+
+import "testing"
+
+func BenchmarkSinglePrice(b *testing.B) {
+    pricer := NewBlackScholesPricer()
+    trade := OptionTrade{S: 100, K: 100, T: 1, R: 0.05, Sigma: 0.2}
+    b.ResetTimer()
+    for i := 0; i &lt; b.N; i++ {
+        pricer.Price(trade)
+    }
+}
+
+func BenchmarkBatch1000(b *testing.B) {
+    pricer := NewBlackScholesPricer()
+    trades := make([]OptionTrade, 1000)
+    for i := range trades {
+        trades[i] = OptionTrade{S: 100 + float64(i), K: 100, T: 1, R: 0.05, Sigma: 0.2}
+    }
+    b.ResetTimer()
+    for i := 0; i &lt; b.N; i++ {
+        for _, t := range trades {
+            pricer.Price(t)
+        }
+    }
+    b.ReportAllocs()  // also track allocations
+}</code></pre>
+
+  <h4>benchstat for regression detection</h4>
+  <pre><code class="language-bash"># Run benchmarks and save results
+go test -bench=. -count=10 -benchmem ./... &gt; old.txt
+# After changes:
+go test -bench=. -count=10 -benchmem ./... &gt; new.txt
+# Compare with benchstat
+benchstat old.txt new.txt
+# Output:
+# name          old time/op  new time/op  delta
+# SinglePrice   1.23µs       1.45µs       +17.89%  (p=0.001 n=10+10)
+# Batch1000     1.15ms       1.18ms        +2.61%  (p=0.043 n=10+10)</code></pre>
+  <div class="cpp-note">Go's <code>benchstat</code> tool uses statistical significance testing (p-values) to determine whether performance changed. Always use <code>-count=10</code> or higher for stable results. <code>b.ReportAllocs()</code> catches allocation regressions that cause GC pressure even if raw speed looks fine.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript performance regression testing</h3>
+  <h4>Benchmark.js or tinybench</h4>
+  <pre><code class="language-typescript">import { Bench } from "tinybench";
+import { readFileSync, writeFileSync, existsSync } from "fs";
+
+const BASELINE_FILE = ".perf_baseline.json";
+const THRESHOLD = 1.20;  // 20% regression threshold
+
+async function runBenchmarks(): Promise&lt;Record&lt;string, number&gt;&gt; {
+  const bench = new Bench({ time: 1000 });
+
+  bench.add("single_price", () =&gt; {
+    priceOption(100, 100, 1, 0.05, 0.2);
+  });
+
+  bench.add("batch_1000", () =&gt; {
+    for (let i = 0; i &lt; 1000; i++) {
+      priceOption(100 + i, 100, 1, 0.05, 0.2);
+    }
+  });
+
+  await bench.run();
+
+  const results: Record&lt;string, number&gt; = {};
+  for (const task of bench.tasks) {
+    results[task.name] = task.result!.mean * 1e6; // microseconds
+    console.log(`${task.name}: ${results[task.name].toFixed(1)}µs`);
+  }
+  return results;
+}
+
+async function checkRegression(): Promise&lt;void&gt; {
+  const current = await runBenchmarks();
+
+  if (!existsSync(BASELINE_FILE)) {
+    writeFileSync(BASELINE_FILE, JSON.stringify(current, null, 2));
+    console.log("Baseline stored.");
+    return;
+  }
+
+  const baseline = JSON.parse(readFileSync(BASELINE_FILE, "utf-8"));
+  const failures: string[] = [];
+
+  for (const [name, elapsed] of Object.entries(current)) {
+    if (!(name in baseline)) continue;
+    const ratio = elapsed / baseline[name];
+    if (ratio &gt; THRESHOLD) {
+      failures.push(
+        `${name}: ${elapsed.toFixed(1)}µs vs baseline ${baseline[name].toFixed(1)}µs ` +
+        `(${(ratio * 100).toFixed(0)}% exceeds ${(THRESHOLD * 100).toFixed(0)}%)`
+      );
+    }
+  }
+
+  if (failures.length &gt; 0) {
+    console.error("REGRESSION FAILURES:");
+    failures.forEach((f) =&gt; console.error(f));
+    process.exit(1);
+  }
+}</code></pre>
+  <div class="cpp-note">JavaScript benchmarking is noisy due to JIT warm-up and GC pauses. Run benchmarks with <code>--expose-gc</code> and call <code>global.gc()</code> between runs to reduce variance. For Node.js, use <code>--predictable</code> flag to disable background optimisation threads. Always warm up the JIT before measuring.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Speed regression detection across languages</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Benchmark framework</td>
+      <td>timeit / pytest</td><td>BenchmarkDotNet</td><td>Google Benchmark</td><td>Criterion.rs</td><td>testing.B</td><td>tinybench</td>
+    </tr>
+    <tr>
+      <td>Statistical analysis</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>CI integration</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Allocation tracking</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Benchmark stability</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust</strong> (Criterion.rs) and <strong>Go</strong> (benchstat) both use proper statistical tests rather than simple ratio comparisons. This is the gold standard for detecting real regressions vs measurement noise.</li>
+    <li><strong>C#</strong> (BenchmarkDotNet) is the most feature-rich: memory diagnoser, GC stats, disassembly, and multiple runtime comparisons in one run. Excellent for JIT-compiled languages where warm-up matters.</li>
+    <li><strong>C++</strong> and <strong>Rust</strong> produce the most stable benchmarks because there is no JIT or GC jitter. What you measure is what you get in production.</li>
+    <li><strong>Python</strong> and <strong>TypeScript</strong> have the least stable benchmarks due to interpreter overhead, JIT warm-up, and GC pauses. Use higher iteration counts and statistical filtering.</li>
+    <li><strong>Go</strong>'s <code>b.ReportAllocs()</code> catches a common regression pattern: a refactor that is the same speed but allocates more, causing GC pressure that shows up as latency spikes in production.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Lowest-noise benchmarks:</strong> C++ (Google Benchmark) or Rust (Criterion.rs) &mdash; no runtime variance</li>
+    <li><strong>Best built-in benchmark tooling:</strong> Go (<code>go test -bench</code> + benchstat, zero setup)</li>
+    <li><strong>Most comprehensive analysis:</strong> C# (BenchmarkDotNet with memory diagnoser)</li>
+    <li><strong>CI-first approach:</strong> Rust (Criterion baselines) or Go (benchstat in scripts)</li>
+    <li><strong>All languages:</strong> store baselines in version control, run on dedicated hardware, use statistical tests</li>
+  </ul>
+</div>

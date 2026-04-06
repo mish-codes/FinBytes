@@ -146,3 +146,280 @@ public:
 };</code></pre>
   <div class="cpp-note">The Command pattern's audit trail property makes it ideal for financial systems where every change must be traceable. Serialise commands to a database as they execute and you have a complete, replayable history of every position change - invaluable for reconciliation and regulatory reporting.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust command pattern</h3>
+  <pre><code class="language-rust">struct Position {
+    symbol:    String,
+    quantity:  f64,
+    avg_price: f64,
+}
+
+trait Command {
+    fn execute(&mut self, pos: &mut Position);
+    fn undo(&mut self, pos: &mut Position);
+    fn description(&self) -> String;
+}
+
+struct AdjustQuantity { delta: f64 }
+
+impl Command for AdjustQuantity {
+    fn execute(&mut self, pos: &mut Position) { pos.quantity += self.delta; }
+    fn undo(&mut self, pos: &mut Position)    { pos.quantity -= self.delta; }
+    fn description(&self) -> String {
+        format!("Adjust qty by {:+.0}", self.delta)
+    }
+}
+
+struct CorrectPrice { new_price: f64, old_price: f64 }
+
+impl CorrectPrice {
+    fn new(new_price: f64, current_price: f64) -> Self {
+        Self { new_price, old_price: current_price }
+    }
+}
+
+impl Command for CorrectPrice {
+    fn execute(&mut self, pos: &mut Position) { pos.avg_price = self.new_price; }
+    fn undo(&mut self, pos: &mut Position)    { pos.avg_price = self.old_price; }
+    fn description(&self) -> String {
+        format!("Correct price {:.4} -> {:.4}", self.old_price, self.new_price)
+    }
+}
+
+struct CommandHistory {
+    done:   Vec&lt;Box&lt;dyn Command&gt;&gt;,
+    undone: Vec&lt;Box&lt;dyn Command&gt;&gt;,
+}
+
+impl CommandHistory {
+    fn new() -> Self { Self { done: Vec::new(), undone: Vec::new() } }
+
+    fn execute(&mut self, mut cmd: Box&lt;dyn Command&gt;, pos: &mut Position) {
+        cmd.execute(pos);
+        self.done.push(cmd);
+        self.undone.clear();
+    }
+
+    fn undo(&mut self, pos: &mut Position) -> Option&lt;String&gt; {
+        let mut cmd = self.done.pop()?;
+        cmd.undo(pos);
+        let desc = cmd.description();
+        self.undone.push(cmd);
+        Some(format!("Undone: {desc}"))
+    }
+
+    fn redo(&mut self, pos: &mut Position) -> Option&lt;String&gt; {
+        let mut cmd = self.undone.pop()?;
+        cmd.execute(pos);
+        let desc = cmd.description();
+        self.done.push(cmd);
+        Some(format!("Redone: {desc}"))
+    }
+
+    fn audit_trail(&self) -> Vec&lt;String&gt; {
+        self.done.iter().map(|c| c.description()).collect()
+    }
+}
+
+let mut pos = Position { symbol: "AAPL".into(), quantity: 0.0, avg_price: 150.0 };
+let mut history = CommandHistory::new();
+history.execute(Box::new(AdjustQuantity { delta: 100.0 }), &mut pos);
+history.execute(Box::new(CorrectPrice::new(151.25, pos.avg_price)), &mut pos);
+history.undo(&mut pos); // avg_price back to 150.0</code></pre>
+  <div class="cpp-note">Rust commands take <code>&mut Position</code> as a parameter rather than storing a reference to it. This avoids lifetime complexity &mdash; the history owns the commands, and the position is passed in at execution time. The <code>Box&lt;dyn Command&gt;</code> enables heterogeneous command storage. For maximum performance, use an enum of command types instead of trait objects.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go command pattern</h3>
+  <pre><code class="language-go">package main
+
+import "fmt"
+
+type Position struct {
+    Symbol   string
+    Quantity float64
+    AvgPrice float64
+}
+
+type Command interface {
+    Execute(pos *Position)
+    Undo(pos *Position)
+    Description() string
+}
+
+type AdjustQuantity struct{ Delta float64 }
+
+func (c AdjustQuantity) Execute(pos *Position) { pos.Quantity += c.Delta }
+func (c AdjustQuantity) Undo(pos *Position)    { pos.Quantity -= c.Delta }
+func (c AdjustQuantity) Description() string {
+    return fmt.Sprintf("Adjust qty by %+.0f", c.Delta)
+}
+
+type CorrectPrice struct{ NewPrice, OldPrice float64 }
+
+func (c CorrectPrice) Execute(pos *Position) { pos.AvgPrice = c.NewPrice }
+func (c CorrectPrice) Undo(pos *Position)    { pos.AvgPrice = c.OldPrice }
+func (c CorrectPrice) Description() string {
+    return fmt.Sprintf("Correct price %.4f -> %.4f", c.OldPrice, c.NewPrice)
+}
+
+type CommandHistory struct {
+    done   []Command
+    undone []Command
+}
+
+func (h *CommandHistory) Execute(cmd Command, pos *Position) {
+    cmd.Execute(pos)
+    h.done = append(h.done, cmd)
+    h.undone = nil
+}
+
+func (h *CommandHistory) Undo(pos *Position) string {
+    if len(h.done) == 0 { return "" }
+    cmd := h.done[len(h.done)-1]
+    h.done = h.done[:len(h.done)-1]
+    cmd.Undo(pos)
+    h.undone = append(h.undone, cmd)
+    return "Undone: " + cmd.Description()
+}
+
+func (h *CommandHistory) AuditTrail() []string {
+    trail := make([]string, len(h.done))
+    for i, c := range h.done { trail[i] = c.Description() }
+    return trail
+}
+
+pos := &Position{Symbol: "AAPL", Quantity: 0, AvgPrice: 150.0}
+history := &CommandHistory{}
+history.Execute(AdjustQuantity{Delta: 100}, pos)
+history.Execute(CorrectPrice{NewPrice: 151.25, OldPrice: pos.AvgPrice}, pos)
+history.Undo(pos)</code></pre>
+  <div class="cpp-note">Go's command pattern is straightforward &mdash; value-type commands stored in slices. Since Go uses garbage collection, there is no ownership concern when storing commands in the history. Commands are passed by value (small structs), making copies cheap. For large commands, use pointers.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript command pattern</h3>
+  <pre><code class="language-typescript">interface Position {
+  symbol: string;
+  quantity: number;
+  avgPrice: number;
+}
+
+interface Command {
+  execute(pos: Position): void;
+  undo(pos: Position): void;
+  readonly description: string;
+}
+
+class AdjustQuantity implements Command {
+  readonly description: string;
+  constructor(private delta: number) {
+    this.description = `Adjust qty by ${delta >= 0 ? "+" : ""}${delta}`;
+  }
+  execute(pos: Position): void { pos.quantity += this.delta; }
+  undo(pos: Position): void    { pos.quantity -= this.delta; }
+}
+
+class CorrectPrice implements Command {
+  readonly description: string;
+  private oldPrice: number;
+  constructor(private newPrice: number, currentPrice: number) {
+    this.oldPrice = currentPrice;
+    this.description = `Correct price ${currentPrice.toFixed(4)} -> ${newPrice.toFixed(4)}`;
+  }
+  execute(pos: Position): void { pos.avgPrice = this.newPrice; }
+  undo(pos: Position): void    { pos.avgPrice = this.oldPrice; }
+}
+
+class CommandHistory {
+  private done:   Command[] = [];
+  private undone: Command[] = [];
+
+  execute(cmd: Command, pos: Position): void {
+    cmd.execute(pos);
+    this.done.push(cmd);
+    this.undone = [];
+  }
+
+  undo(pos: Position): string | undefined {
+    const cmd = this.done.pop();
+    if (!cmd) return undefined;
+    cmd.undo(pos);
+    this.undone.push(cmd);
+    return `Undone: ${cmd.description}`;
+  }
+
+  redo(pos: Position): string | undefined {
+    const cmd = this.undone.pop();
+    if (!cmd) return undefined;
+    cmd.execute(pos);
+    this.done.push(cmd);
+    return `Redone: ${cmd.description}`;
+  }
+
+  auditTrail(): string[] {
+    return this.done.map(c => c.description);
+  }
+}
+
+const pos: Position = { symbol: "AAPL", quantity: 0, avgPrice: 150.0 };
+const history = new CommandHistory();
+history.execute(new AdjustQuantity(100), pos);
+history.execute(new CorrectPrice(151.25, pos.avgPrice), pos);
+console.log(history.auditTrail());
+history.undo(pos);
+console.log(pos.avgPrice); // 150.0</code></pre>
+  <div class="cpp-note">TypeScript commands use mutable objects &mdash; <code>pos.quantity += delta</code> mutates the position directly. This works well for in-process undo/redo. For a distributed system, consider immutable command events (event sourcing) where each command produces a new state snapshot rather than mutating in place.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Command pattern across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Undo/redo ergonomics</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Serialisation support</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Audit trail quality</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Memory management</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Command queue / replay</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Concurrency safety</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust's ownership model prevents dangling command references.</strong> Commands cannot hold stale references to destroyed positions &mdash; the compiler rejects it. The trade-off: commands take the position as a parameter rather than storing a reference, which adds a parameter to every call.</li>
+    <li><strong>C# and TypeScript excel at serialisation</strong> &mdash; JSON serialisation of command objects is trivial, making them natural fits for event sourcing and audit trails in financial systems.</li>
+    <li><strong>C++ must manage command ownership carefully.</strong> The history owns <code>unique_ptr&lt;ICommand&gt;</code> objects. If a command holds a reference to a position that is destroyed, it becomes a dangling pointer. Rust prevents this at compile time; C++ does not.</li>
+    <li><strong>Go's value-type commands are simple and efficient.</strong> Small command structs are copied into the history slice. No heap allocation, no pointer management. For concurrent command processing, Go's channels naturally queue commands for serial execution.</li>
+    <li><strong>Python is the quickest to prototype</strong> &mdash; the command pattern works well for interactive notebook-style exploration where you want to undo/redo position adjustments.</li>
+  </ul>
+
+  <h4>Decision guide for the Command pattern</h4>
+  <ul>
+    <li><strong>Trade amendment audit trail:</strong> C# or TypeScript (easy serialisation to JSON/database)</li>
+    <li><strong>Event sourcing / replay:</strong> any language works; Go channels for concurrent command processing</li>
+    <li><strong>Interactive undo/redo (UI):</strong> TypeScript (frontend) or Python (notebook)</li>
+    <li><strong>High-frequency command execution:</strong> C++ or Rust (minimal overhead per command)</li>
+    <li><strong>Safety-critical position management:</strong> Rust (compile-time prevention of stale references)</li>
+  </ul>
+</div>

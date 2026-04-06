@@ -119,3 +119,247 @@ public:
 };</code></pre>
   <div class="cpp-note">Mark destructors, swap, and move operations <code>noexcept</code>. These are the building blocks of exception safety. <code>std::vector</code> uses move during reallocation only if the move constructor is noexcept - without it, it falls back to copying, which is slower.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust error handling &mdash; no exceptions</h3>
+  <h4>Result&lt;T, E&gt; replaces exceptions entirely</h4>
+  <pre><code class="language-rust">use std::collections::HashMap;
+
+#[derive(Debug)]
+enum PortfolioError {
+    EmptySymbol,
+    NegativeQuantity(f64),
+}
+
+struct Portfolio {
+    positions: HashMap&lt;String, f64&gt;,
+}
+
+impl Portfolio {
+    fn new() -&gt; Self { Self { positions: HashMap::new() } }
+
+    // "Basic safety" is the default in Rust - no partial state possible
+    // because Result forces all-or-nothing at each step.
+
+    // Strong guarantee via clone-then-replace
+    fn update_strong(
+        &mut self,
+        updates: &[(String, f64)],
+    ) -&gt; Result&lt;(), PortfolioError&gt; {
+        let mut copy = self.positions.clone();  // copy - the risky part
+        for (sym, qty) in updates {
+            Self::validate(sym, *qty)?;          // ? returns early on error
+            copy.insert(sym.clone(), *qty);      // original untouched
+        }
+        self.positions = copy;                   // commit - infallible
+        Ok(())
+    }
+
+    fn validate(sym: &str, qty: f64) -&gt; Result&lt;(), PortfolioError&gt; {
+        if sym.is_empty()  { return Err(PortfolioError::EmptySymbol); }
+        if qty &lt; 0.0       { return Err(PortfolioError::NegativeQuantity(qty)); }
+        Ok(())
+    }
+}</code></pre>
+
+  <h4>The ? operator and error propagation</h4>
+  <pre><code class="language-rust">// The ? operator propagates errors without try/catch boilerplate.
+// It is the Rust equivalent of exception propagation, but explicit.
+
+fn process_trade(trade: &Trade) -&gt; Result&lt;f64, Box&lt;dyn std::error::Error&gt;&gt; {
+    let validated = validate_trade(trade)?;       // propagates error
+    let market_data = fetch_market_data()?;       // propagates error
+    let price = compute_price(&validated, &market_data)?;
+    Ok(price)  // only reached if all steps succeeded
+}
+
+// Panics are Rust's equivalent of "unrecoverable crash" - not for control flow.
+// catch_unwind provides a boundary similar to C++ catch(...):
+use std::panic;
+
+fn safe_price_handler(trade: &Trade) -&gt; Option&lt;f64&gt; {
+    panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        compute_price(trade)
+    })).ok()
+}</code></pre>
+  <div class="cpp-note">Rust has no exceptions. All recoverable errors use <code>Result&lt;T, E&gt;</code>, which the compiler forces you to handle. This eliminates the "exception safety" problem entirely &mdash; there is no way for an exception to leave an object in a partially-updated state. Panics exist for unrecoverable bugs (like C++ <code>abort</code>), not for normal error handling.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go error handling &mdash; explicit error returns</h3>
+  <h4>Errors are values, not control flow</h4>
+  <pre><code class="language-go">package main
+
+import (
+    "errors"
+    "fmt"
+)
+
+type Portfolio struct {
+    positions map[string]float64
+}
+
+func NewPortfolio() *Portfolio {
+    return &Portfolio{positions: make(map[string]float64)}
+}
+
+// Strong guarantee via copy-then-replace
+func (p *Portfolio) UpdateStrong(updates map[string]float64) error {
+    // Copy current state
+    copy := make(map[string]float64, len(p.positions))
+    for k, v := range p.positions {
+        copy[k] = v
+    }
+
+    // Apply updates to copy - original untouched on error
+    for sym, qty := range updates {
+        if err := validate(sym, qty); err != nil {
+            return fmt.Errorf("validation failed for %s: %w", sym, err)
+        }
+        copy[sym] = qty
+    }
+
+    p.positions = copy  // atomic commit
+    return nil
+}
+
+var (
+    ErrEmptySymbol      = errors.New("empty symbol")
+    ErrNegativeQuantity = errors.New("negative quantity")
+)
+
+func validate(sym string, qty float64) error {
+    if sym == "" { return ErrEmptySymbol }
+    if qty &lt; 0   { return fmt.Errorf("%w: %f", ErrNegativeQuantity, qty) }
+    return nil
+}
+
+// defer for cleanup - Go's version of RAII
+func processFile(path string) error {
+    f, err := os.Open(path)
+    if err != nil { return err }
+    defer f.Close()  // guaranteed cleanup, like a C++ destructor
+
+    // process f...
+    return nil
+}</code></pre>
+  <div class="cpp-note">Go uses explicit error returns instead of exceptions. The <code>if err != nil</code> pattern is verbose but makes error handling visible at every call site. <code>defer</code> provides cleanup guarantees similar to RAII. Go's <code>panic</code>/<code>recover</code> exists but is reserved for truly unrecoverable situations &mdash; never use it for normal error handling.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript exception safety</h3>
+  <h4>Strong guarantee via copy-then-replace</h4>
+  <pre><code class="language-typescript">class Portfolio {
+  private positions = new Map&lt;string, number&gt;();
+
+  // Strong safety: all-or-nothing
+  updateStrong(updates: Map&lt;string, number&gt;): void {
+    const copy = new Map(this.positions);  // shallow copy
+
+    for (const [sym, qty] of updates) {
+      validate(sym, qty);       // throws on failure - original untouched
+      copy.set(sym, qty);
+    }
+
+    this.positions = copy;      // atomic commit - does not throw
+  }
+
+  // Swap (no-throw equivalent)
+  swapWith(other: Portfolio): void {
+    [this.positions, other.positions] = [other.positions, this.positions];
+  }
+}
+
+function validate(sym: string, qty: number): void {
+  if (!sym) throw new Error("Empty symbol");
+  if (qty &lt; 0) throw new Error(`Negative quantity: ${qty}`);
+  if (!Number.isFinite(qty)) throw new Error(`Non-finite quantity: ${qty}`);
+}
+
+// TypeScript Result pattern (for when exceptions feel wrong)
+type Result&lt;T, E = Error&gt; =
+  | { ok: true; value: T }
+  | { ok: false; error: E };
+
+function safePrice(trade: Trade): Result&lt;number&gt; {
+  try {
+    const price = computePrice(trade);
+    return { ok: true, value: price };
+  } catch (err) {
+    return { ok: false, error: err as Error };
+  }
+}
+
+// Using the result
+const result = safePrice(trade);
+if (result.ok) {
+  publish(result.value);
+} else {
+  logError(result.error);
+}</code></pre>
+
+  <h4>finally for resource cleanup</h4>
+  <pre><code class="language-typescript">// TypeScript has no RAII - use try/finally or Disposable (TC39 stage 3)
+async function processWithCleanup(path: string): Promise&lt;void&gt; {
+  const handle = await openFile(path);
+  try {
+    await processData(handle);
+  } finally {
+    await handle.close();  // always runs, even on exception
+  }
+}
+
+// Symbol.dispose (new in TypeScript 5.2+)
+{
+  using handle = await openFile(path);  // auto-disposed at end of block
+  await processData(handle);
+}   // handle[Symbol.dispose]() called automatically</code></pre>
+  <div class="cpp-note">TypeScript uses exceptions like C# and Python. The copy-then-replace pattern works identically for strong guarantees. For code that wants explicit error handling without exceptions, use a discriminated union <code>Result</code> type &mdash; TypeScript's type narrowing makes it ergonomic. The new <code>using</code> declaration (TC39 Explicit Resource Management) brings RAII-like cleanup to JavaScript.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Error handling philosophy across languages</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Error mechanism</td>
+      <td>exceptions</td><td>exceptions</td><td>exceptions</td><td>Result&lt;T, E&gt;</td><td>error return</td><td>exceptions</td>
+    </tr>
+    <tr>
+      <td>Can ignore errors</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Cleanup guarantee</td>
+      <td>with / finally</td><td>using / finally</td><td>RAII (destructor)</td><td>Drop trait (RAII)</td><td>defer</td><td>finally / using</td>
+    </tr>
+    <tr>
+      <td>Strong safety ergonomics</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Partial update risk</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust</strong> eliminates the exception safety problem entirely. Since there are no exceptions, there is no risk of an exception leaving an object in a partially-updated state. <code>Result&lt;T, E&gt;</code> forces explicit handling at every call site. The <code>?</code> operator makes this ergonomic.</li>
+    <li><strong>Go</strong> takes a similar approach with explicit error returns. Errors cannot be silently ignored (the compiler warns on unused variables). <code>defer</code> provides cleanup guarantees without RAII's automatic destructor model.</li>
+    <li><strong>C++</strong> RAII is the strongest cleanup mechanism &mdash; destructors run unconditionally. But exception safety guarantees (no-throw, strong, basic) must be manually reasoned about for every function. <code>noexcept</code> is critical for performance (move semantics).</li>
+    <li><strong>Python</strong>, <strong>C#</strong>, and <strong>TypeScript</strong> all use exceptions. The copy-then-replace pattern for strong safety is identical across all three. The risk is that any function might throw, making it easy to leave state inconsistent.</li>
+    <li><strong>Rust</strong> and <strong>C++</strong> both have RAII (Rust calls it <code>Drop</code>). Go has <code>defer</code>. Python/C#/TypeScript rely on <code>with</code>/<code>using</code>/<code>finally</code> &mdash; forgetting the cleanup block leaks resources.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Strongest error handling guarantees:</strong> Rust (<code>Result</code> + ownership = no partial updates, no ignored errors)</li>
+    <li><strong>Best resource cleanup:</strong> C++ or Rust (RAII &mdash; destructors are automatic and unconditional)</li>
+    <li><strong>Most explicit error visibility:</strong> Go (every error checked at every call site)</li>
+    <li><strong>Fastest to write:</strong> Python/TypeScript (exceptions are implicit &mdash; less boilerplate, more risk)</li>
+    <li><strong>Enterprise standard:</strong> C# (exceptions + <code>using</code> + nullable reference types)</li>
+  </ul>
+</div>

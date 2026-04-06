@@ -124,3 +124,250 @@ public:
 };</code></pre>
   <div class="cpp-note">Set <code>ulimit -n</code> (file descriptors) and <code>ulimit -u</code> (threads) explicitly before launching production processes. Know your limits before you hit them. Instrument pool utilisation - 80% is a capacity warning, not yet a failure.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust resource management</h3>
+  <h4>Drop trait = automatic cleanup</h4>
+  <pre><code class="language-rust">use std::fs::File;
+use std::io::{self, Read};
+
+// Files are closed automatically when dropped - no leak possible
+fn read_file(path: &str) -&gt; io::Result&lt;String&gt; {
+    let mut f = File::open(path)?;  // if this fails, no resource acquired
+    let mut s = String::new();
+    f.read_to_string(&mut s)?;
+    Ok(s)
+}   // f dropped here - file closed even on early return via ?
+
+// Semaphore for concurrency limiting
+use tokio::sync::Semaphore;
+use std::sync::Arc;
+
+async fn price_with_limit(
+    sem: Arc&lt;Semaphore&gt;,
+    trade: Trade,
+) -&gt; Result&lt;f64, String&gt; {
+    let _permit = sem.acquire().await.map_err(|e| e.to_string())?;
+    // permit dropped at end of scope - semaphore released via RAII
+    compute_price(&trade).await
+}
+
+// Connection pool with deadpool
+use deadpool::managed::{Manager, Pool};
+
+struct DbManager;
+
+impl Manager for DbManager {
+    type Type = DbConnection;
+    type Error = io::Error;
+
+    async fn create(&self) -&gt; Result&lt;DbConnection, io::Error&gt; {
+        DbConnection::connect("postgres://...").await
+    }
+
+    async fn recycle(&self, conn: &mut DbConnection, _: &deadpool::managed::Metrics)
+        -&gt; deadpool::managed::RecycleResult&lt;io::Error&gt;
+    {
+        conn.ping().await.map_err(Into::into)
+    }
+}
+
+async fn use_pool(pool: &Pool&lt;DbManager&gt;) -&gt; Result&lt;(), String&gt; {
+    let conn = pool.get().await.map_err(|e| e.to_string())?;
+    // conn returned to pool when dropped
+    conn.query("SELECT 1").await.map_err(|e| e.to_string())
+}</code></pre>
+  <div class="cpp-note">Rust's ownership system guarantees that every resource is released exactly once. File handles, mutex guards, semaphore permits, and connection pool leases are all released via the <code>Drop</code> trait when they go out of scope. Forgetting to release is a compile-time impossibility in safe Rust.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go resource management</h3>
+  <h4>defer for guaranteed cleanup</h4>
+  <pre><code class="language-go">package main
+
+import (
+    "context"
+    "database/sql"
+    "fmt"
+    "os"
+    "time"
+
+    "golang.org/x/sync/semaphore"
+)
+
+// File handle: always defer Close
+func readFile(path string) (string, error) {
+    f, err := os.Open(path)
+    if err != nil { return "", err }
+    defer f.Close()  // guaranteed close even if ReadAll fails
+
+    data, err := io.ReadAll(f)
+    if err != nil { return "", err }
+    return string(data), nil
+}
+
+// Semaphore for concurrency limiting
+var sem = semaphore.NewWeighted(10)  // max 10 concurrent pricers
+
+func priceWithLimit(ctx context.Context, trade Trade) (float64, error) {
+    if err := sem.Acquire(ctx, 1); err != nil {
+        return 0, fmt.Errorf("semaphore acquire: %w", err)
+    }
+    defer sem.Release(1)
+    return computePrice(trade)
+}
+
+// Connection pool (database/sql has built-in pooling)
+func setupDB() (*sql.DB, error) {
+    db, err := sql.Open("postgres", "postgres://...")
+    if err != nil { return nil, err }
+
+    db.SetMaxOpenConns(25)              // hard limit
+    db.SetMaxIdleConns(5)               // keep 5 warm
+    db.SetConnMaxLifetime(5 * time.Minute) // recycle stale connections
+    return db, nil
+}
+
+// Monitor pool stats
+func monitorPool(db *sql.DB) {
+    stats := db.Stats()
+    fmt.Printf("Open: %d, InUse: %d, Idle: %d, WaitCount: %d\n",
+        stats.OpenConnections, stats.InUse, stats.Idle, stats.WaitCount)
+    if float64(stats.InUse)/float64(stats.MaxOpenConnections) &gt; 0.8 {
+        fmt.Println("WARNING: connection pool &gt; 80% utilised")
+    }
+}</code></pre>
+  <div class="cpp-note">Go's <code>defer</code> is the primary cleanup mechanism. Unlike RAII, <code>defer</code> is explicit &mdash; you must remember to write it. But the convention of <code>defer f.Close()</code> immediately after <code>os.Open</code> is well-established. The <code>database/sql</code> package has built-in connection pooling with configurable limits.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript resource management</h3>
+  <h4>try/finally and the new using declaration</h4>
+  <pre><code class="language-typescript">import { createReadStream } from "fs";
+import { readFile } from "fs/promises";
+
+// File handles: use promises (auto-closed) or try/finally
+async function readSafe(path: string): Promise&lt;string&gt; {
+  return readFile(path, "utf-8");  // handle opened and closed internally
+}
+
+// For manual handles: try/finally
+async function processFile(path: string): Promise&lt;void&gt; {
+  const handle = await open(path);
+  try {
+    const data = await handle.readFile("utf-8");
+    // process data...
+  } finally {
+    await handle.close();  // guaranteed cleanup
+  }
+}
+
+// Explicit Resource Management (TypeScript 5.2+)
+// Symbol.dispose for sync, Symbol.asyncDispose for async
+class ConnectionPool implements Disposable {
+  private pool: Connection[] = [];
+
+  constructor(private maxSize: number) {
+    for (let i = 0; i &lt; maxSize; i++) {
+      this.pool.push(createConnection());
+    }
+  }
+
+  acquire(): Connection {
+    const conn = this.pool.pop();
+    if (!conn) throw new Error("Pool exhausted");
+    return conn;
+  }
+
+  release(conn: Connection): void {
+    this.pool.push(conn);
+  }
+
+  [Symbol.dispose](): void {
+    for (const conn of this.pool) conn.close();
+    this.pool.length = 0;
+  }
+}
+
+// Usage with 'using' keyword
+{
+  using pool = new ConnectionPool(10);
+  const conn = pool.acquire();
+  try {
+    await processData(conn);
+  } finally {
+    pool.release(conn);
+  }
+}   // pool[Symbol.dispose]() called automatically
+
+// Concurrency limiter
+class Semaphore {
+  private queue: (() =&gt; void)[] = [];
+  private count: number;
+
+  constructor(max: number) { this.count = max; }
+
+  async acquire(): Promise&lt;void&gt; {
+    if (this.count &gt; 0) { this.count--; return; }
+    return new Promise&lt;void&gt;((resolve) =&gt; this.queue.push(resolve));
+  }
+
+  release(): void {
+    const next = this.queue.shift();
+    if (next) next(); else this.count++;
+  }
+}</code></pre>
+  <div class="cpp-note">TypeScript historically lacked RAII. The new Explicit Resource Management proposal (<code>using</code> keyword, <code>Symbol.dispose</code>) brings RAII-like cleanup to JavaScript. Until it is widely adopted, <code>try/finally</code> is the standard pattern. In Node.js, unclosed handles can exhaust file descriptors &mdash; always pair open with close.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Resource exhaustion prevention across languages</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Cleanup mechanism</td>
+      <td>with / __exit__</td><td>using / IDisposable</td><td>RAII / destructor</td><td>Drop trait</td><td>defer</td><td>finally / using</td>
+    </tr>
+    <tr>
+      <td>Automatic cleanup</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Leak-proof guarantee</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Connection pooling</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Backpressure support</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>OS limit awareness</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust</strong> and <strong>C++</strong> RAII guarantees are the strongest: resources are released the instant the owning scope ends, unconditionally. Rust adds ownership enforcement &mdash; you cannot accidentally alias a resource and forget to release one copy.</li>
+    <li><strong>Go</strong> has excellent built-in connection pooling (<code>database/sql</code>) with configurable limits. <code>defer</code> is reliable but explicit &mdash; you must remember to write it. The convention of <code>defer close()</code> immediately after open is well-established.</li>
+    <li><strong>C#</strong> <code>using</code> blocks provide reliable cleanup, and the <code>IDisposable</code> pattern is enforced by analyzers. Connection pooling in ADO.NET is mature and configurable.</li>
+    <li><strong>Python</strong> context managers (<code>with</code>) are reliable when used, but nothing forces you to use them. A bare <code>open()</code> without <code>with</code> can leak.</li>
+    <li><strong>TypeScript</strong> is catching up with the <code>using</code> declaration (Explicit Resource Management), but it is not yet widely supported. <code>try/finally</code> remains the standard cleanup pattern.</li>
+    <li><strong>Backpressure</strong> is critical for resource exhaustion. Go channels with bounded capacity and Rust's bounded async channels both provide natural backpressure. Unbounded queues are a resource exhaustion bug waiting to happen.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Leak-proof resource management:</strong> Rust (ownership + Drop) or C++ (RAII)</li>
+    <li><strong>Best connection pooling out of the box:</strong> Go (<code>database/sql</code>) or C# (ADO.NET)</li>
+    <li><strong>Natural backpressure:</strong> Go (bounded channels) or Rust (bounded async channels)</li>
+    <li><strong>Managed environments with GC:</strong> C# or Python (GC handles memory; focus on non-memory resources)</li>
+    <li><strong>Browser / Node.js services:</strong> TypeScript (adopt <code>using</code> when available; <code>try/finally</code> until then)</li>
+  </ul>
+</div>

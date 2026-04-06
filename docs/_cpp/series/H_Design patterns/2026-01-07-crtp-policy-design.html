@@ -120,3 +120,249 @@ PolicyPricer&lt;FlatVol, Act360&gt; p1;  // zero overhead - policies inlined
 PolicyPricer&lt;SkewVol, Act365&gt; p2;</code></pre>
   <div class="cpp-note">CRTP is an advanced pattern. Measure whether virtual dispatch is your bottleneck before using it. For most pricing code, virtual functions are adequate. CRTP shines when you call the same virtual method millions of times in a tight loop, or when building a framework where users plug in their own hot implementations.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust &mdash; traits and generics replace CRTP</h3>
+  <pre><code class="language-rust">// Rust does not need CRTP &mdash; traits with default methods achieve the same thing
+trait PricerBase {
+    fn price_impl(&self, s: f64, k: f64, t: f64) -> f64;
+
+    // Default method calls price_impl &mdash; like CRTP base calling derived
+    fn price(&self, s: f64, k: f64, t: f64) -> f64 {
+        self.price_impl(s, k, t)
+    }
+    fn pv01(&self, s: f64, k: f64, t: f64, notional: f64) -> f64 {
+        self.price(s, k, t) * notional * 0.0001
+    }
+}
+
+struct BlackScholesPricer;
+impl PricerBase for BlackScholesPricer {
+    fn price_impl(&self, s: f64, k: f64, _t: f64) -> f64 {
+        (s - k).max(0.0) * 1.05
+    }
+}
+
+struct IntrinsicPricer;
+impl PricerBase for IntrinsicPricer {
+    fn price_impl(&self, s: f64, k: f64, _t: f64) -> f64 {
+        (s - k).max(0.0)
+    }
+}
+
+let bs = BlackScholesPricer;
+let px = bs.price(100.0, 100.0, 1.0);      // no virtual call
+let pv = bs.pv01(100.0, 100.0, 1.0, 1e6);  // calls price() -> price_impl()
+
+// Policy-based design with generics
+trait VolSurface { fn get_vol(&self, k: f64, t: f64) -> f64; }
+trait DayCount   { fn day_fraction(&self, days: f64) -> f64; }
+
+struct FlatVol;
+impl VolSurface for FlatVol {
+    fn get_vol(&self, _k: f64, _t: f64) -> f64 { 0.2 }
+}
+
+struct SkewVol;
+impl VolSurface for SkewVol {
+    fn get_vol(&self, k: f64, _t: f64) -> f64 { 0.2 + 0.01 * (k - 100.0).abs() / 100.0 }
+}
+
+struct Act360;
+impl DayCount for Act360 { fn day_fraction(&self, d: f64) -> f64 { d / 360.0 } }
+
+struct Act365;
+impl DayCount for Act365 { fn day_fraction(&self, d: f64) -> f64 { d / 365.0 } }
+
+struct PolicyPricer&lt;V: VolSurface, D: DayCount&gt; {
+    vol: V,
+    dc:  D,
+}
+
+impl&lt;V: VolSurface, D: DayCount&gt; PolicyPricer&lt;V, D&gt; {
+    fn price(&self, s: f64, k: f64, days: f64) -> f64 {
+        let t   = self.dc.day_fraction(days);
+        let vol = self.vol.get_vol(k, t);
+        (s - k).max(0.0) * vol
+    }
+}
+
+let p1 = PolicyPricer { vol: FlatVol, dc: Act360 };
+let p2 = PolicyPricer { vol: SkewVol, dc: Act365 };</code></pre>
+  <div class="cpp-note">Rust's generics achieve exactly what C++ CRTP and policy-based design achieve &mdash; compile-time polymorphism with zero overhead &mdash; but with a cleaner syntax. The compiler monomorphises each combination of <code>V</code> and <code>D</code> into concrete code. Unlike C++ CRTP, there is no <code>static_cast</code> trick &mdash; Rust traits express the relationship directly.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go &mdash; embedding and interfaces</h3>
+  <pre><code class="language-go">package main
+
+import "math"
+
+// Go has no generics-based CRTP equivalent.
+// The closest idiom: define an interface + helper functions,
+// or use struct embedding for shared behaviour.
+
+type Pricer interface {
+    Price(S, K, T float64) float64
+}
+
+// Shared behaviour via standalone function (accepts any Pricer)
+func PV01(p Pricer, S, K, T, notional float64) float64 {
+    return p.Price(S, K, T) * notional * 0.0001
+}
+
+type BlackScholesPricer struct{}
+func (bs BlackScholesPricer) Price(S, K, T float64) float64 {
+    return math.Max(S-K, 0) * 1.05
+}
+
+type IntrinsicPricer struct{}
+func (ip IntrinsicPricer) Price(S, K, T float64) float64 {
+    return math.Max(S-K, 0)
+}
+
+pv := PV01(BlackScholesPricer{}, 100, 100, 1, 1_000_000)
+
+// Policy-based design via interfaces
+type VolSurface interface { GetVol(K, T float64) float64 }
+type DayCount   interface { DayFraction(days float64) float64 }
+
+type FlatVol struct{}
+func (f FlatVol) GetVol(K, T float64) float64 { return 0.2 }
+
+type SkewVol struct{}
+func (s SkewVol) GetVol(K, T float64) float64 { return 0.2 + 0.01*math.Abs(K-100)/100 }
+
+type Act360 struct{}
+func (a Act360) DayFraction(d float64) float64 { return d / 360 }
+
+type Act365 struct{}
+func (a Act365) DayFraction(d float64) float64 { return d / 365 }
+
+type PolicyPricer struct {
+    Vol VolSurface
+    DC  DayCount
+}
+
+func (p PolicyPricer) Price(S, K, days float64) float64 {
+    T   := p.DC.DayFraction(days)
+    vol := p.Vol.GetVol(K, T)
+    return math.Max(S-K, 0) * vol
+}
+
+p1 := PolicyPricer{Vol: FlatVol{}, DC: Act360{}}
+p2 := PolicyPricer{Vol: SkewVol{}, DC: Act365{}}</code></pre>
+  <div class="cpp-note">Go cannot eliminate virtual dispatch at compile time &mdash; all interface calls go through an itab (interface table), similar to C++ vtable. For most applications this is fast enough. If you need zero-overhead policies in Go, the only option is code generation or accepting the interface dispatch cost. Go's philosophy: clarity over micro-optimisation.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript &mdash; generics and mixins</h3>
+  <pre><code class="language-typescript">// TypeScript generics approximate policy-based design
+// No compile-time monomorphisation (it all erases to JS), but the types help at dev time
+
+interface VolSurface { getVol(K: number, T: number): number; }
+interface DayCount   { dayFraction(days: number): number; }
+
+class FlatVol implements VolSurface {
+  getVol(K: number, T: number): number { return 0.2; }
+}
+
+class SkewVol implements VolSurface {
+  getVol(K: number, T: number): number { return 0.2 + 0.01 * Math.abs(K - 100) / 100; }
+}
+
+class Act360 implements DayCount {
+  dayFraction(d: number): number { return d / 360; }
+}
+
+class Act365 implements DayCount {
+  dayFraction(d: number): number { return d / 365; }
+}
+
+class PolicyPricer&lt;V extends VolSurface, D extends DayCount&gt; {
+  constructor(private vol: V, private dc: D) {}
+
+  price(S: number, K: number, days: number): number {
+    const T   = this.dc.dayFraction(days);
+    const vol = this.vol.getVol(K, T);
+    return Math.max(S - K, 0) * vol;
+  }
+}
+
+const p1 = new PolicyPricer(new FlatVol(), new Act360());
+const p2 = new PolicyPricer(new SkewVol(), new Act365());
+
+// Mixin pattern &mdash; TypeScript's closest equivalent to CRTP
+type Constructor&lt;T = {}&gt; = new (...args: any[]) => T;
+
+function WithPV01&lt;TBase extends Constructor&lt;{ price(S: number, K: number, T: number): number }&gt;&gt;(
+  Base: TBase
+) {
+  return class extends Base {
+    pv01(S: number, K: number, T: number, notional: number): number {
+      return this.price(S, K, T) * notional * 0.0001;
+    }
+  };
+}
+
+class BSPricer {
+  price(S: number, K: number, T: number): number { return Math.max(S - K, 0) * 1.05; }
+}
+
+const BSWithPV01 = WithPV01(BSPricer);
+const bs = new BSWithPV01();
+const pv = bs.pv01(100, 100, 1, 1_000_000);</code></pre>
+  <div class="cpp-note">TypeScript's mixin pattern is the closest analogue to CRTP. A function takes a base class and returns an extended class with additional methods. Unlike C++ CRTP, there is no performance benefit &mdash; TypeScript generics are erased at compile time, so all dispatch is dynamic. The value is purely in type checking: the compiler verifies that the base has a <code>price()</code> method before allowing the mixin.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>CRTP / Policy-based design across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Static dispatch available</td>
+      <td>&mdash;</td><td>partial (JIT)</td><td>&#10003; (CRTP / template)</td><td>&#10003; (generics)</td><td>&mdash;</td><td>&mdash;</td>
+    </tr>
+    <tr>
+      <td>Policy composition</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Zero-overhead abstraction</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Readability</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Compile-time error quality</td>
+      <td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Mixin / CRTP equivalent</td>
+      <td>duck typing</td><td>generics + constraints</td><td>CRTP</td><td>trait + default methods</td><td>embedding</td><td>mixin functions</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Only C++ and Rust offer true zero-overhead policy composition.</strong> The compiler generates specialised code for each policy combination &mdash; no vtable, no indirection. For a pricer evaluating millions of options, this eliminates ~5-15ns per call of virtual dispatch overhead.</li>
+    <li><strong>Rust's approach is cleaner than C++ CRTP.</strong> Traits with default methods achieve the same result without the <code>static_cast&lt;Derived*&gt;(this)</code> trick. Error messages from the Rust compiler are also far more readable than C++ template errors.</li>
+    <li><strong>Python does not need CRTP</strong> &mdash; duck typing means any object with the right methods works. The trade-off: no compile-time enforcement and no performance benefit.</li>
+    <li><strong>Go uses embedding for code reuse</strong> but cannot eliminate interface dispatch. Go's philosophy prioritises simplicity and readability over micro-optimisation. If you need zero-overhead dispatch in Go, profile first &mdash; the itab lookup is typically under 2ns.</li>
+    <li><strong>TypeScript mixins provide type safety but no runtime benefit.</strong> Generics erase to plain JavaScript. The value is catching policy mismatches at compile time, not performance.</li>
+    <li><strong>C#'s JIT can sometimes devirtualise</strong> generic method calls when the concrete type is known, giving partial zero-overhead behaviour without explicit CRTP. But it is not guaranteed.</li>
+  </ul>
+
+  <h4>Decision guide for CRTP / Policy design</h4>
+  <ul>
+    <li><strong>Hot inner loop (millions of calls/sec):</strong> C++ CRTP or Rust generics &mdash; measure the vtable cost first</li>
+    <li><strong>Framework where users provide implementations:</strong> C++ CRTP or Rust traits with default methods</li>
+    <li><strong>Composable behaviour via policies:</strong> any language's interface injection works; C++/Rust for zero-cost</li>
+    <li><strong>Readability over performance:</strong> Python duck typing or Go interfaces</li>
+    <li><strong>Type-safe code reuse:</strong> TypeScript mixins or C# generic constraints</li>
+  </ul>
+</div>

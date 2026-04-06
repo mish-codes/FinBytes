@@ -143,3 +143,225 @@ int main() {
 }</code></pre>
   <div class="cpp-note">Enable core dumps in production: <code>ulimit -c unlimited</code> on Linux. When the process crashes it writes a core file you can load with <code>gdb ./pricer core</code> to inspect the stack and variable values at the moment of crash.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust crash prevention</h3>
+  <h4>Null dereference is impossible in safe Rust</h4>
+  <pre><code class="language-rust">// Rust has no null. Use Option&lt;T&gt; instead.
+fn safe_price(pricer: Option&lt;&Pricer&gt;, trade: Option&lt;&Trade&gt;) -&gt; Option&lt;f64&gt; {
+    let pricer = pricer?;  // returns None if pricer is None
+    let trade  = trade?;   // returns None if trade is None
+    Some(pricer.price(trade))
+}
+
+// Pattern matching forces you to handle the None case
+match safe_price(Some(&pricer), Some(&trade)) {
+    Some(price) =&gt; println!("Price: {price}"),
+    None        =&gt; eprintln!("Missing pricer or trade"),
+}
+
+// Exhaustive matching - compiler error if you miss a case
+enum PriceResult {
+    Ok(f64),
+    StaleData,
+    ModelError(String),
+}
+
+fn handle(result: PriceResult) {
+    match result {
+        PriceResult::Ok(p)          =&gt; publish(p),
+        PriceResult::StaleData      =&gt; use_fallback(),
+        PriceResult::ModelError(e)  =&gt; log_error(&e),
+    }   // removing any arm is a compile error
+}</code></pre>
+
+  <h4>Stack overflow and OOM handling</h4>
+  <pre><code class="language-rust">// Stack overflow: Rust panics with a clear message.
+// Avoid deep recursion; use iteration or stacker crate for explicit stack growth.
+fn iterative_process(n: u64) {
+    let mut stack = vec![n];
+    while let Some(item) = stack.pop() {
+        if item == 0 { continue; }
+        stack.push(item - 1);
+    }
+}
+
+// OOM: catch_unwind for panic recovery (not for normal control flow)
+use std::panic;
+let result = panic::catch_unwind(|| {
+    let huge: Vec&lt;u8&gt; = vec![0; 1_000_000_000_000]; // may panic on alloc failure
+    huge.len()
+});
+match result {
+    Ok(len)  =&gt; println!("Allocated {len} bytes"),
+    Err(_)   =&gt; eprintln!("Allocation failed - degrading gracefully"),
+}
+
+// Custom panic hook for structured logging
+panic::set_hook(Box::new(|info| {
+    eprintln!("PANIC: {info}");
+    // log to file, send alert, etc.
+}));</code></pre>
+  <div class="cpp-note">Rust eliminates the entire class of null-pointer crashes at compile time. <code>Option&lt;T&gt;</code> forces explicit handling. Panics (the Rust equivalent of crashes) produce clear backtraces and can be caught at thread boundaries with <code>catch_unwind</code>, though this is not meant for normal error handling.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go crash handling</h3>
+  <h4>Nil pointer and panic recovery</h4>
+  <pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "log"
+    "runtime/debug"
+)
+
+// Go panics on nil pointer dereference at runtime.
+// Use recover() to catch panics at goroutine boundaries.
+func safePriceHandler(trade Trade) (price float64, err error) {
+    defer func() {
+        if r := recover(); r != nil {
+            log.Printf("PANIC in pricing: %v\nStack: %s", r, debug.Stack())
+            err = fmt.Errorf("pricing panic: %v", r)
+        }
+    }()
+    price = computePrice(trade)
+    return
+}
+
+// Guard against nil
+func safePrice(pricer *Pricer, trade *Trade) (float64, error) {
+    if pricer == nil {
+        return 0, fmt.Errorf("pricer is nil")
+    }
+    if trade == nil {
+        return 0, fmt.Errorf("trade is nil")
+    }
+    return pricer.Price(trade), nil
+}
+
+// Stack overflow: Go uses segmented / growable stacks.
+// Goroutine stacks start small (few KB) and grow as needed.
+// Infinite recursion eventually hits the stack limit and panics.
+func iterativeProcess(n int) {
+    stack := []int{n}
+    for len(stack) &gt; 0 {
+        item := stack[len(stack)-1]
+        stack = stack[:len(stack)-1]
+        if item &lt;= 0 { continue }
+        stack = append(stack, item-1)
+    }
+}
+
+// OOM: Go's runtime will crash the process.
+// Use resource limits at the OS/container level.
+// Monitor with runtime.ReadMemStats.</code></pre>
+  <div class="cpp-note">Go has nil pointers (unlike Rust), but <code>recover()</code> can catch panics at goroutine boundaries. Always put <code>defer recover()</code> at the top of every goroutine that handles external input. Go's growable stacks make stack overflow less common than in C/C++, but infinite recursion will still crash.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript crash prevention</h3>
+  <h4>Null and undefined safety with strict mode</h4>
+  <pre><code class="language-typescript">// tsconfig.json: "strict": true enables strictNullChecks
+
+// Without strict: crashes at runtime
+function badPrice(pricer: Pricer, trade: Trade): number {
+  return pricer.price(trade);  // pricer could be undefined - runtime crash
+}
+
+// With strict: compiler forces null checks
+function safePrice(pricer: Pricer | null, trade: Trade | null): number | null {
+  if (!pricer || !trade) return null;
+  return pricer.price(trade);
+}
+
+// Optional chaining and nullish coalescing
+const price = pricer?.price(trade) ?? fallbackPrice;
+
+// Exhaustive type checking with never
+type PriceResult =
+  | { status: "ok"; value: number }
+  | { status: "stale" }
+  | { status: "error"; message: string };
+
+function handle(result: PriceResult): void {
+  switch (result.status) {
+    case "ok":    publish(result.value); break;
+    case "stale": useFallback(); break;
+    case "error": logError(result.message); break;
+    default: {
+      const _exhaustive: never = result;  // compile error if case is missing
+    }
+  }
+}</code></pre>
+
+  <h4>Unhandled exception and promise rejection</h4>
+  <pre><code class="language-typescript">// Node.js: catch unhandled errors
+process.on("uncaughtException", (err) =&gt; {
+  console.error("Uncaught exception:", err);
+  process.exit(1);  // exit after logging - state may be corrupt
+});
+
+process.on("unhandledRejection", (reason) =&gt; {
+  console.error("Unhandled rejection:", reason);
+  // Don't swallow - either handle or exit
+});
+
+// Async error boundary
+async function priceWithRecovery(trade: Trade): Promise&lt;number&gt; {
+  try {
+    return await computePrice(trade);
+  } catch (err) {
+    console.error(`Pricing failed for ${trade.id}:`, err);
+    return NaN;
+  }
+}</code></pre>
+  <div class="cpp-note">TypeScript's <code>strictNullChecks</code> catches null/undefined errors at compile time &mdash; the single most impactful tsconfig flag. Unlike Rust's <code>Option</code>, TypeScript's null safety is erased at runtime, so data from external APIs still needs runtime validation (e.g., with Zod or io-ts).</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Crash prevention across languages</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Null safety</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Stack overflow protection</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>OOM handling</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Post-mortem debugging</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Crash recovery</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Rust</strong> eliminates null dereference entirely &mdash; there is no null. <code>Option&lt;T&gt;</code> forces compile-time handling. This alone prevents the most common crash category across all other languages.</li>
+    <li><strong>Go</strong> has nil pointers but recoverable panics via <code>defer/recover</code>. Growable goroutine stacks make stack overflow rare. The trade-off: nil checks are manual and easy to forget.</li>
+    <li><strong>TypeScript</strong> with <code>strictNullChecks</code> approaches Rust-level null safety at compile time, but the checks are erased at runtime. External data boundaries are the weak point.</li>
+    <li><strong>C++</strong> has the best post-mortem debugging (core dumps + gdb), but the most crash-prone runtime &mdash; null dereference is undefined behaviour, not an exception.</li>
+    <li><strong>Python</strong> and <strong>C#</strong> throw catchable exceptions on null access, making crashes recoverable but not preventable at compile time.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Crash-proof by construction:</strong> Rust (no null, exhaustive matching)</li>
+    <li><strong>Graceful degradation under failure:</strong> Go (<code>recover</code>) or C# (structured exceptions)</li>
+    <li><strong>Post-mortem forensics:</strong> C++ (core dumps) or Rust (panic backtraces)</li>
+    <li><strong>Rapid development with safety net:</strong> Python (exceptions for everything) or TypeScript (strict mode)</li>
+    <li><strong>Production service with crash isolation:</strong> Go (per-goroutine recovery)</li>
+  </ul>
+</div>

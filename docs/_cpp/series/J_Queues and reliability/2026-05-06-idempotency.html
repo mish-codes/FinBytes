@@ -84,3 +84,301 @@ public:
 };</code></pre>
   <div class="cpp-note">Design your data model for idempotency from the start. Store absolute state (position = 100) rather than deltas (position += 10). Require idempotency keys on all mutating operations. Use database unique constraints as enforcement - they are the only reliable deduplication mechanism when multiple processes can run concurrently.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust idempotent processing</h3>
+  <pre><code class="language-rust">use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use tokio::sync::Mutex;
+
+#[derive(Clone, Debug)]
+struct Fill {
+    fill_id:  String,
+    symbol:   String,
+    quantity: f64,
+}
+
+#[derive(Clone, Debug)]
+struct ProcessResult {
+    symbol:        String,
+    quantity:      f64,
+    was_duplicate: bool,
+}
+
+struct IdempotentFillProcessor {
+    processed_ids: Arc&lt;Mutex&lt;HashSet&lt;String&gt;&gt;&gt;,
+    positions:     Arc&lt;Mutex&lt;HashMap&lt;String, f64&gt;&gt;&gt;,
+}
+
+impl IdempotentFillProcessor {
+    fn new() -&gt; Self {
+        Self {
+            processed_ids: Arc::new(Mutex::new(HashSet::new())),
+            positions: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    async fn process(&amp;self, fill: &amp;Fill) -&gt; ProcessResult {
+        let mut ids = self.processed_ids.lock().await;
+        let mut pos = self.positions.lock().await;
+
+        if ids.contains(&amp;fill.fill_id) {
+            return ProcessResult {
+                symbol: fill.symbol.clone(),
+                quantity: *pos.get(&amp;fill.symbol).unwrap_or(&amp;0.0),
+                was_duplicate: true,
+            };
+        }
+
+        // SET not ADD — idempotent by design
+        pos.insert(fill.symbol.clone(), fill.quantity);
+        ids.insert(fill.fill_id.clone());
+
+        ProcessResult {
+            symbol: fill.symbol.clone(),
+            quantity: fill.quantity,
+            was_duplicate: false,
+        }
+    }
+}
+
+// Content-based deduplication using hash
+use std::hash::{Hash, Hasher};
+use std::collections::hash_map::DefaultHasher;
+
+fn hash_fill(fill: &amp;Fill) -&gt; String {
+    let mut hasher = DefaultHasher::new();
+    fill.fill_id.hash(&amp;mut hasher);
+    fill.symbol.hash(&amp;mut hasher);
+    fill.quantity.to_bits().hash(&amp;mut hasher);
+    format!("{:x}", hasher.finish())
+}
+
+// Database-backed idempotency (sqlx)
+// In production, use: INSERT INTO processed_fills (fill_id)
+// VALUES ($1) ON CONFLICT DO NOTHING
+// Returns 0 rows if duplicate — the database is the single
+// source of truth for deduplication</code></pre>
+  <div class="cpp-note">Rust's ownership system prevents a subtle idempotency bug: if you accidentally clone a <code>Fill</code> and process both copies, the <code>HashSet</code> catches the duplicate. The <code>Arc&lt;Mutex&lt;_&gt;&gt;</code> pattern ensures thread-safe access to the processed-IDs set. In production, replace the in-memory set with a database unique constraint.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go idempotent processing</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "crypto/sha256"
+    "fmt"
+    "sync"
+)
+
+type Fill struct {
+    FillID   string
+    Symbol   string
+    Quantity float64
+}
+
+type ProcessResult struct {
+    Symbol       string
+    Quantity     float64
+    WasDuplicate bool
+}
+
+type IdempotentFillProcessor struct {
+    mu           sync.Mutex
+    processedIDs map[string]bool
+    positions    map[string]float64
+}
+
+func NewIdempotentFillProcessor() *IdempotentFillProcessor {
+    return &amp;IdempotentFillProcessor{
+        processedIDs: make(map[string]bool),
+        positions:    make(map[string]float64),
+    }
+}
+
+func (p *IdempotentFillProcessor) Process(fill Fill) ProcessResult {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+
+    if p.processedIDs[fill.FillID] {
+        return ProcessResult{
+            Symbol:       fill.Symbol,
+            Quantity:     p.positions[fill.Symbol],
+            WasDuplicate: true,
+        }
+    }
+
+    // SET not ADD — idempotent by design
+    p.positions[fill.Symbol] = fill.Quantity
+    p.processedIDs[fill.FillID] = true
+
+    return ProcessResult{
+        Symbol:   fill.Symbol,
+        Quantity: fill.Quantity,
+    }
+}
+
+// Content-based deduplication
+func hashFill(fill Fill) string {
+    data := fmt.Sprintf("%s|%s|%f", fill.FillID, fill.Symbol, fill.Quantity)
+    h := sha256.Sum256([]byte(data))
+    return fmt.Sprintf("%x", h[:8])
+}
+
+// Idempotent HTTP handler — check before processing
+func idempotentHandler(w http.ResponseWriter, r *http.Request) {
+    key := r.Header.Get("Idempotency-Key")
+    if key == "" {
+        http.Error(w, "Idempotency-Key header required", http.StatusBadRequest)
+        return
+    }
+
+    processor.mu.Lock()
+    if result, ok := processor.results[key]; ok {
+        processor.mu.Unlock()
+        json.NewEncoder(w).Encode(result) // return cached result
+        return
+    }
+    processor.mu.Unlock()
+
+    result := processRequest(r)
+
+    processor.mu.Lock()
+    processor.results[key] = result
+    processor.mu.Unlock()
+
+    json.NewEncoder(w).Encode(result)
+}</code></pre>
+  <div class="cpp-note">Go's HTTP handler pattern for idempotency is clean: check the <code>Idempotency-Key</code> header, look up the cached result, and return it if found. The mutex protects against concurrent requests with the same key. In production, replace the in-memory map with a Redis or PostgreSQL lookup with a TTL to prevent unbounded memory growth.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript idempotent processing</h3>
+  <pre><code class="language-typescript">import { createHash } from "crypto";
+
+interface Fill {
+  fillId:   string;
+  symbol:   string;
+  quantity: number;
+}
+
+interface ProcessResult {
+  symbol:       string;
+  quantity:     number;
+  wasDuplicate: boolean;
+}
+
+class IdempotentFillProcessor {
+  private processedIds = new Set&lt;string&gt;();
+  private positions = new Map&lt;string, number&gt;();
+
+  process(fill: Fill): ProcessResult {
+    if (this.processedIds.has(fill.fillId)) {
+      return {
+        symbol: fill.symbol,
+        quantity: this.positions.get(fill.symbol) ?? 0,
+        wasDuplicate: true,
+      };
+    }
+
+    // SET not ADD — idempotent by design
+    this.positions.set(fill.symbol, fill.quantity);
+    this.processedIds.add(fill.fillId);
+
+    return { symbol: fill.symbol, quantity: fill.quantity, wasDuplicate: false };
+  }
+}
+
+// Content-based deduplication
+function hashFill(fill: Fill): string {
+  return createHash("sha256")
+    .update(`${fill.fillId}|${fill.symbol}|${fill.quantity}`)
+    .digest("hex")
+    .slice(0, 16);
+}
+
+// Express middleware for idempotent API endpoints
+import express from "express";
+
+const idempotencyCache = new Map&lt;string, { status: number; body: unknown }&gt;();
+
+function idempotent(
+  handler: (req: express.Request) =&gt; Promise&lt;{ status: number; body: unknown }&gt;
+) {
+  return async (req: express.Request, res: express.Response) =&gt; {
+    const key = req.headers["idempotency-key"] as string;
+    if (!key) {
+      return res.status(400).json({ error: "Idempotency-Key header required" });
+    }
+
+    const cached = idempotencyCache.get(key);
+    if (cached) {
+      return res.status(cached.status).json(cached.body);
+    }
+
+    const result = await handler(req);
+    idempotencyCache.set(key, result);
+    res.status(result.status).json(result.body);
+  };
+}
+
+// Usage
+const app = express();
+app.post("/fills", idempotent(async (req) =&gt; {
+  const result = processor.process(req.body as Fill);
+  return { status: result.wasDuplicate ? 200 : 201, body: result };
+}));</code></pre>
+  <div class="cpp-note">The Express middleware approach wraps any handler with idempotency checks. Because Node.js is single-threaded, you do not need a mutex to protect the <code>Set</code> and <code>Map</code>. However, you still need a persistent store (Redis, database) in production &mdash; in-memory state is lost on process restart.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Idempotency across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>In-memory dedup ease</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Thread-safe dedup</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>DB unique constraint support</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>HTTP idempotency middleware</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Content hashing stdlib</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Concurrency model</td>
+      <td>GIL / asyncio</td><td>async + threads</td><td>threads + mutex</td><td>tokio + Mutex</td><td>goroutines + mutex</td><td>single-threaded</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>TypeScript's single-threaded model makes in-memory idempotency trivial.</strong> No mutex, no race conditions, no concurrent duplicate processing. A <code>Set</code> and a <code>Map</code> are all you need. The tradeoff: state is lost on restart, so a persistent store is mandatory for production.</li>
+    <li><strong>Go's HTTP handler pattern for idempotency is exceptionally clean.</strong> Check the <code>Idempotency-Key</code> header, lookup in map, return cached result or process. The mutex protects against concurrent requests with the same key arriving on different goroutines.</li>
+    <li><strong>Rust's ownership model prevents accidental double-processing.</strong> If a <code>Fill</code> is moved into the processor, it cannot be processed again by accident &mdash; the original variable is no longer valid. This is a compile-time guarantee no other language offers.</li>
+    <li><strong>The database is the real deduplication layer.</strong> In all languages, in-memory sets are a first line of defence. The <code>INSERT ... ON CONFLICT DO NOTHING</code> pattern in PostgreSQL (or equivalent) is the only reliable deduplication when multiple processes run concurrently.</li>
+    <li><strong>Design for idempotency from day one.</strong> Store absolute state (position = 100) not deltas (position += 10). Retrofitting idempotency into a delta-based system is extremely difficult and error-prone.</li>
+  </ul>
+
+  <h4>Decision guide for idempotency</h4>
+  <ul>
+    <li><strong>Single-process, in-memory first:</strong> TypeScript (no locks needed) or Python (simple dict/set)</li>
+    <li><strong>Multi-process production:</strong> database unique constraint &mdash; language does not matter, the DB is authoritative</li>
+    <li><strong>HTTP API idempotency:</strong> Go or C# &mdash; clean middleware patterns, battle-tested in production</li>
+    <li><strong>Compile-time safety against double-processing:</strong> Rust &mdash; ownership prevents re-use of consumed values</li>
+    <li><strong>Always require an idempotency key on mutating operations.</strong> If the message does not carry one, generate a content hash &mdash; but explicit keys are always more reliable</li>
+  </ul>
+</div>

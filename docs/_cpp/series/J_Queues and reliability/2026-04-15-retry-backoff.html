@@ -123,3 +123,309 @@ auto feed = retry_with_backoff(
 );</code></pre>
   <div class="cpp-note">Equal jitter (<code>delay/2 + random(0, delay/2)</code>) prevents very short retries while still desynchronising clients. Full jitter (<code>random(0, delay)</code>) provides maximum spread but can result in very short waits. For financial reconnects, equal jitter is usually the right choice.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust retry with backoff</h3>
+  <pre><code class="language-rust">use std::time::Duration;
+use tokio::time::sleep;
+use rand::Rng;
+
+struct RetryConfig {
+    max_attempts: u32,
+    base_delay:   Duration,
+    max_delay:    Duration,
+    jitter:       bool,
+}
+
+impl Default for RetryConfig {
+    fn default() -&gt; Self {
+        Self {
+            max_attempts: 5,
+            base_delay: Duration::from_secs(1),
+            max_delay: Duration::from_secs(60),
+            jitter: true,
+        }
+    }
+}
+
+async fn retry_with_backoff&lt;F, Fut, T, E&gt;(
+    mut f: F,
+    cfg: &amp;RetryConfig,
+) -&gt; Result&lt;T, E&gt;
+where
+    F: FnMut() -&gt; Fut,
+    Fut: std::future::Future&lt;Output = Result&lt;T, E&gt;&gt;,
+    E: std::fmt::Display,
+{
+    let mut rng = rand::thread_rng();
+    for attempt in 1..=cfg.max_attempts {
+        match f().await {
+            Ok(val) =&gt; return Ok(val),
+            Err(e) =&gt; {
+                if attempt == cfg.max_attempts {
+                    eprintln!("All {} attempts failed: {}", cfg.max_attempts, e);
+                    return Err(e);
+                }
+                let exp = cfg.base_delay * 2u32.pow(attempt - 1);
+                let delay = exp.min(cfg.max_delay);
+                let delay = if cfg.jitter {
+                    delay.mul_f64(rng.gen_range(0.5..1.5))
+                } else {
+                    delay
+                };
+                eprintln!("Attempt {} failed: {}. Retrying in {:?}", attempt, e, delay);
+                sleep(delay).await;
+            }
+        }
+    }
+    unreachable!()
+}
+
+// Usage
+async fn connect_to_feed() -&gt; Result&lt;MarketDataFeed, Box&lt;dyn std::error::Error&gt;&gt; {
+    let feed = retry_with_backoff(
+        || async { MarketDataFeed::connect("tcp://feed:5555").await },
+        &amp;RetryConfig::default(),
+    ).await?;
+    Ok(feed)
+}
+
+// Dead letter queue — append to file
+use tokio::fs::OpenOptions;
+use tokio::io::AsyncWriteExt;
+
+struct DeadLetterQueue {
+    path: String,
+}
+
+impl DeadLetterQueue {
+    async fn push(&amp;self, msg: &amp;str, reason: &amp;str) -&gt; std::io::Result&lt;()&gt; {
+        let entry = format!(
+            "{{\"msg\":\"{}\",\"reason\":\"{}\",\"ts\":{}}}\n",
+            msg, reason, std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64()
+        );
+        let mut file = OpenOptions::new().create(true).append(true)
+            .open(&amp;self.path).await?;
+        file.write_all(entry.as_bytes()).await
+    }
+}</code></pre>
+  <div class="cpp-note">Rust's async retry function uses generics over the future type, so the same function works with any async operation &mdash; TCP connect, HTTP request, database query. The compiler ensures the retry closure is <code>Send</code>-safe if you spawn it across threads.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go retry with backoff</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "context"
+    "fmt"
+    "log"
+    "math"
+    "math/rand"
+    "os"
+    "time"
+)
+
+type RetryConfig struct {
+    MaxAttempts int
+    BaseDelay   time.Duration
+    MaxDelay    time.Duration
+    Jitter      bool
+}
+
+var DefaultRetryConfig = RetryConfig{
+    MaxAttempts: 5,
+    BaseDelay:   time.Second,
+    MaxDelay:    60 * time.Second,
+    Jitter:      true,
+}
+
+func RetryWithBackoff(ctx context.Context, cfg RetryConfig, fn func() error) error {
+    for attempt := 1; attempt &lt;= cfg.MaxAttempts; attempt++ {
+        err := fn()
+        if err == nil {
+            return nil
+        }
+        if attempt == cfg.MaxAttempts {
+            return fmt.Errorf("all %d attempts failed: %w", cfg.MaxAttempts, err)
+        }
+
+        delay := float64(cfg.BaseDelay) * math.Pow(2, float64(attempt-1))
+        if delay &gt; float64(cfg.MaxDelay) {
+            delay = float64(cfg.MaxDelay)
+        }
+        if cfg.Jitter {
+            delay *= 0.5 + rand.Float64() // [0.5, 1.5)
+        }
+
+        log.Printf("Attempt %d failed: %v. Retrying in %v", attempt, err, time.Duration(delay))
+
+        select {
+        case &lt;-ctx.Done():
+            return ctx.Err()
+        case &lt;-time.After(time.Duration(delay)):
+        }
+    }
+    return nil // unreachable
+}
+
+// Usage — context cancellation stops retries cleanly
+func connectToFeed(ctx context.Context) (*MarketDataFeed, error) {
+    var feed *MarketDataFeed
+    err := RetryWithBackoff(ctx, DefaultRetryConfig, func() error {
+        var e error
+        feed, e = MarketDataFeed.Connect("tcp://feed:5555")
+        return e
+    })
+    return feed, err
+}
+
+// Dead letter queue — append to file
+type DLQ struct {
+    f *os.File
+}
+
+func NewDLQ(path string) (*DLQ, error) {
+    f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+    if err != nil {
+        return nil, err
+    }
+    return &amp;DLQ{f: f}, nil
+}
+
+func (d *DLQ) Push(msg, reason string) {
+    entry := fmt.Sprintf("{\"msg\":\"%s\",\"reason\":\"%s\",\"ts\":%f}\n",
+        msg, reason, float64(time.Now().UnixNano())/1e9)
+    d.f.WriteString(entry)
+    log.Printf("DLQ: %s", reason)
+}</code></pre>
+  <div class="cpp-note">Go's <code>context.Context</code> integration is the standout feature here. Pass a context with a deadline, and retry stops cleanly when the deadline expires or the caller cancels. The <code>select</code> on <code>ctx.Done()</code> and <code>time.After</code> is a pattern you will see in every production Go service.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript retry with backoff</h3>
+  <pre><code class="language-typescript">interface RetryConfig {
+  maxAttempts: number;
+  baseDelayMs: number;
+  maxDelayMs:  number;
+  jitter:      boolean;
+}
+
+const defaultRetryConfig: RetryConfig = {
+  maxAttempts: 5, baseDelayMs: 1000, maxDelayMs: 60_000, jitter: true,
+};
+
+async function retryWithBackoff&lt;T&gt;(
+  fn: () =&gt; Promise&lt;T&gt;,
+  config: Partial&lt;RetryConfig&gt; = {},
+  signal?: AbortSignal,
+): Promise&lt;T&gt; {
+  const cfg = { ...defaultRetryConfig, ...config };
+
+  for (let attempt = 1; attempt &lt;= cfg.maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === cfg.maxAttempts) throw err;
+      if (signal?.aborted) throw new Error("Retry aborted");
+
+      let delay = Math.min(cfg.baseDelayMs * 2 ** (attempt - 1), cfg.maxDelayMs);
+      if (cfg.jitter) delay *= 0.5 + Math.random();
+
+      console.warn(`Attempt ${attempt} failed: ${err}. Retrying in ${delay.toFixed(0)}ms`);
+      await new Promise&lt;void&gt;((resolve, reject) =&gt; {
+        const timer = setTimeout(resolve, delay);
+        signal?.addEventListener("abort", () =&gt; {
+          clearTimeout(timer);
+          reject(new Error("Retry aborted"));
+        }, { once: true });
+      });
+    }
+  }
+  throw new Error("unreachable");
+}
+
+// Usage
+const feed = await retryWithBackoff(
+  () =&gt; MarketDataFeed.connect("tcp://feed:5555"),
+  { maxAttempts: 5, baseDelayMs: 1000 },
+);
+
+// Dead letter queue — append to file
+import { appendFile } from "fs/promises";
+
+class DeadLetterQueue {
+  constructor(private path: string = "dlq.jsonl") {}
+
+  async push(msg: unknown, reason: string): Promise&lt;void&gt; {
+    const entry = JSON.stringify({ msg, reason, ts: Date.now() / 1000 });
+    await appendFile(this.path, entry + "\n");
+    console.error(`DLQ: ${reason}`);
+  }
+}
+
+// Combined: retry + circuit breaker
+async function resilientGetPrice(symbol: string): Promise&lt;number&gt; {
+  try {
+    return await retryWithBackoff(
+      () =&gt; breaker.call(() =&gt; marketFeed.getPrice(symbol)),
+      { maxAttempts: 3, baseDelayMs: 500 },
+    );
+  } catch {
+    return lastKnownPrices.get(symbol) ?? NaN;
+  }
+}</code></pre>
+  <div class="cpp-note">The <code>AbortSignal</code> parameter lets the caller cancel retries mid-flight &mdash; essential for request handlers that have their own timeout. Without it, a retry loop can outlive the request that started it, wasting resources on a result nobody is waiting for.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Retry and backoff across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Retry library</td>
+      <td>tenacity</td><td>Polly</td><td>&mdash;</td><td>backon, tokio-retry</td><td>cenkalti/backoff</td><td>p-retry, cockatiel</td>
+    </tr>
+    <tr>
+      <td>Cancellation support</td>
+      <td>threading.Event</td><td>CancellationToken</td><td>std::stop_token (C++20)</td><td>tokio CancellationToken</td><td>context.Context</td><td>AbortSignal</td>
+    </tr>
+    <tr>
+      <td>Cancellation ergonomics</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Composability with breaker</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Jitter built-in</td>
+      <td>&#10003; (tenacity)</td><td>&#10003; (Polly)</td><td>&mdash;</td><td>&#10003; (backon)</td><td>&#10003; (cenkalti)</td><td>&#10003; (p-retry)</td>
+    </tr>
+    <tr>
+      <td>DLQ ecosystem</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Go's <code>context.Context</code> is the best cancellation mechanism for retry loops.</strong> Pass a context with a deadline, and the retry stops cleanly when time runs out or the caller cancels. The <code>select</code> on <code>ctx.Done()</code> and <code>time.After</code> is a two-line pattern that every Go developer knows.</li>
+    <li><strong>C# Polly composes retry + circuit breaker + fallback as chained policies.</strong> No other language has a single library that wraps all three patterns into a composable pipeline with this level of maturity.</li>
+    <li><strong>Rust's async retry is generic over the future type,</strong> so one function covers TCP connect, HTTP request, and database query. The compiler checks that the closure is thread-safe at compile time &mdash; no runtime surprises.</li>
+    <li><strong>TypeScript's AbortSignal is critical.</strong> Without it, a retry loop can outlive the HTTP request handler that started it. Always pass a signal so retries stop when the caller gives up.</li>
+    <li><strong>C++ has no standard retry library.</strong> Every team writes their own. The jitter distribution choice (full vs equal vs decorrelated) matters for thundering herd prevention &mdash; equal jitter is usually the safest default for financial reconnects.</li>
+  </ul>
+
+  <h4>Decision guide for retry and backoff</h4>
+  <ul>
+    <li><strong>Microservice with timeouts and cancellation:</strong> Go with context.Context &mdash; cleanest cancellation propagation</li>
+    <li><strong>Complex resilience pipeline (retry + breaker + fallback):</strong> C# Polly &mdash; most composable</li>
+    <li><strong>Type-safe async retry:</strong> Rust &mdash; compiler-checked thread safety on the retry closure</li>
+    <li><strong>Always add jitter.</strong> Without it, clients that fail at the same time will retry at the same time, recreating the thundering herd</li>
+    <li><strong>Always set a max retry count and a DLQ.</strong> Without both, permanently-failing messages loop forever and poison your system</li>
+  </ul>
+</div>

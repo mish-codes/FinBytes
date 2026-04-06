@@ -115,3 +115,394 @@ public:
 <div class="warn">Never alert on single metric spikes in isolation. A momentary queue spike during a volatility event is normal. Sustained queue growth + rising dropped ticks + increasing feed age together indicate a real problem.</div>
 
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust resilient market data pipeline</h3>
+  <pre><code class="language-rust">use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::mpsc;
+use tokio::time::{sleep, Instant};
+
+struct FeedHandler {
+    running:    Arc&lt;AtomicBool&gt;,
+    dropped:    Arc&lt;AtomicU64&gt;,
+    last_tick:  Arc&lt;AtomicU64&gt;, // epoch nanos
+    tx:         mpsc::Sender&lt;Tick&gt;,
+}
+
+impl FeedHandler {
+    fn new(tx: mpsc::Sender&lt;Tick&gt;) -&gt; Self {
+        Self {
+            running: Arc::new(AtomicBool::new(true)),
+            dropped: Arc::new(AtomicU64::new(0)),
+            last_tick: Arc::new(AtomicU64::new(0)),
+            tx,
+        }
+    }
+
+    async fn run(&amp;self) {
+        let mut delay = Duration::from_secs(1);
+        let breaker = CircuitBreaker::new(5, 30.0);
+
+        while self.running.load(Ordering::Relaxed) {
+            match breaker.call(|| self.connect_and_stream()).await {
+                Ok(_) =&gt; delay = Duration::from_secs(1),
+                Err(e) =&gt; {
+                    let jitter = delay.mul_f64(0.5 + rand::random::&lt;f64&gt;());
+                    eprintln!("Feed error: {}. Reconnecting in {:?}", e, jitter);
+                    sleep(jitter).await;
+                    delay = delay.mul_f64(2.0).min(Duration::from_secs(60));
+                }
+            }
+        }
+    }
+
+    async fn connect_and_stream(&amp;self) -&gt; Result&lt;(), Box&lt;dyn std::error::Error&gt;&gt; {
+        let conn = tcp_connect("feed:5555").await?;
+        while self.running.load(Ordering::Relaxed) {
+            let tick = conn.recv_tick().await?;
+            self.last_tick.store(
+                Instant::now().elapsed().as_nanos() as u64, Ordering::Relaxed);
+            if self.tx.try_send(tick).is_err() {
+                self.dropped.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+        Ok(())
+    }
+}
+
+// Pricer task with watchdog and fallback
+struct PricerTask {
+    rx:        mpsc::Receiver&lt;Tick&gt;,
+    risk_tx:   mpsc::Sender&lt;PriceResult&gt;,
+    cache:     HashMap&lt;String, f64&gt;,
+    heartbeat: Arc&lt;AtomicU64&gt;,
+}
+
+impl PricerTask {
+    async fn run(&amp;mut self) {
+        loop {
+            match tokio::time::timeout(Duration::from_millis(100), self.rx.recv()).await {
+                Ok(Some(tick)) =&gt; {
+                    let result = match price_tick(&amp;tick) {
+                        Ok(r) =&gt; {
+                            self.cache.insert(tick.symbol.clone(), r.price);
+                            r
+                        }
+                        Err(_) =&gt; {
+                            // Fallback to cached price
+                            if let Some(&amp;stale) = self.cache.get(&amp;tick.symbol) {
+                                PriceResult {
+                                    symbol: tick.symbol, price: stale,
+                                    is_stale: true, source: "stale".into(),
+                                }
+                            } else { continue; }
+                        }
+                    };
+                    let _ = self.risk_tx.try_send(result);
+                }
+                Ok(None) =&gt; break, // channel closed
+                Err(_) =&gt; {} // timeout — just heartbeat
+            }
+            self.heartbeat.store(
+                Instant::now().elapsed().as_nanos() as u64, Ordering::Relaxed);
+        }
+    }
+}</code></pre>
+  <div class="cpp-note">Rust's <code>mpsc::channel</code> replaces the hand-rolled bounded queue &mdash; backpressure via <code>try_send()</code>, capacity set at creation. The <code>tokio::time::timeout</code> wrapper on <code>recv()</code> doubles as a heartbeat mechanism: even if no ticks arrive, the pricer loop continues and updates its heartbeat.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go resilient market data pipeline</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "context"
+    "log"
+    "math/rand"
+    "sync/atomic"
+    "time"
+)
+
+type FeedHandler struct {
+    feed     chan Tick
+    dropped  atomic.Uint64
+    lastTick atomic.Int64 // unix nano
+    breaker  *CircuitBreaker
+}
+
+func NewFeedHandler(bufSize int) *FeedHandler {
+    return &amp;FeedHandler{
+        feed:    make(chan Tick, bufSize),
+        breaker: NewCircuitBreaker(5, 30*time.Second),
+    }
+}
+
+func (fh *FeedHandler) Run(ctx context.Context) {
+    delay := time.Second
+    for {
+        select {
+        case &lt;-ctx.Done():
+            close(fh.feed)
+            return
+        default:
+        }
+
+        err := fh.breaker.Call(func() error {
+            return fh.connectAndStream(ctx)
+        })
+        if err != nil {
+            jitter := time.Duration(float64(delay) * (0.5 + rand.Float64()))
+            log.Printf("Feed error: %v. Reconnecting in %v", err, jitter)
+            select {
+            case &lt;-ctx.Done():
+                return
+            case &lt;-time.After(jitter):
+            }
+            if delay &lt; 60*time.Second {
+                delay *= 2
+            }
+        } else {
+            delay = time.Second
+        }
+    }
+}
+
+func (fh *FeedHandler) connectAndStream(ctx context.Context) error {
+    conn, err := tcpConnect("feed:5555")
+    if err != nil {
+        return err
+    }
+    defer conn.Close()
+
+    for {
+        select {
+        case &lt;-ctx.Done():
+            return nil
+        default:
+        }
+        tick, err := conn.RecvTick()
+        if err != nil {
+            return err
+        }
+        fh.lastTick.Store(time.Now().UnixNano())
+
+        select {
+        case fh.feed &lt;- tick:
+        default:
+            fh.dropped.Add(1) // channel full — drop
+        }
+    }
+}
+
+// Pricer goroutine with watchdog and fallback
+func pricerLoop(ctx context.Context, feed &lt;-chan Tick, riskCh chan&lt;- PriceResult,
+    heartbeat *atomic.Int64) {
+
+    cache := make(map[string]float64)
+
+    for {
+        select {
+        case &lt;-ctx.Done():
+            return
+        case tick, ok := &lt;-feed:
+            if !ok { return }
+            result, err := priceTick(tick)
+            if err != nil {
+                if stale, ok := cache[tick.Symbol]; ok {
+                    result = PriceResult{Symbol: tick.Symbol, Price: stale,
+                        IsStale: true, Source: "stale"}
+                } else {
+                    continue
+                }
+            } else {
+                cache[tick.Symbol] = result.Price
+            }
+            select {
+            case riskCh &lt;- result:
+            default: // risk queue full — drop
+            }
+        case &lt;-time.After(100 * time.Millisecond):
+            // no tick — just heartbeat
+        }
+        heartbeat.Store(time.Now().UnixNano())
+    }
+}
+
+// Main — wire everything together
+func main() {
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    fh := NewFeedHandler(65536)
+    riskCh := make(chan PriceResult, 1024)
+    var heartbeat atomic.Int64
+
+    go fh.Run(ctx)
+    go pricerLoop(ctx, fh.feed, riskCh, &amp;heartbeat)
+    go watchdog(ctx, &amp;heartbeat, 10*time.Second)
+
+    // Risk engine consumes from riskCh
+    for result := range riskCh {
+        riskEngine.Process(result)
+    }
+}</code></pre>
+  <div class="cpp-note">The entire pipeline is wired together with channels and goroutines &mdash; no thread pool configuration, no executor setup. The <code>context.Context</code> propagates cancellation cleanly from main through the feed handler, pricer, and watchdog. The <code>select</code> with <code>time.After</code> in the pricer doubles as a heartbeat timer. This is where Go's concurrency model truly shines.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript resilient market data pipeline</h3>
+  <pre><code class="language-typescript">// Feed handler with circuit breaker and reconnect
+class FeedHandler {
+  private dropped = 0;
+  private lastTickMs = 0;
+  private running = true;
+  private breaker = new CircuitBreaker(5, 30_000);
+
+  constructor(private queue: BoundedQueue&lt;Tick&gt;) {}
+
+  async run(): Promise&lt;void&gt; {
+    let delayMs = 1000;
+    while (this.running) {
+      try {
+        await this.breaker.call(() =&gt; this.connectAndStream());
+        delayMs = 1000;
+      } catch (err) {
+        const jitter = delayMs * (0.5 + Math.random());
+        console.error(`Feed error: ${err}. Reconnecting in ${(jitter/1000).toFixed(1)}s`);
+        await new Promise(r =&gt; setTimeout(r, jitter));
+        delayMs = Math.min(delayMs * 2, 60_000);
+      }
+    }
+  }
+
+  private async connectAndStream(): Promise&lt;void&gt; {
+    const conn = await tcpConnect("feed:5555");
+    while (this.running) {
+      const tick = await conn.recvTick();
+      this.lastTickMs = Date.now();
+      if (!this.queue.tryPush(tick)) {
+        this.dropped++;
+      }
+    }
+  }
+
+  isFresh(maxAgeMs = 60_000): boolean {
+    return Date.now() - this.lastTickMs &lt; maxAgeMs;
+  }
+
+  stop(): void { this.running = false; }
+}
+
+// Pricer with fallback
+class PricerPipeline {
+  private cache = new Map&lt;string, number&gt;();
+  private lastHeartbeat = Date.now();
+
+  constructor(
+    private feedQueue: BoundedQueue&lt;Tick&gt;,
+    private riskQueue: BoundedQueue&lt;PriceResult&gt;,
+  ) {}
+
+  async run(): Promise&lt;void&gt; {
+    while (true) {
+      const tick = this.feedQueue.tryPop();
+      if (tick) {
+        let result: PriceResult;
+        try {
+          result = await priceTick(tick);
+          this.cache.set(tick.symbol, result.price);
+        } catch {
+          const stale = this.cache.get(tick.symbol);
+          if (stale !== undefined) {
+            result = { symbol: tick.symbol, price: stale, isStale: true, source: "stale" };
+          } else {
+            continue;
+          }
+        }
+        this.riskQueue.tryPush(result);
+      }
+      this.lastHeartbeat = Date.now();
+      await new Promise(r =&gt; setTimeout(r, 1)); // yield to event loop
+    }
+  }
+}
+
+// Alerting thresholds
+interface AlertConfig {
+  feedAgeWarnMs:    number; // 30_000
+  feedAgeCritMs:    number; // 60_000
+  queueWarnPct:    number; // 0.70
+  queueCritPct:    number; // 0.90
+}
+
+function startMonitoring(
+  feedHandler: FeedHandler,
+  feedQueue: BoundedQueue&lt;Tick&gt;,
+  config: AlertConfig,
+): NodeJS.Timeout {
+  return setInterval(() =&gt; {
+    const queuePct = feedQueue.size / feedQueue.capacity;
+    if (queuePct &gt; config.queueCritPct)
+      console.error(`CRITICAL: queue at ${(queuePct*100).toFixed(0)}%`);
+    else if (queuePct &gt; config.queueWarnPct)
+      console.warn(`WARN: queue at ${(queuePct*100).toFixed(0)}%`);
+
+    if (!feedHandler.isFresh(config.feedAgeCritMs))
+      console.error("CRITICAL: feed stale");
+    else if (!feedHandler.isFresh(config.feedAgeWarnMs))
+      console.warn("WARN: feed aging");
+  }, 1000);
+}</code></pre>
+  <div class="cpp-note">Node.js requires explicit <code>await new Promise(r =&gt; setTimeout(r, 1))</code> to yield to the event loop between ticks. Without it, the pricer loop would starve the health check endpoints and monitoring timers. This is the key architectural difference from Go/Rust where concurrent tasks run on separate OS threads.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Resilient pipeline across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>C++ (above)</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Concurrency model</td>
+      <td>threads + mutex</td><td>tokio tasks</td><td>goroutines + channels</td><td>event loop</td>
+    </tr>
+    <tr>
+      <td>Pipeline wiring effort</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Backpressure built-in</td>
+      <td>manual queue</td><td>mpsc::channel</td><td>buffered chan</td><td>manual queue</td>
+    </tr>
+    <tr>
+      <td>Graceful shutdown</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Latency (hot path)</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Production readiness</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Go wires the entire pipeline in the fewest lines.</strong> Channels connect stages, <code>context.Context</code> propagates shutdown, goroutines replace thread management. The <code>select</code> statement handles timeout, cancellation, and data arrival in one construct. For reliability-focused architectures, this is Go's strongest use case.</li>
+    <li><strong>Rust matches C++ on latency</strong> with the added benefit of compile-time safety. The <code>mpsc::channel</code> replaces the hand-rolled bounded queue, and <code>tokio::time::timeout</code> wrapping <code>recv()</code> is cleaner than manual condition variable timeouts.</li>
+    <li><strong>C++ remains the choice for ultra-low-latency hot paths</strong> where lock-free SPSC queues and manual memory layout matter. The tradeoff: more code, more opportunity for bugs, longer development time.</li>
+    <li><strong>TypeScript can implement the pattern</strong> but requires explicit event loop yielding and cannot parallelize CPU-bound pricing without worker threads. Best suited for non-latency-sensitive monitoring and alerting layers.</li>
+  </ul>
+
+  <h4>Decision guide</h4>
+  <ul>
+    <li><strong>Market data pipeline with many feeds:</strong> Go &mdash; goroutines scale to thousands of concurrent connections with minimal overhead</li>
+    <li><strong>Ultra-low-latency single-feed path:</strong> C++ or Rust &mdash; lock-free queues, zero-allocation hot path</li>
+    <li><strong>Monitoring and alerting layer:</strong> any language &mdash; this is not latency-sensitive</li>
+    <li><strong>Prototype or proof of concept:</strong> Go &mdash; fastest to wire up, easiest to reason about concurrency</li>
+  </ul>
+</div>

@@ -125,3 +125,364 @@ auto cmp = [](const Order& a, const Order& b) { return a.priority &gt; b.priorit
 std::priority_queue&lt;Order, std::vector&lt;Order&gt;, decltype(cmp)&gt; order_pq(cmp);</code></pre>
   <div class="cpp-note">For ultra-low-latency use an SPSC (single-producer single-consumer) lock-free queue instead of the mutex-based one above. The SPSC queue is appropriate for the 10-50ns market data hot path; the mutex version is fine for background threads.</div>
 </div>
+
+<div id="tab-rust" class="ql-tab-content" style="display:none">
+  <h3>Rust queue patterns</h3>
+  <pre><code class="language-rust">use std::sync::Arc;
+use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration, Instant};
+use std::collections::BinaryHeap;
+use std::cmp::Reverse;
+
+// Bounded FIFO — tokio::sync::mpsc is bounded by default
+async fn bounded_fifo() {
+    let (tx, mut rx) = mpsc::channel::&lt;Tick&gt;(1024); // bounded to 1024
+
+    // Producer — send() awaits when full (backpressure built in)
+    let producer = tokio::spawn(async move {
+        for tick in ticks {
+            if tx.send(tick).await.is_err() {
+                break; // receiver dropped
+            }
+        }
+    });
+
+    // Consumer
+    while let Some(tick) = rx.recv().await {
+        process_tick(tick);
+    }
+}
+
+// Priority queue — wrap BinaryHeap with tokio::sync::Mutex
+use tokio::sync::Mutex;
+
+#[derive(Eq, PartialEq)]
+struct OrderMsg {
+    priority: u32,
+    order: Order,
+}
+impl Ord for OrderMsg {
+    fn cmp(&amp;self, other: &amp;Self) -&gt; std::cmp::Ordering {
+        other.priority.cmp(&amp;self.priority) // min-heap: lower = higher priority
+    }
+}
+impl PartialOrd for OrderMsg {
+    fn partial_cmp(&amp;self, other: &amp;Self) -&gt; Option&lt;std::cmp::Ordering&gt; {
+        Some(self.cmp(other))
+    }
+}
+
+let pq: Arc&lt;Mutex&lt;BinaryHeap&lt;OrderMsg&gt;&gt;&gt; = Arc::new(Mutex::new(BinaryHeap::new()));
+pq.lock().await.push(OrderMsg { priority: 1, order: cancel_order }); // high
+pq.lock().await.push(OrderMsg { priority: 5, order: new_order });
+
+// Delay queue — sleep until the earliest item is due
+struct DelayedTask {
+    run_at: Instant,
+    task: Box&lt;dyn FnOnce() + Send&gt;,
+}
+
+async fn delay_queue_loop(mut rx: mpsc::Receiver&lt;DelayedTask&gt;) {
+    let mut heap: BinaryHeap&lt;Reverse&lt;(Instant, usize)&gt;&gt; = BinaryHeap::new();
+    let mut tasks: Vec&lt;Option&lt;Box&lt;dyn FnOnce() + Send&gt;&gt;&gt; = Vec::new();
+
+    loop {
+        let timeout = heap.peek().map(|Reverse((t, _))| *t);
+        tokio::select! {
+            Some(dt) = rx.recv() =&gt; {
+                let idx = tasks.len();
+                heap.push(Reverse((dt.run_at, idx)));
+                tasks.push(Some(dt.task));
+            }
+            _ = async {
+                match timeout {
+                    Some(t) =&gt; sleep(t.saturating_duration_since(Instant::now())).await,
+                    None =&gt; std::future::pending::&lt;()&gt;().await,
+                }
+            } =&gt; {
+                while let Some(Reverse((t, idx))) = heap.peek() {
+                    if *t &gt; Instant::now() { break; }
+                    let (_, idx) = heap.pop().unwrap().0;
+                    if let Some(task) = tasks[idx].take() { task(); }
+                }
+            }
+        }
+    }
+}
+
+// Work-stealing — use rayon's thread pool (built-in work stealing)
+use rayon::prelude::*;
+
+fn batch_price(trades: &amp;[Trade]) -&gt; Vec&lt;f64&gt; {
+    trades.par_iter().map(|t| price_trade(t)).collect()
+}</code></pre>
+  <div class="cpp-note">Rust's <code>mpsc::channel</code> with a capacity gives you bounded FIFO with built-in backpressure &mdash; <code>send().await</code> suspends the producer when the buffer is full, no manual condition variables needed. For work-stealing, <code>rayon</code> is the go-to crate and mirrors C++'s TBB.</div>
+</div>
+
+<div id="tab-go" class="ql-tab-content" style="display:none">
+  <h3>Go queue patterns</h3>
+  <pre><code class="language-go">package main
+
+import (
+    "container/heap"
+    "sync"
+    "time"
+)
+
+// Bounded FIFO — a Go buffered channel IS a bounded queue
+func boundedFIFO() {
+    feed := make(chan Tick, 1024) // bounded to 1024
+
+    // Producer — blocks when channel is full (backpressure built in)
+    go func() {
+        for tick := range ticks {
+            feed &lt;- tick // blocks if 1024 items buffered
+        }
+        close(feed)
+    }()
+
+    // Consumer — range drains until channel is closed
+    for tick := range feed {
+        processTick(tick)
+    }
+}
+
+// Non-blocking push with drop counting
+var dropped uint64
+
+func producerWithDrop(feed chan&lt;- Tick, ticks []Tick) {
+    for _, tick := range ticks {
+        select {
+        case feed &lt;- tick:
+            // sent
+        default:
+            dropped++ // channel full — drop and count
+        }
+    }
+}
+
+// Priority queue — use container/heap
+type OrderMsg struct {
+    Priority int
+    Order    Order
+    index    int
+}
+
+type OrderHeap []*OrderMsg
+
+func (h OrderHeap) Len() int            { return len(h) }
+func (h OrderHeap) Less(i, j int) bool   { return h[i].Priority &lt; h[j].Priority }
+func (h OrderHeap) Swap(i, j int)        { h[i], h[j] = h[j], h[i]; h[i].index = i; h[j].index = j }
+func (h *OrderHeap) Push(x interface{})  { *h = append(*h, x.(*OrderMsg)) }
+func (h *OrderHeap) Pop() interface{}    { old := *h; n := len(old); item := old[n-1]; *h = old[:n-1]; return item }
+
+func priorityQueueExample() {
+    pq := &amp;OrderHeap{}
+    heap.Init(pq)
+    heap.Push(pq, &amp;OrderMsg{Priority: 1, Order: cancelOrder}) // high priority
+    heap.Push(pq, &amp;OrderMsg{Priority: 5, Order: newOrder})
+    next := heap.Pop(pq).(*OrderMsg) // gets priority-1 first
+    _ = next
+}
+
+// Delay queue — time.AfterFunc or timer + heap
+func delayQueue() {
+    type delayed struct {
+        runAt time.Time
+        task  func()
+    }
+    var mu sync.Mutex
+    var tasks []delayed
+
+    schedule := func(task func(), delay time.Duration) {
+        mu.Lock()
+        tasks = append(tasks, delayed{time.Now().Add(delay), task})
+        mu.Unlock()
+    }
+
+    // Drain due tasks
+    go func() {
+        ticker := time.NewTicker(100 * time.Millisecond)
+        defer ticker.Stop()
+        for range ticker.C {
+            now := time.Now()
+            mu.Lock()
+            var remaining []delayed
+            for _, t := range tasks {
+                if t.runAt.Before(now) {
+                    go t.task()
+                } else {
+                    remaining = append(remaining, t)
+                }
+            }
+            tasks = remaining
+            mu.Unlock()
+        }
+    }()
+
+    schedule(func() { reconnect() }, 5*time.Second)
+}
+
+// Work-stealing — Go's runtime scheduler does this automatically
+// goroutines are multiplexed across OS threads with work stealing
+func batchPrice(trades []Trade) []float64 {
+    results := make([]float64, len(trades))
+    var wg sync.WaitGroup
+    for i, t := range trades {
+        wg.Add(1)
+        go func(idx int, trade Trade) {
+            defer wg.Done()
+            results[idx] = priceTrade(trade)
+        }(i, t)
+    }
+    wg.Wait()
+    return results
+}</code></pre>
+  <div class="cpp-note">Go's buffered channels are the language's native bounded queue &mdash; no wrapper class needed. The <code>select</code> statement with a <code>default</code> case gives you non-blocking try-send in one line. Go's runtime scheduler already uses work-stealing across OS threads, so goroutines get it for free.</div>
+</div>
+
+<div id="tab-ts" class="ql-tab-content" style="display:none">
+  <h3>TypeScript queue patterns</h3>
+  <pre><code class="language-typescript">// Bounded FIFO with backpressure
+class BoundedQueue&lt;T&gt; {
+  private queue: T[] = [];
+  private waiters: Array&lt;(value: T) =&gt; void&gt; = [];
+  private pushWaiters: Array&lt;() =&gt; void&gt; = [];
+
+  constructor(private capacity: number) {}
+
+  async push(item: T): Promise&lt;void&gt; {
+    while (this.queue.length &gt;= this.capacity) {
+      await new Promise&lt;void&gt;(resolve =&gt; this.pushWaiters.push(resolve));
+    }
+    this.queue.push(item);
+    if (this.waiters.length &gt; 0) this.waiters.shift()!(this.queue.shift()!);
+  }
+
+  tryPush(item: T): boolean {
+    if (this.queue.length &gt;= this.capacity) return false;
+    this.queue.push(item);
+    if (this.waiters.length &gt; 0) this.waiters.shift()!(this.queue.shift()!);
+    return true;
+  }
+
+  async pop(): Promise&lt;T&gt; {
+    if (this.queue.length &gt; 0) {
+      const item = this.queue.shift()!;
+      if (this.pushWaiters.length &gt; 0) this.pushWaiters.shift()!();
+      return item;
+    }
+    return new Promise&lt;T&gt;(resolve =&gt; this.waiters.push(resolve));
+  }
+
+  get size(): number { return this.queue.length; }
+}
+
+// Usage
+const feedQueue = new BoundedQueue&lt;Tick&gt;(1024);
+let dropped = 0;
+
+async function producer(ticks: AsyncIterable&lt;Tick&gt;): Promise&lt;void&gt; {
+  for await (const tick of ticks) {
+    if (!feedQueue.tryPush(tick)) dropped++;
+  }
+}
+
+// Priority queue using sorted insert
+class PriorityQueue&lt;T&gt; {
+  private heap: Array&lt;{ priority: number; item: T }&gt; = [];
+
+  enqueue(item: T, priority: number): void {
+    this.heap.push({ priority, item });
+    this.heap.sort((a, b) =&gt; a.priority - b.priority);
+  }
+
+  dequeue(): T | undefined {
+    return this.heap.shift()?.item;
+  }
+}
+
+const orderPQ = new PriorityQueue&lt;Order&gt;();
+orderPQ.enqueue(cancelOrder, 1);  // high priority
+orderPQ.enqueue(newOrder, 5);
+
+// Delay queue using setTimeout
+class DelayQueue {
+  schedule(task: () =&gt; void, delayMs: number): void {
+    setTimeout(task, delayMs);
+  }
+
+  scheduleRecurring(task: () =&gt; void, intervalMs: number): NodeJS.Timeout {
+    return setInterval(task, intervalMs);
+  }
+}
+
+// Work distribution — worker_threads for CPU-bound pricing
+import { Worker, isMainThread, parentPort, workerData } from "worker_threads";
+
+async function batchPrice(trades: Trade[]): Promise&lt;number[]&gt; {
+  const cpuCount = require("os").cpus().length;
+  const chunkSize = Math.ceil(trades.length / cpuCount);
+  const promises = Array.from({ length: cpuCount }, (_, i) =&gt; {
+    const chunk = trades.slice(i * chunkSize, (i + 1) * chunkSize);
+    return new Promise&lt;number[]&gt;((resolve, reject) =&gt; {
+      const worker = new Worker(__filename, { workerData: chunk });
+      worker.on("message", resolve);
+      worker.on("error", reject);
+    });
+  });
+  return (await Promise.all(promises)).flat();
+}</code></pre>
+  <div class="cpp-note">Node.js is single-threaded, so bounded queues are simpler (no mutex needed) but also less powerful &mdash; you cannot block a producer in the same way. The <code>tryPush</code> pattern with a drop counter is the idiomatic approach. For CPU-bound work-stealing, use <code>worker_threads</code> to distribute across cores.</div>
+</div>
+
+<div id="tab-compare" class="ql-tab-content" style="display:none">
+  <h3>Queue patterns across languages &mdash; trade-off matrix</h3>
+  <table class="compare-table">
+    <tr>
+      <th></th><th>Python</th><th>C#</th><th>C++</th><th>Rust</th><th>Go</th><th>TypeScript</th>
+    </tr>
+    <tr>
+      <td>Built-in bounded queue</td>
+      <td>queue.Queue(maxsize)</td><td>Channel&lt;T&gt;</td><td>manual (mutex+CV)</td><td>mpsc::channel(n)</td><td>make(chan T, n)</td><td>manual (array+Promise)</td>
+    </tr>
+    <tr>
+      <td>Backpressure ergonomics</td>
+      <td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Priority queue stdlib</td>
+      <td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td><td class="star">&#9733;</td>
+    </tr>
+    <tr>
+      <td>Work-stealing support</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+    <tr>
+      <td>Non-blocking try-send</td>
+      <td>put_nowait</td><td>TryWrite</td><td>try_push (manual)</td><td>try_send</td><td>select/default</td><td>tryPush (manual)</td>
+    </tr>
+    <tr>
+      <td>Performance under load</td>
+      <td class="star">&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;&#9733;&#9733;</td><td class="star">&#9733;&#9733;</td>
+    </tr>
+  </table>
+
+  <h4>Key observations</h4>
+  <ul>
+    <li><strong>Go's buffered channel is the gold standard for queue ergonomics.</strong> A bounded FIFO with backpressure is one line: <code>make(chan T, n)</code>. Non-blocking send is <code>select/default</code>. No wrapper class, no condition variables, no mutex. This is where Go shines most.</li>
+    <li><strong>Rust's <code>mpsc::channel</code> is nearly as clean</strong> and adds compile-time ownership guarantees &mdash; you cannot accidentally share a receiver across threads without <code>Arc</code>. The downside: priority queues require more boilerplate than other languages.</li>
+    <li><strong>C++ gives you maximum control and maximum responsibility.</strong> You write the mutex, condition variable, and capacity logic yourself. The payoff: lock-free SPSC queues for the hot path that no other language can match at 10-50ns per operation.</li>
+    <li><strong>TypeScript's single-threaded model simplifies queues</strong> (no data races) but limits parallelism. For CPU-bound batch pricing, you must reach for <code>worker_threads</code>, which adds IPC serialisation overhead.</li>
+    <li><strong>Go's runtime work-stealing is invisible.</strong> Every goroutine benefits from it automatically. In C++ and Rust you choose between manual thread pools (TBB, rayon) or rolling your own.</li>
+  </ul>
+
+  <h4>Decision guide for queue patterns</h4>
+  <ul>
+    <li><strong>Market data feed to pricer (bounded FIFO):</strong> Go channel or Rust mpsc for clean backpressure; C++ SPSC for ultra-low-latency</li>
+    <li><strong>Order routing with priority:</strong> C++ or C# have the best stdlib priority queues; Go requires container/heap boilerplate</li>
+    <li><strong>Retry scheduling (delay queue):</strong> all languages need manual implementation; Go's <code>time.AfterFunc</code> is the most concise</li>
+    <li><strong>Parallel batch pricing (work-stealing):</strong> Go goroutines or Rust rayon &mdash; both handle thousands of tasks effortlessly</li>
+    <li><strong>Prototype or scripting:</strong> Python's <code>queue.Queue</code> is simple and correct; TypeScript if the team is JS-native</li>
+  </ul>
+</div>
