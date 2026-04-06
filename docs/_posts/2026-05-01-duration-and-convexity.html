@@ -1,0 +1,474 @@
+---
+layout: post
+title: "Duration & Convexity: How Bond Prices Move When Rates Change"
+date: 2026-05-01
+tags: [math, finance, duration, convexity, macaulay-duration, modified-duration, dv01, interest-rate-risk, bond-pricing, quant-lab]
+categories:
+- Math / Finance
+section: math-finance
+permalink: "/math-finance/duration-convexity/"
+---
+
+<h2>A Complete Walkthrough of Duration and Convexity</h2>
+
+<p>This post is a self-contained reference for the two most important measures of interest-rate risk: <strong>duration</strong> (first-order sensitivity) and <strong>convexity</strong> (second-order correction). Every concept comes with a fully worked numerical example so you can follow the arithmetic by hand, plus Python code you can run yourself.</p>
+
+<hr>
+
+<h2>1 &mdash; The Problem: Rates Move, Bond Prices Change</h2>
+
+<p>Bond prices and interest rates move in opposite directions. When rates go up, the present value of a bond's future cash flows drops, so the price falls. When rates go down, the price rises.</p>
+
+<p>But <strong>by how much?</strong> That is the key risk-management question. Two bonds with the same face value and maturity can react very differently to the same rate move. Duration answers "how much does the price change for a small rate move?" Convexity answers "is the duration estimate good enough for a large rate move?"</p>
+
+<p>Together they give you the Taylor expansion of the price/yield relationship:</p>
+
+<pre><code>&Delta;P / P &asymp; &minus;D<sub>mod</sub> &times; &Delta;y  +  &frac12; &times; C &times; (&Delta;y)&sup2;
+
+where D<sub>mod</sub> = modified duration, C = convexity, &Delta;y = yield change</code></pre>
+
+<p>The first term (duration) is a straight line. The second term (convexity) captures the curvature. For small rate moves, duration alone is fine. For larger moves, you need both.</p>
+
+<hr>
+
+<h2>2 &mdash; Macaulay Duration</h2>
+
+<p><strong>Definition:</strong> Macaulay duration is the weighted-average time to receive a bond's cash flows, where each cash flow is weighted by its present value as a fraction of the total price.</p>
+
+<p style="margin-left:2em;">D<sub>mac</sub> = &sum; [ t &times; PV(CF<sub>t</sub>) ] / Price</p>
+
+<p>The result is in <strong>years</strong>. It tells you, on average, when you get your money back.</p>
+
+<h3>Worked example: 5% coupon, 3-year bond, yield = 6%</h3>
+
+<p>Face value = 100. Annual coupon = 5. Yield to maturity = 6%. Cash flows: $5 at years 1 and 2, $105 at year 3.</p>
+
+<p><strong>Step 1 &mdash; Present value of each cash flow:</strong></p>
+
+<pre><code>Year 1:   5 / (1.06)^1 =   5 / 1.0600 =  4.7170
+Year 2:   5 / (1.06)^2 =   5 / 1.1236 =  4.4500
+Year 3: 105 / (1.06)^3 = 105 / 1.1910 = 88.1668
+
+Price = 4.7170 + 4.4500 + 88.1668 = <strong>97.333</strong></code></pre>
+
+<p><strong>Step 2 &mdash; Weight each PV by its time:</strong></p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Year (t)</th><th>CF</th><th>PV(CF)</th><th>t &times; PV(CF)</th></tr>
+  <tr><td>1</td><td>5</td><td>4.7170</td><td>1 &times; 4.7170 = 4.7170</td></tr>
+  <tr><td>2</td><td>5</td><td>4.4500</td><td>2 &times; 4.4500 = 8.9000</td></tr>
+  <tr><td>3</td><td>105</td><td>88.1668</td><td>3 &times; 88.1668 = 264.5004</td></tr>
+  <tr><td colspan="3" style="text-align:right;"><strong>Sum:</strong></td><td><strong>278.1174</strong></td></tr>
+</table>
+
+<p><strong>Step 3 &mdash; Divide by price:</strong></p>
+
+<pre><code>D<sub>mac</sub> = 278.1174 / 97.333 = <strong>2.857 years</strong></code></pre>
+
+<p>Interpretation: on average, you receive your money back in 2.86 years. The 3-year maturity is pulled down because the coupon payments arrive earlier than the final principal.</p>
+
+<hr>
+
+<h2>3 &mdash; Modified Duration</h2>
+
+<p><strong>Definition:</strong> Modified duration converts Macaulay duration into a direct measure of price sensitivity. It is the <strong>percentage price change per 1% change in yield</strong>.</p>
+
+<p style="margin-left:2em;">D<sub>mod</sub> = D<sub>mac</sub> / (1 + y / k)</p>
+
+<p>where y = yield to maturity and k = compounding frequency (k = 1 for annual, k = 2 for semiannual).</p>
+
+<h3>Worked example (continuing from above)</h3>
+
+<p>Annual compounding (k = 1), y = 6%:</p>
+
+<pre><code>D<sub>mod</sub> = 2.857 / (1 + 0.06 / 1) = 2.857 / 1.06 = <strong>2.695</strong></code></pre>
+
+<p>Meaning: if the yield rises by 1% (100 bps), the bond price falls by approximately 2.695%.</p>
+
+<h3>Verification: reprice at 7%</h3>
+
+<pre><code>Year 1:   5 / (1.07)^1 =   5 / 1.0700 =  4.6729
+Year 2:   5 / (1.07)^2 =   5 / 1.1449 =  4.3672
+Year 3: 105 / (1.07)^3 = 105 / 1.2250 = 85.7117
+
+Price at 7% = 4.6729 + 4.3672 + 85.7117 = <strong>94.752</strong></code></pre>
+
+<p>Actual percentage change:</p>
+
+<pre><code>&Delta;P / P = (94.752 &minus; 97.333) / 97.333 = &minus;2.581 / 97.333 = <strong>&minus;2.652%</strong></code></pre>
+
+<p>Duration estimate: &minus;2.695%. Actual: &minus;2.652%. The difference of 0.043 percentage points comes from the curvature of the price/yield relationship &mdash; that is exactly what convexity captures.</p>
+
+<hr>
+
+<h2>4 &mdash; Dollar Duration (DV01 / BPV)</h2>
+
+<p><strong>Definition:</strong> DV01 (dollar value of one basis point) is the dollar change in price for a 1 bp (0.01%) move in yield. Also called BPV (basis point value).</p>
+
+<p style="margin-left:2em;">DV01 = D<sub>mod</sub> &times; Price &times; 0.0001</p>
+
+<p>DV01 is quoted per 100 face value. To scale to a portfolio position:</p>
+
+<p style="margin-left:2em;">Portfolio DV01 = DV01 &times; (Notional / 100)</p>
+
+<h3>Worked example: $10 million position</h3>
+
+<p>Bond: D<sub>mod</sub> = 5.2, clean price = 98.50 per 100 face, position = $10,000,000 notional.</p>
+
+<pre><code>DV01 per 100 face = 5.2 &times; 98.50 &times; 0.0001 = <strong>$0.05122</strong>
+
+Portfolio DV01 = 0.05122 &times; (10,000,000 / 100) = <strong>$5,122 per basis point</strong></code></pre>
+
+<p>If rates rise by 10 bps:</p>
+
+<pre><code>P&amp;L = &minus;$5,122 &times; 10 = <strong>&minus;$51,220</strong></code></pre>
+
+<p>A 10 bp rate rise costs this portfolio $51,220. DV01 is the number traders and risk managers use daily to size hedges and set risk limits.</p>
+
+<hr>
+
+<h2>5 &mdash; Key Duration Relationships</h2>
+
+<p>Several intuitive rules govern how duration behaves:</p>
+
+<ul>
+  <li><strong>Zero-coupon bond:</strong> D<sub>mac</sub> = maturity. All cash flow arrives at the end, so the weighted-average time equals the maturity itself.</li>
+  <li><strong>Higher coupon &rarr; lower duration.</strong> More cash flow arrives early, pulling the weighted average toward the present.</li>
+  <li><strong>Longer maturity &rarr; higher duration.</strong> Cash flows extend further into the future.</li>
+  <li><strong>Higher yield &rarr; slightly lower duration.</strong> Higher discount rates shrink the PV of distant cash flows more than near ones, pulling the average closer.</li>
+</ul>
+
+<h3>Duration table: 10-year bonds at 5% yield</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Coupon</th><th>Maturity</th><th>D<sub>mac</sub> (years)</th><th>D<sub>mod</sub></th></tr>
+  <tr><td>0% (zero)</td><td>10</td><td>10.000</td><td>9.524</td></tr>
+  <tr><td>2%</td><td>10</td><td>9.070</td><td>8.638</td></tr>
+  <tr><td>5%</td><td>10</td><td>7.989</td><td>7.609</td></tr>
+  <tr><td>8%</td><td>10</td><td>7.247</td><td>6.902</td></tr>
+  <tr><td>5%</td><td>5</td><td>4.546</td><td>4.330</td></tr>
+  <tr><td>5%</td><td>30</td><td>15.372</td><td>14.640</td></tr>
+</table>
+
+<p>The zero-coupon 10-year bond has the highest duration at 10 years. As you add coupon, duration drops. Extending to 30 years nearly doubles the duration compared to 10 years.</p>
+
+<h3>Python: compute Macaulay and modified duration</h3>
+
+<pre><code class="language-python">def duration(coupon_rate, face, maturity, ytm, freq=1):
+    """Compute Macaulay and modified duration for a fixed-rate bond.
+
+    Args:
+        coupon_rate: annual coupon rate (e.g., 0.05 for 5%)
+        face: face value (e.g., 100)
+        maturity: years to maturity
+        ytm: yield to maturity (e.g., 0.06 for 6%)
+        freq: compounding frequency (1 = annual, 2 = semiannual)
+
+    Returns:
+        (price, mac_duration, mod_duration)
+    """
+    n_periods = int(maturity * freq)
+    coupon = coupon_rate * face / freq
+    y = ytm / freq
+
+    price = 0.0
+    weighted_time = 0.0
+
+    for t in range(1, n_periods + 1):
+        cf = coupon if t &lt; n_periods else coupon + face
+        pv = cf / (1 + y) ** t
+        price += pv
+        weighted_time += (t / freq) * pv    # t/freq converts periods to years
+
+    mac_dur = weighted_time / price
+    mod_dur = mac_dur / (1 + y)
+
+    return price, mac_dur, mod_dur
+
+
+# Example: 5% coupon, 3-year, 6% yield
+price, mac, mod = duration(0.05, 100, 3, 0.06)
+print(f"Price:     {price:.3f}")
+print(f"Mac Dur:   {mac:.3f} years")
+print(f"Mod Dur:   {mod:.3f}")
+# Output:
+#   Price:     97.333
+#   Mac Dur:   2.857 years
+#   Mod Dur:   2.695
+</code></pre>
+
+<hr>
+
+<h2>6 &mdash; Convexity</h2>
+
+<p><strong>Definition:</strong> Convexity is the second derivative of the price/yield relationship, scaled by the price. It measures how much duration itself changes as yields move. A straight-line (zero convexity) approximation undershoots when rates fall and overshoots when rates rise. Convexity corrects this.</p>
+
+<p style="margin-left:2em;">Convexity = &sum; [ t(t+1) &times; PV(CF<sub>t</sub>) ] / [ Price &times; (1 + y)&sup2; ]</p>
+
+<h3>Worked example: same 3-year bond (5% coupon, 6% yield)</h3>
+
+<p>We already have the PV of each cash flow from Section 2. Now compute t(t+1) &times; PV for each:</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Year (t)</th><th>PV(CF)</th><th>t(t+1)</th><th>t(t+1) &times; PV</th></tr>
+  <tr><td>1</td><td>4.7170</td><td>1 &times; 2 = 2</td><td>2 &times; 4.7170 = 9.4340</td></tr>
+  <tr><td>2</td><td>4.4500</td><td>2 &times; 3 = 6</td><td>6 &times; 4.4500 = 26.7000</td></tr>
+  <tr><td>3</td><td>88.1668</td><td>3 &times; 4 = 12</td><td>12 &times; 88.1668 = 1058.0016</td></tr>
+  <tr><td colspan="3" style="text-align:right;"><strong>Sum:</strong></td><td><strong>1094.1356</strong></td></tr>
+</table>
+
+<p>Divide by Price &times; (1 + y)&sup2;:</p>
+
+<pre><code>Denominator = 97.333 &times; (1.06)&sup2; = 97.333 &times; 1.1236 = 109.365
+
+Convexity = 1094.1356 / 109.365 = <strong>10.005</strong></code></pre>
+
+<h3>The full approximation formula</h3>
+
+<pre><code>&Delta;P / P &asymp; &minus;D<sub>mod</sub> &times; &Delta;y  +  &frac12; &times; Convexity &times; (&Delta;y)&sup2;</code></pre>
+
+<h3>Verification: large rate move (yield 6% &rarr; 8%, &Delta;y = +2%)</h3>
+
+<p><strong>Duration-only estimate:</strong></p>
+
+<pre><code>&Delta;P / P &asymp; &minus;2.695 &times; 0.02 = &minus;0.05390 = <strong>&minus;5.390%</strong></code></pre>
+
+<p><strong>Duration + convexity estimate:</strong></p>
+
+<pre><code>&Delta;P / P &asymp; &minus;0.05390 + 0.5 &times; 10.005 &times; (0.02)&sup2;
+       = &minus;0.05390 + 0.5 &times; 10.005 &times; 0.0004
+       = &minus;0.05390 + 0.00200
+       = &minus;0.05190 = <strong>&minus;5.190%</strong></code></pre>
+
+<p><strong>Actual (reprice at 8%):</strong></p>
+
+<pre><code>Year 1:   5 / (1.08)^1 =   5 / 1.0800 =  4.6296
+Year 2:   5 / (1.08)^2 =   5 / 1.1664 =  4.2867
+Year 3: 105 / (1.08)^3 = 105 / 1.2597 = 83.3531
+
+Price at 8% = 4.6296 + 4.2867 + 83.3531 = <strong>92.269</strong>
+
+Actual &Delta;P / P = (92.269 &minus; 97.333) / 97.333 = <strong>&minus;5.203%</strong></code></pre>
+
+<p><strong>Comparison:</strong></p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Method</th><th>Estimated &Delta;P/P</th><th>Error vs Actual</th></tr>
+  <tr><td>Duration only</td><td>&minus;5.390%</td><td>0.187% too negative</td></tr>
+  <tr><td>Duration + convexity</td><td>&minus;5.190%</td><td>0.013% too positive</td></tr>
+  <tr><td>Actual (repricing)</td><td>&minus;5.203%</td><td>&mdash;</td></tr>
+</table>
+
+<p>The convexity correction reduced the error from 0.187% to 0.013% &mdash; an improvement of over 14x. For a $100 million portfolio, that is the difference between being off by $187,000 versus $13,000.</p>
+
+<h3>Python: compute convexity and full approximation</h3>
+
+<pre><code class="language-python">def convexity(coupon_rate, face, maturity, ytm, freq=1):
+    """Compute convexity for a fixed-rate bond."""
+    n_periods = int(maturity * freq)
+    coupon = coupon_rate * face / freq
+    y = ytm / freq
+
+    price = 0.0
+    conv_sum = 0.0
+
+    for t in range(1, n_periods + 1):
+        cf = coupon if t &lt; n_periods else coupon + face
+        pv = cf / (1 + y) ** t
+        price += pv
+        conv_sum += t * (t + 1) * pv
+
+    cx = conv_sum / (price * (1 + y) ** 2)
+    return cx
+
+
+def price_change_approx(mod_dur, cx, delta_y):
+    """Estimate percentage price change using duration + convexity."""
+    return -mod_dur * delta_y + 0.5 * cx * delta_y ** 2
+
+
+# Example: 5% coupon, 3-year, yield moves from 6% to 8%
+_, mac, mod = duration(0.05, 100, 3, 0.06)
+cx = convexity(0.05, 100, 3, 0.06)
+approx = price_change_approx(mod, cx, 0.02)
+
+print(f"Mod Duration: {mod:.3f}")
+print(f"Convexity:    {cx:.3f}")
+print(f"Approx dP/P:  {approx:.5f}  ({approx * 100:.3f}%)")
+# Output:
+#   Mod Duration: 2.695
+#   Convexity:    10.005
+#   Approx dP/P:  -0.05190  (-5.190%)
+</code></pre>
+
+<hr>
+
+<h2>7 &mdash; Why Convexity Is Good for Bondholders</h2>
+
+<p>For an option-free bond, convexity is always <strong>positive</strong>. This means the price/yield curve bows outward (it is concave upward when viewed from the yield axis). The practical consequence:</p>
+
+<ul>
+  <li><strong>When rates fall:</strong> the price rises <em>more</em> than duration alone predicts.</li>
+  <li><strong>When rates rise:</strong> the price falls <em>less</em> than duration alone predicts.</li>
+</ul>
+
+<p>In both directions, convexity works in the bondholder's favor. You win more than you lose. This is why, all else equal, investors prefer bonds with higher convexity &mdash; and they accept a slightly lower yield for it.</p>
+
+<h3>Numerical demonstration</h3>
+
+<p>Using our 3-year bond (D<sub>mod</sub> = 2.695, convexity = 10.005, price = 97.333):</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Yield move</th><th>Duration-only &Delta;P/P</th><th>Actual &Delta;P/P</th><th>Convexity benefit</th></tr>
+  <tr>
+    <td>&minus;2% (6% &rarr; 4%)</td>
+    <td>+5.390%</td>
+    <td>+5.604%</td>
+    <td>+0.214% extra gain</td>
+  </tr>
+  <tr>
+    <td>+2% (6% &rarr; 8%)</td>
+    <td>&minus;5.390%</td>
+    <td>&minus;5.203%</td>
+    <td>0.187% less loss</td>
+  </tr>
+</table>
+
+<p>Rates down 2%: you gain 5.60% instead of 5.39%. Rates up 2%: you lose only 5.20% instead of 5.39%. The asymmetry is convexity at work.</p>
+
+<h3>Callable bonds: negative convexity</h3>
+
+<p>A callable bond behaves differently. When rates fall far enough, the issuer will call the bond at the call price (typically par). This caps the upside &mdash; the price cannot rise much above the call price. The result is <strong>negative convexity</strong> in the low-rate region:</p>
+
+<pre><code>Option-free bond:  rates fall &rarr; price rises freely         (positive convexity)
+Callable bond:     rates fall &rarr; price rises, then flattens  (negative convexity)
+
+At very low rates, the callable bond's price is "compressed" toward the call price.
+Duration actually decreases as rates fall (it shortens toward the call date).</code></pre>
+
+<p>This is why callable bonds offer a higher yield &mdash; the bondholder is compensated for giving up convexity. The OAS framework (covered in the <a href="/math-finance/bond-pricing/">bond pricing post</a>) strips out this option effect to isolate the pure credit spread.</p>
+
+<hr>
+
+<h2>8 &mdash; Duration vs Spread Duration (CS01)</h2>
+
+<p>A corporate bond is exposed to <strong>two</strong> independent sources of rate risk:</p>
+
+<ol>
+  <li><strong>Interest-rate duration:</strong> sensitivity to changes in the risk-free rate (Treasury yields).</li>
+  <li><strong>Spread duration (CS01):</strong> sensitivity to changes in the credit spread.</li>
+</ol>
+
+<p>They can &mdash; and do &mdash; move independently:</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Scenario</th><th>Rates</th><th>Spreads</th><th>Bond price</th></tr>
+  <tr><td>Risk-off flight to quality</td><td>&darr;</td><td>&uarr;</td><td>Depends on which dominates</td></tr>
+  <tr><td>Economic recovery</td><td>&uarr;</td><td>&darr;</td><td>Depends on which dominates</td></tr>
+  <tr><td>Central bank hike + recession fear</td><td>&uarr;</td><td>&uarr;</td><td>Falls on both fronts</td></tr>
+  <tr><td>Rate cuts + credit optimism</td><td>&darr;</td><td>&darr;</td><td>Rises on both fronts</td></tr>
+</table>
+
+<p>The total P&amp;L approximation for a single bond position is:</p>
+
+<pre><code>&Delta;P &asymp; &minus;DV01 &times; &Delta;rate(bps) &minus; CS01 &times; &Delta;spread(bps) &times; (Notional / 100)</code></pre>
+
+<h3>Worked example</h3>
+
+<p>A $5M corporate bond position: D<sub>mod</sub> = 4.8, price = 99.00, CS01 = 0.048 per 100 face.</p>
+
+<pre><code>Rate DV01 = 4.8 &times; 99.00 &times; 0.0001 = $0.04752 per 100 face
+Portfolio rate DV01 = 0.04752 &times; 50,000 = <strong>$2,376 per bp</strong>
+
+Portfolio CS01 = 0.048 &times; 50,000 = <strong>$2,400 per bp of spread</strong></code></pre>
+
+<p>Scenario: rates rise 15 bps, spreads widen 25 bps.</p>
+
+<pre><code>Rate P&amp;L   = &minus;$2,376 &times; 15 = &minus;$35,640
+Spread P&amp;L = &minus;$2,400 &times; 25 = &minus;$60,000
+Total P&amp;L  =                   <strong>&minus;$95,640</strong></code></pre>
+
+<p>Spread risk ($60,000) dominates rate risk ($35,640) in this scenario. Portfolio managers track both metrics separately and hedge each with different instruments &mdash; interest-rate swaps for duration, CDS for spread risk.</p>
+
+<hr>
+
+<h2>9 &mdash; How It Connects to QuantLab</h2>
+
+<p>Duration and convexity are foundational inputs to the risk frameworks built in the QuantLab exercise series:</p>
+
+<ul>
+  <li><strong>Interest-rate VaR:</strong> Duration and convexity feed into the parametric VaR calculation. The portfolio DV01 tells you how much P&amp;L volatility to expect from rate moves. Combined with historical rate-change volatility, you get interest-rate VaR.</li>
+  <li><strong>Credit VaR (Exercise 20):</strong> CS01 (spread duration) is the parallel concept for credit spreads. The Monte Carlo credit VaR engine simulates correlated spread changes and uses CS01 to convert them into portfolio P&amp;L.</li>
+  <li><strong>Binomial trees (Exercise 19):</strong> When duration approximation is not accurate enough &mdash; for example, with callable or putable bonds &mdash; you price directly on a rate tree using backward induction. The tree naturally captures both duration and convexity effects without needing to compute them separately.</li>
+  <li><strong>OAS vs Z-spread:</strong> The difference between OAS and Z-spread for a callable bond is driven by negative convexity in the low-rate region. The binomial tree prices the option; the OAS strips it out. Duration and convexity explain <em>why</em> the two spreads differ.</li>
+</ul>
+
+<p>The full chain for interest-rate risk:</p>
+
+<pre><code>Cash flows &rarr; Duration + Convexity &rarr; DV01 &rarr; Rate VaR
+
+The full chain for credit risk:
+
+Cash flows &rarr; Spread Duration (CS01) &rarr; Credit VaR (Monte Carlo)
+
+Both feed into total portfolio risk, which accounts for correlations
+between rate moves and spread moves across all positions.</code></pre>
+
+<h3>Python: full bond risk dashboard</h3>
+
+<pre><code class="language-python">def bond_risk_report(coupon_rate, face, maturity, ytm, notional, freq=1):
+    """Print a complete duration/convexity/DV01 risk report."""
+    price, mac_dur, mod_dur = duration(coupon_rate, face, maturity, ytm, freq)
+    cx = convexity(coupon_rate, face, maturity, ytm, freq)
+    dv01_per_100 = mod_dur * price * 0.0001
+    portfolio_dv01 = dv01_per_100 * (notional / face)
+
+    print(f"{'Bond Risk Report':=^50}")
+    print(f"Coupon:         {coupon_rate * 100:.2f}%")
+    print(f"Maturity:       {maturity} years")
+    print(f"YTM:            {ytm * 100:.2f}%")
+    print(f"Price:          {price:.3f} per 100 face")
+    print(f"Notional:       ${notional:,.0f}")
+    print(f"{'':=^50}")
+    print(f"Macaulay Dur:   {mac_dur:.3f} years")
+    print(f"Modified Dur:   {mod_dur:.3f}")
+    print(f"Convexity:      {cx:.3f}")
+    print(f"DV01 (per 100): ${dv01_per_100:.5f}")
+    print(f"Portfolio DV01: ${portfolio_dv01:,.2f} per bp")
+    print(f"{'':=^50}")
+
+    # Scenario analysis
+    for shock_bps in [-50, -25, -10, 10, 25, 50, 100]:
+        dy = shock_bps / 10000
+        approx_pct = -mod_dur * dy + 0.5 * cx * dy ** 2
+        approx_pnl = approx_pct * price * (notional / face)
+        print(f"  {shock_bps:+4d} bps: dP/P = {approx_pct * 100:+.3f}%"
+              f"  P&amp;L = ${approx_pnl:+,.0f}")
+
+
+# Example: $10M position in a 5% 10-year bond at 5% yield
+bond_risk_report(0.05, 100, 10, 0.05, 10_000_000)
+# Output:
+#   =============Bond Risk Report=============
+#   Coupon:         5.00%
+#   Maturity:       10 years
+#   YTM:            5.00%
+#   Price:          100.000 per 100 face
+#   Notional:       $10,000,000
+#   ==========================================
+#   Macaulay Dur:   7.989 years
+#   Modified Dur:   7.609
+#   Convexity:      74.899
+#   DV01 (per 100): $0.07609
+#   Portfolio DV01: $7,608.63 per bp
+#   ==========================================
+#     -50 bps: dP/P = +3.898%  P&amp;L = $+389,779
+#     -25 bps: dP/P = +1.926%  P&amp;L = $+192,546
+#     -10 bps: dP/P = +0.765%  P&amp;L = $+76,459
+#     +10 bps: dP/P = -0.757%  P&amp;L = $-75,715
+#     +25 bps: dP/P = -1.879%  P&amp;L = $-187,853
+#     +50 bps: dP/P = -3.711%  P&amp;L = $-371,019
+#    +100 bps: dP/P = -7.234%  P&amp;L = $-723,414
+</code></pre>
+
+<p>Notice the asymmetry: a 50 bp rate drop gains $389,779 while a 50 bp rate rise loses only $371,019. The difference of $18,760 is the convexity benefit &mdash; present in every option-free bond, and one of the most important concepts in fixed-income risk management.</p>

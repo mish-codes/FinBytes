@@ -1,0 +1,401 @@
+---
+layout: post
+title: "The Greeks: Option Price Sensitivities Explained"
+date: 2026-05-02
+tags: [math, finance, greeks, delta, gamma, theta, vega, rho, black-scholes, options, derivatives, quant-lab]
+categories:
+- Math / Finance
+section: math-finance
+permalink: "/math-finance/greeks/"
+---
+
+<h2>1. What Are the Greeks?</h2>
+
+<p>An option price depends on several inputs: the stock price, time to expiry, volatility, interest rates, and the strike. Change any one of these and the option price moves. The <strong>Greeks</strong> are the partial derivatives of the option price with respect to each input.</p>
+
+<p>Think of them as a dashboard of sensitivities. Each Greek answers one question: &ldquo;If input X changes by one unit, how much does the option price change?&rdquo;</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; text-align:center;">
+  <tr><th>Greek</th><th>Symbol</th><th>Measures sensitivity to</th></tr>
+  <tr><td>Delta</td><td>&Delta;</td><td>Stock price (S)</td></tr>
+  <tr><td>Gamma</td><td>&Gamma;</td><td>Stock price (second order)</td></tr>
+  <tr><td>Theta</td><td>&Theta;</td><td>Time to expiry (T)</td></tr>
+  <tr><td>Vega</td><td>&nu;</td><td>Implied volatility (&sigma;)</td></tr>
+  <tr><td>Rho</td><td>&rho;</td><td>Interest rate (r)</td></tr>
+</table>
+
+<p>Traders use the Greeks to manage risk. A market maker who sells options does not want to bet on direction &mdash; she hedges her delta, monitors her gamma, and watches her theta bleed. The Greeks make that possible.</p>
+
+<hr>
+
+<h2>2. Black-Scholes Setup</h2>
+
+<p>The Black-Scholes model gives closed-form formulas for European call and put prices, which makes all five Greeks computable analytically. The inputs are:</p>
+
+<ul>
+  <li><strong>S</strong> &mdash; current stock price</li>
+  <li><strong>K</strong> &mdash; strike price</li>
+  <li><strong>T</strong> &mdash; time to expiry (in years)</li>
+  <li><strong>r</strong> &mdash; risk-free interest rate (continuously compounded)</li>
+  <li><strong>&sigma;</strong> &mdash; volatility of the stock (annualized)</li>
+</ul>
+
+<h3>The formulas</h3>
+
+<p style="margin-left:2em;">
+  d<sub>1</sub> = [ln(S/K) + (r + &sigma;&sup2;/2) &middot; T] / (&sigma; &middot; &radic;T)<br>
+  d<sub>2</sub> = d<sub>1</sub> &minus; &sigma; &middot; &radic;T
+</p>
+
+<p style="margin-left:2em;">
+  Call price: C = S &middot; N(d<sub>1</sub>) &minus; K &middot; e<sup>&minus;rT</sup> &middot; N(d<sub>2</sub>)<br>
+  Put price: P = K &middot; e<sup>&minus;rT</sup> &middot; N(&minus;d<sub>2</sub>) &minus; S &middot; N(&minus;d<sub>1</sub>)
+</p>
+
+<p>where N(&middot;) is the standard normal cumulative distribution function and N&prime;(&middot;) is the standard normal density function.</p>
+
+<h3>Running example</h3>
+
+<p>We will use one set of inputs throughout this post:</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; text-align:center;">
+  <tr><th>Input</th><th>Value</th></tr>
+  <tr><td>S (spot)</td><td>$100</td></tr>
+  <tr><td>K (strike)</td><td>$100</td></tr>
+  <tr><td>T (time)</td><td>1 year</td></tr>
+  <tr><td>r (rate)</td><td>5%</td></tr>
+  <tr><td>&sigma; (vol)</td><td>20%</td></tr>
+</table>
+
+<p><strong>Computing d<sub>1</sub> and d<sub>2</sub>:</strong></p>
+
+<p style="margin-left:2em;">
+  d<sub>1</sub> = [ln(100/100) + (0.05 + 0.04/2) &middot; 1] / (0.20 &middot; 1)<br>
+  d<sub>1</sub> = [0 + 0.07] / 0.20 = <strong>0.3500</strong><br><br>
+  d<sub>2</sub> = 0.3500 &minus; 0.20 = <strong>0.1500</strong>
+</p>
+
+<p><strong>Call price:</strong></p>
+
+<p style="margin-left:2em;">
+  N(0.3500) = 0.6368, &ensp; N(0.1500) = 0.5596<br>
+  e<sup>&minus;0.05</sup> = 0.9512<br>
+  C = 100 &times; 0.6368 &minus; 100 &times; 0.9512 &times; 0.5596<br>
+  C = 63.68 &minus; 53.23 = <strong>$10.45</strong>
+</p>
+
+<p>This at-the-money call with one year to expiry is worth $10.45. Now let us see how sensitive that price is to each input.</p>
+
+<hr>
+
+<h2>3. Delta (&Delta;) &mdash; Sensitivity to Stock Price</h2>
+
+<p>Delta is the first partial derivative of the option price with respect to the stock price: &Delta; = &part;C/&part;S. It tells you how much the option price changes for a $1 move in the underlying.</p>
+
+<h3>Formulas</h3>
+
+<p style="margin-left:2em;">
+  Call delta: &Delta;<sub>call</sub> = N(d<sub>1</sub>)<br>
+  Put delta: &Delta;<sub>put</sub> = N(d<sub>1</sub>) &minus; 1
+</p>
+
+<h3>Worked example</h3>
+
+<p style="margin-left:2em;">
+  d<sub>1</sub> = 0.3500<br>
+  &Delta;<sub>call</sub> = N(0.3500) = <strong>0.6368</strong><br>
+  &Delta;<sub>put</sub> = 0.6368 &minus; 1 = <strong>&minus;0.3632</strong>
+</p>
+
+<p><strong>Interpretation:</strong> if the stock rises from $100 to $101, the call price rises by approximately $0.64, from $10.45 to about $11.09. The put price would fall by about $0.36.</p>
+
+<h3>Delta hedging</h3>
+
+<p>A trader who has sold 100 call contracts (each on 1 share) has a short position that loses money if the stock rises. To neutralize this, she buys &Delta; &times; 100 = 63.68 shares. Now her portfolio is <strong>delta-neutral</strong>: small moves in the stock do not change her P&amp;L.</p>
+
+<p>Of course, delta changes as the stock moves (that is what gamma measures), so she must continuously re-hedge &mdash; a process called <strong>dynamic hedging</strong>.</p>
+
+<h3>Delta as a probability proxy</h3>
+
+<p>A rough but useful approximation: the call delta is close to the risk-neutral probability that the option finishes in the money. Our delta of 0.64 suggests roughly a 64% chance this ATM call expires ITM. This is not exact &mdash; the true risk-neutral probability is N(d<sub>2</sub>) = 0.5596 &mdash; but delta serves as a quick mental model.</p>
+
+<hr>
+
+<h2>4. Gamma (&Gamma;) &mdash; How Fast Delta Changes</h2>
+
+<p>Gamma is the second partial derivative of price with respect to the stock: &Gamma; = &part;&sup2;C/&part;S&sup2; = &part;&Delta;/&part;S. It measures the <em>curvature</em> of the option price as a function of S.</p>
+
+<h3>Formula</h3>
+
+<p style="margin-left:2em;">
+  &Gamma; = N&prime;(d<sub>1</sub>) / (S &middot; &sigma; &middot; &radic;T)
+</p>
+
+<p>where N&prime;(x) = (1/&radic;(2&pi;)) &middot; e<sup>&minus;x&sup2;/2</sup> is the standard normal density.</p>
+
+<h3>Worked example</h3>
+
+<p style="margin-left:2em;">
+  N&prime;(0.3500) = (1/&radic;(2&pi;)) &middot; e<sup>&minus;0.1225/2</sup><br>
+  = 0.39894 &times; e<sup>&minus;0.06125</sup><br>
+  = 0.39894 &times; 0.94059 = <strong>0.37524</strong><br><br>
+  &Gamma; = 0.37524 / (100 &times; 0.20 &times; 1) = 0.37524 / 20 = <strong>0.01876</strong>
+</p>
+
+<p><strong>Interpretation:</strong> for each $1 move in the stock, delta changes by about 0.019. If the stock goes from $100 to $101, the call delta rises from 0.6368 to roughly 0.6556. This means the option becomes <em>more</em> sensitive to the stock as it moves deeper in the money.</p>
+
+<h3>Why gamma matters</h3>
+
+<ul>
+  <li><strong>Gamma is highest ATM and near expiry.</strong> An at-the-money option with one day left has enormous gamma &mdash; its delta flips rapidly between 0 and 1 as the stock crosses the strike. This makes near-expiry ATM options difficult to hedge.</li>
+  <li><strong>Long options = long gamma.</strong> If you own options, gamma works in your favour: your delta moves with you. When the stock rises, your delta increases (you make more on further upside). When it falls, your delta decreases (you lose less).</li>
+  <li><strong>Short options = short gamma.</strong> Market makers who sell options are short gamma. They need to buy stock as it rises and sell as it falls &mdash; always chasing the market. This is the cost of being short convexity.</li>
+</ul>
+
+<hr>
+
+<h2>5. Theta (&Theta;) &mdash; Time Decay</h2>
+
+<p>Theta is the partial derivative of the option price with respect to time: &Theta; = &part;C/&part;T (with a sign flip, since we measure the passage of time as T shrinking). It tells you how much value the option loses each day just from the clock ticking.</p>
+
+<h3>Formula (call)</h3>
+
+<p style="margin-left:2em;">
+  &Theta;<sub>call</sub> = &minus; [S &middot; N&prime;(d<sub>1</sub>) &middot; &sigma;] / (2&radic;T) &minus; r &middot; K &middot; e<sup>&minus;rT</sup> &middot; N(d<sub>2</sub>)
+</p>
+
+<p>This gives theta in <em>per year</em> units. Divide by 365 for the daily theta.</p>
+
+<h3>Worked example</h3>
+
+<p style="margin-left:2em;">
+  First term: &minus;[100 &times; 0.37524 &times; 0.20] / (2 &times; 1)<br>
+  = &minus;7.5048 / 2 = &minus;3.7524<br><br>
+  Second term: &minus;0.05 &times; 100 &times; 0.9512 &times; 0.5596<br>
+  = &minus;0.05 &times; 53.23 = &minus;2.6615<br><br>
+  &Theta;<sub>annual</sub> = &minus;3.7524 &minus; 2.6615 = <strong>&minus;6.4139</strong> per year<br>
+  &Theta;<sub>daily</sub> = &minus;6.4139 / 365 = <strong>&minus;$0.01757</strong> per day
+</p>
+
+<p><strong>Interpretation:</strong> this option loses about <strong>$0.018 per day</strong> &mdash; roughly $18 per year on a $10.45 option &mdash; just from time passing. If you own 1,000 of these calls, you are bleeding about $18 per day in time value.</p>
+
+<h3>Theta accelerates near expiry</h3>
+
+<p>The &radic;T in the denominator means theta grows larger (more negative) as expiry approaches. An ATM option with 30 days left decays much faster per day than the same option with 180 days left. Traders call this the <strong>theta burn</strong> &mdash; the accelerating erosion of time value in the last weeks before expiry.</p>
+
+<h3>The fundamental tradeoff</h3>
+
+<p>Long options have <strong>negative theta</strong> (time works against you) but <strong>positive gamma</strong> (convexity works for you). Short options have positive theta (you collect time decay) but negative gamma (convexity works against you). This gamma-theta tradeoff is central to options trading: <strong>buying gamma costs theta</strong>.</p>
+
+<hr>
+
+<h2>6. Vega (&nu;) &mdash; Sensitivity to Volatility</h2>
+
+<p>Vega measures how the option price changes when implied volatility shifts: &nu; = &part;C/&part;&sigma;. Technically &ldquo;vega&rdquo; is not a Greek letter, but it is universally included in the Greek family.</p>
+
+<h3>Formula</h3>
+
+<p style="margin-left:2em;">
+  &nu; = S &middot; N&prime;(d<sub>1</sub>) &middot; &radic;T
+</p>
+
+<h3>Worked example</h3>
+
+<p style="margin-left:2em;">
+  &nu; = 100 &times; 0.37524 &times; 1 = <strong>37.524</strong>
+</p>
+
+<p>This is vega per 100% move in vol. To get the price change per 1 percentage point move in vol (the convention traders use), divide by 100:</p>
+
+<p style="margin-left:2em;">
+  &nu;<sub>per 1%</sub> = 37.524 / 100 = <strong>0.3752</strong>
+</p>
+
+<p><strong>Interpretation:</strong> if implied volatility rises from 20% to 21% (a 1-point move), the option price rises by approximately <strong>$0.38</strong>. If vol jumps from 20% to 25%, the option gains about $1.88.</p>
+
+<h3>Why vega matters</h3>
+
+<ul>
+  <li><strong>Vega is highest ATM and for longer-dated options.</strong> The &radic;T factor means a 1-year option has more vega than a 1-month option. A deep OTM option has little vega because N&prime;(d<sub>1</sub>) is tiny.</li>
+  <li><strong>Volatility often matters more than direction.</strong> An option trader might not care whether the stock goes up or down &mdash; she cares whether implied vol rises or falls. A delta-hedged long option position is essentially a bet that realized vol will exceed implied vol.</li>
+  <li><strong>Vega risk is the dominant risk</strong> for many option portfolios. A sudden vol spike (a &ldquo;vol event&rdquo;) can move option prices far more than an equivalent stock move.</li>
+</ul>
+
+<hr>
+
+<h2>7. Rho (&rho;) &mdash; Sensitivity to Interest Rates</h2>
+
+<p>Rho measures sensitivity to the risk-free rate: &rho; = &part;C/&part;r.</p>
+
+<h3>Formula (call)</h3>
+
+<p style="margin-left:2em;">
+  &rho;<sub>call</sub> = K &middot; T &middot; e<sup>&minus;rT</sup> &middot; N(d<sub>2</sub>)
+</p>
+
+<h3>Worked example</h3>
+
+<p style="margin-left:2em;">
+  &rho;<sub>call</sub> = 100 &times; 1 &times; 0.9512 &times; 0.5596 = <strong>53.23</strong>
+</p>
+
+<p>This is rho per 100% move in rates. Per 1 percentage point:</p>
+
+<p style="margin-left:2em;">
+  &rho;<sub>per 1%</sub> = 53.23 / 100 = <strong>0.5323</strong>
+</p>
+
+<p><strong>Interpretation:</strong> if the risk-free rate rises from 5% to 6%, the call price increases by about <strong>$0.53</strong>. Higher rates increase call values (the present value of the strike payment falls) and decrease put values.</p>
+
+<h3>When rho matters</h3>
+
+<p>Rho is usually the <strong>least important Greek</strong> for short-dated equity options, because interest rates move slowly compared to stock prices and volatility. But rho becomes significant for:</p>
+
+<ul>
+  <li><strong>Long-dated options</strong> (LEAPS with 2+ years to expiry)</li>
+  <li><strong>High-rate environments</strong> where rate moves are large</li>
+  <li><strong>Interest rate options</strong> (swaptions, caps/floors) where rho is the primary sensitivity</li>
+</ul>
+
+<hr>
+
+<h2>8. Greeks Summary Table</h2>
+
+<p>All five Greeks for our running example (S=100, K=100, T=1, r=5%, &sigma;=20%, call option priced at $10.45):</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; text-align:center;">
+  <tr>
+    <th>Greek</th>
+    <th>Formula</th>
+    <th>Value</th>
+    <th>Interpretation</th>
+  </tr>
+  <tr>
+    <td><strong>Delta (&Delta;)</strong></td>
+    <td>N(d<sub>1</sub>)</td>
+    <td>0.6368</td>
+    <td>+$0.64 per $1 stock move</td>
+  </tr>
+  <tr>
+    <td><strong>Gamma (&Gamma;)</strong></td>
+    <td>N&prime;(d<sub>1</sub>) / (S&sigma;&radic;T)</td>
+    <td>0.01876</td>
+    <td>Delta changes by 0.019 per $1 stock move</td>
+  </tr>
+  <tr>
+    <td><strong>Theta (&Theta;)</strong></td>
+    <td>&minus;[SN&prime;(d<sub>1</sub>)&sigma;]/(2&radic;T) &minus; rKe<sup>&minus;rT</sup>N(d<sub>2</sub>)</td>
+    <td>&minus;$0.018/day</td>
+    <td>Loses ~$0.018 per calendar day</td>
+  </tr>
+  <tr>
+    <td><strong>Vega (&nu;)</strong></td>
+    <td>SN&prime;(d<sub>1</sub>)&radic;T</td>
+    <td>0.3752 per 1% vol</td>
+    <td>+$0.38 per 1-point vol move</td>
+  </tr>
+  <tr>
+    <td><strong>Rho (&rho;)</strong></td>
+    <td>KTe<sup>&minus;rT</sup>N(d<sub>2</sub>)</td>
+    <td>0.5323 per 1% rate</td>
+    <td>+$0.53 per 1-point rate move</td>
+  </tr>
+</table>
+
+<hr>
+
+<h2>9. How the Greeks Interact</h2>
+
+<p>The Greeks are not independent. They are connected through the structure of the Black-Scholes PDE, and understanding their relationships is key to risk management.</p>
+
+<h3>Delta changes &mdash; that is gamma</h3>
+
+<p>Delta is not constant. As the stock moves, delta moves with it, and the rate of that change is gamma. A delta-hedged portfolio must be <em>re-hedged</em> as delta drifts. The higher the gamma, the more frequently you must re-hedge, and the more costly the hedging becomes in transaction terms.</p>
+
+<h3>Gamma and theta trade off</h3>
+
+<p>The Black-Scholes PDE imposes a relationship: for a delta-neutral portfolio, the P&amp;L comes from either gamma (realized moves in the stock) or theta (passage of time). The two are locked together:</p>
+
+<p style="margin-left:2em;">
+  &Theta; + &frac12; &sigma;&sup2; S&sup2; &Gamma; + r S &Delta; &minus; r C = 0
+</p>
+
+<p>For a delta-neutral position (&Delta; = 0), this simplifies to: <strong>&Theta; &asymp; &minus;&frac12; &sigma;&sup2; S&sup2; &Gamma;</strong>. Positive gamma means negative theta, and vice versa. You cannot have both. This is the <strong>fundamental tradeoff</strong> in options: buying gamma costs theta.</p>
+
+<h3>Vega and theta both depend on time</h3>
+
+<p>Longer-dated options have more vega (more sensitivity to vol changes) but lower daily theta (slower time decay per day). As expiry approaches, vega shrinks and daily theta accelerates. A portfolio that is long near-dated options and short far-dated options is selling vega and collecting theta &mdash; a common trade structure.</p>
+
+<h3>Practical example</h3>
+
+<p>Suppose you buy our $10.45 call and delta-hedge by shorting 63.68 shares. Your portfolio is now:</p>
+
+<ul>
+  <li><strong>Delta-neutral:</strong> small stock moves do not affect you.</li>
+  <li><strong>Long gamma (+0.019):</strong> if the stock makes a large move in either direction, you profit from convexity.</li>
+  <li><strong>Short theta (&minus;$0.018/day):</strong> if the stock sits still, you lose $0.018 per day.</li>
+  <li><strong>Long vega (+0.375):</strong> if implied vol rises, your option gains value.</li>
+</ul>
+
+<p>You are betting that the stock will move <em>more</em> than the market expects (realized vol &gt; implied vol). The gamma profit from large moves must exceed the theta you bleed each day. This is the essence of volatility trading.</p>
+
+<hr>
+
+<h2>10. How It Connects to QuantLab</h2>
+
+<p>The Greeks appear across several QuantLab exercises and blog posts:</p>
+
+<ul>
+  <li><strong>Black-Scholes in the Strategy pattern:</strong> the <a href="/math-finance/design-patterns/">Design Patterns post</a> implements BS pricing as a pluggable strategy. Each strategy can compute Greeks analytically using the formulas above.</li>
+  <li><strong>Monte Carlo pricing (Exercise 13):</strong> the <a href="/exercises/threading-monte-carlo/">Threading post</a> prices options via simulation. Greeks can be computed numerically using finite differences &mdash; bump S by a small amount, reprice, and divide the price change by the bump size.</li>
+  <li><strong>Binomial tree (Exercise 19):</strong> the <a href="/exercises/cloudwatch-oas-zspread/">OAS/Z-spread post</a> builds a binomial tree. The tree naturally produces delta and gamma from the first two time steps, and theta from comparing prices at different nodes.</li>
+</ul>
+
+<p>The closed-form Greeks in this post are the benchmark. When you compute Greeks numerically (via Monte Carlo bumps or tree finite differences), you can validate against these exact values to confirm your implementation is correct.</p>
+
+<pre><code class="language-python">import math
+
+def bs_greeks(S, K, T, r, sigma):
+    """Compute Black-Scholes call price and all five Greeks."""
+    sqrt_T = math.sqrt(T)
+    d1 = (math.log(S / K) + (r + sigma**2 / 2) * T) / (sigma * sqrt_T)
+    d2 = d1 - sigma * sqrt_T
+
+    # CDF and PDF of standard normal
+    def N(x):
+        return 0.5 * (1 + math.erf(x / math.sqrt(2)))
+
+    def N_prime(x):
+        return math.exp(-x**2 / 2) / math.sqrt(2 * math.pi)
+
+    nd1 = N(d1)
+    nd2 = N(d2)
+    npd1 = N_prime(d1)
+    disc = math.exp(-r * T)
+
+    price = S * nd1 - K * disc * nd2
+    delta = nd1
+    gamma = npd1 / (S * sigma * sqrt_T)
+    theta_annual = -(S * npd1 * sigma) / (2 * sqrt_T) - r * K * disc * nd2
+    theta_daily = theta_annual / 365
+    vega_pct = S * npd1 * sqrt_T / 100       # per 1% vol move
+    rho_pct = K * T * disc * nd2 / 100        # per 1% rate move
+
+    return {
+        "price": price, "delta": delta, "gamma": gamma,
+        "theta_daily": theta_daily, "vega_1pct": vega_pct,
+        "rho_1pct": rho_pct,
+    }
+
+greeks = bs_greeks(S=100, K=100, T=1, r=0.05, sigma=0.20)
+for k, v in greeks.items():
+    print(f"  {k:>12s} = {v:+.5f}")</code></pre>
+
+<p>Output:</p>
+
+<pre><code>       price = +10.45058
+       delta = +0.63683
+       gamma = +0.01876
+ theta_daily = -0.01757
+   vega_1pct = +0.37524
+    rho_1pct = +0.53233</code></pre>

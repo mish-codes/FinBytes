@@ -1,0 +1,286 @@
+---
+layout: post
+title: "Yield Curve Inversions: What They Signal and Why They Matter"
+date: 2026-05-03
+tags: [math, finance, yield-curve, inversion, recession, 2s10s, term-premium, monetary-policy, quant-lab]
+categories:
+- Math / Finance
+section: math-finance
+permalink: "/math-finance/yield-curve-inversions/"
+---
+
+<h2>1. The Normal Yield Curve</h2>
+
+<p>Under normal conditions, the yield curve slopes upward: longer maturities pay higher interest rates. A 10-year Treasury yields more than a 2-year Treasury, which yields more than a 3-month T-bill.</p>
+
+<p>Two forces drive this shape:</p>
+
+<ul>
+  <li><strong>Term premium:</strong> investors demand extra compensation for locking up their money longer. A 10-year bond exposes you to a decade of inflation uncertainty, interest rate risk, and opportunity cost. The market pays you for bearing that risk.</li>
+  <li><strong>Rate expectations:</strong> if the market expects the central bank to raise rates over time (typical during expansions), longer-term yields embed those expected future hikes.</li>
+</ul>
+
+<p>A concrete normal curve might look like this:</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; text-align:center;">
+  <tr><th>Maturity</th><th>Yield</th></tr>
+  <tr><td>3-month</td><td>3.00%</td></tr>
+  <tr><td>2-year</td><td>3.50%</td></tr>
+  <tr><td>5-year</td><td>3.80%</td></tr>
+  <tr><td>10-year</td><td>4.20%</td></tr>
+  <tr><td>30-year</td><td>4.50%</td></tr>
+</table>
+
+<p>The 2s10s spread (10Y yield minus 2Y yield) here is +70 basis points. This is a healthy, normal-looking curve.</p>
+
+<hr>
+
+<h2>2. What Is an Inversion?</h2>
+
+<p>A yield curve <strong>inversion</strong> occurs when short-term rates exceed long-term rates. The curve flips: instead of paying more for longer maturities, you earn <em>less</em>.</p>
+
+<p>The most closely watched measure is the <strong>2s10s spread</strong>: the 10-year Treasury yield minus the 2-year Treasury yield. When this goes negative, the curve is inverted.</p>
+
+<h3>Concrete example</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; text-align:center;">
+  <tr><th>Maturity</th><th>Yield</th></tr>
+  <tr><td>3-month</td><td>5.30%</td></tr>
+  <tr><td>2-year</td><td>4.80%</td></tr>
+  <tr><td>5-year</td><td>4.40%</td></tr>
+  <tr><td>10-year</td><td>4.30%</td></tr>
+  <tr><td>30-year</td><td>4.45%</td></tr>
+</table>
+
+<p style="margin-left:2em;">
+  2s10s spread = 4.30% &minus; 4.80% = <strong>&minus;50 basis points</strong><br>
+  3M/10Y spread = 4.30% &minus; 5.30% = <strong>&minus;100 basis points</strong>
+</p>
+
+<p>Both measures are deeply inverted. Short-term rates are significantly higher than long-term rates. The market is telling a story &mdash; and it is not an optimistic one.</p>
+
+<hr>
+
+<h2>3. Why Inversions Happen</h2>
+
+<p>An inversion is not random. It reflects a specific economic narrative, usually with three interlocking pieces:</p>
+
+<h3>The Fed raises short rates aggressively</h3>
+
+<p>When inflation runs hot, the Federal Reserve raises the federal funds rate &mdash; the overnight lending rate between banks. This directly pushes up short-term Treasury yields. The 2-year yield is especially sensitive to Fed policy because it reflects expectations of Fed actions over the next two years.</p>
+
+<h3>The market expects rates to come back down</h3>
+
+<p>Long-term yields reflect the market&rsquo;s expectation of <em>average</em> future short rates over the next 10 or 30 years. If the market believes the current hiking cycle is unsustainable &mdash; that the economy will slow and the Fed will be forced to cut &mdash; then long-term rate expectations fall even as current short rates rise.</p>
+
+<h3>The long end stays low or falls</h3>
+
+<p>The 10-year yield refuses to follow the 2-year yield higher. It may even decline as investors flee to the safety of long-term Treasuries (a flight to quality), pushing bond prices up and yields down. Pension funds and insurers, who need long-duration assets, provide persistent demand for the long end regardless of the rate environment.</p>
+
+<h3>What it means in plain language</h3>
+
+<p>The inversion <em>is</em> the market saying: &ldquo;This tightening cycle will end in a downturn. The Fed is hiking today, but it will have to cut tomorrow. We are pricing in the entire cycle &mdash; the hikes, the slowdown, and the cuts.&rdquo;</p>
+
+<hr>
+
+<h2>4. Historical Track Record</h2>
+
+<p>The 2s10s inversion has one of the most impressive track records of any recession indicator in macroeconomics.</p>
+
+<h3>The record</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; text-align:center;">
+  <tr><th>Inversion period</th><th>Most inverted</th><th>Recession start</th><th>Lead time</th></tr>
+  <tr><td>1978</td><td>&minus;24 bps</td><td>Jan 1980</td><td>~18 months</td></tr>
+  <tr><td>1980</td><td>&minus;242 bps</td><td>Jul 1981</td><td>~12 months</td></tr>
+  <tr><td>1989</td><td>&minus;18 bps</td><td>Jul 1990</td><td>~14 months</td></tr>
+  <tr><td>1998&ndash;2000</td><td>&minus;52 bps</td><td>Mar 2001</td><td>~12 months</td></tr>
+  <tr><td>2005&ndash;2007</td><td>&minus;19 bps</td><td>Dec 2007</td><td>~22 months</td></tr>
+  <tr><td>2022&ndash;2023</td><td>&minus;108 bps</td><td>?</td><td>?</td></tr>
+</table>
+
+<p><strong>Every US recession since 1970 was preceded by a 2s10s inversion.</strong> The lead time ranges from about 6 to 24 months. False positives exist but are rare &mdash; a brief inversion in 1998 was followed by a mild recession in 2001, though some analysts consider the timing loose.</p>
+
+<h3>The 2022&ndash;2023 inversion</h3>
+
+<p>The 2s10s inverted in July 2022 and stayed inverted for over two years &mdash; the longest inversion since the early 1980s. At its deepest in July 2023, the spread hit <strong>&minus;108 basis points</strong>, the most inverted since 1981.</p>
+
+<p>As of mid-2025, the US had not entered a formal recession (as defined by the NBER), though growth had slowed meaningfully and labor markets had softened. Some analysts argue this could be a genuine false positive &mdash; or that pandemic-era distortions (massive fiscal stimulus, supply chain normalization, immigration) delayed the usual transmission. Others believe the signal simply has a longer lag this cycle. The debate remains open.</p>
+
+<hr>
+
+<h2>5. The Un-Inversion Is the Actual Signal</h2>
+
+<p>Here is the insight that many people miss: the inversion says <strong>&ldquo;trouble ahead,&rdquo;</strong> but the <strong>un-inversion</strong> (when the curve steepens back to normal) often means <strong>&ldquo;trouble is arriving now.&rdquo;</strong></p>
+
+<h3>Why un-inversion happens</h3>
+
+<p>The curve typically un-inverts because the Fed starts cutting rates in response to economic weakness. Short-term yields drop rapidly (they track Fed policy closely), while long-term yields decline more slowly or stabilize. The spread goes from negative back to zero and then positive.</p>
+
+<h3>The timing pattern</h3>
+
+<p style="margin-left:2em;">
+  1. <strong>Inversion begins</strong> &mdash; Fed hiking cycle pushes short rates above long rates. The economy is still growing but the clock is ticking.<br><br>
+  2. <strong>Maximum inversion</strong> &mdash; the curve is deeply inverted. Economy is slowing but not yet in recession.<br><br>
+  3. <strong>Un-inversion</strong> &mdash; the Fed pivots to cuts. Short rates fall. The spread returns to positive. <em>This is often when the recession starts or is about to start.</em><br><br>
+  4. <strong>Steep normal curve</strong> &mdash; the Fed cuts aggressively. Short rates are well below long rates. The economy is in recession or early recovery.
+</p>
+
+<h3>Historical example: 2006&ndash;2008</h3>
+
+<p style="margin-left:2em;">
+  2s10s inverted: Nov 2005<br>
+  Most inverted: &minus;19 bps (Feb 2006)<br>
+  Un-inverted: Jun 2007<br>
+  Recession began: Dec 2007<br>
+  Lesson: the inversion warned 2 years early, but the recession arrived 6 months <em>after</em> the un-inversion.
+</p>
+
+<p><strong>Practical takeaway:</strong> do not panic when the curve inverts. Start preparing. Panic when it un-inverts &mdash; that is when the pain tends to arrive.</p>
+
+<hr>
+
+<h2>6. Term Premium</h2>
+
+<p>Not all of a bond&rsquo;s yield comes from rate expectations. Part of it is a <strong>term premium</strong> &mdash; the extra return investors demand for bearing the risk of holding a longer-term bond instead of rolling over short-term bonds.</p>
+
+<h3>Decomposing yields</h3>
+
+<p style="margin-left:2em;">
+  Yield = Expected future short rates + Term premium
+</p>
+
+<p>If the 10-year yield is 4.30% and the market expects average short rates over the next 10 years to be 3.80%, then the term premium is 50 basis points. Investors are being paid an extra 0.50% per year just for accepting duration risk.</p>
+
+<h3>When term premium compresses</h3>
+
+<p>The term premium is normally positive, but it can compress or even go negative. This matters because a low or negative term premium can push long-term yields down and contribute to an inversion even if rate expectations are unchanged. Drivers include:</p>
+
+<ul>
+  <li><strong>Quantitative easing (QE):</strong> central bank purchases of long-term bonds push prices up and yields down, compressing the term premium.</li>
+  <li><strong>Flight to safety:</strong> during crises, investors pile into long-term Treasuries, driving yields down.</li>
+  <li><strong>Structural demand:</strong> pension funds and life insurers need long-duration assets to match their liabilities. This persistent demand holds down long-term yields regardless of the economic outlook.</li>
+</ul>
+
+<h3>The ACM model</h3>
+
+<p>The most widely cited term premium estimate comes from the <strong>ACM model</strong> (Adrian, Crump, and Moerbeke, published by the New York Fed). It uses a no-arbitrage term structure model to decompose Treasury yields into an expectations component and a term premium component.</p>
+
+<p>The ACM model showed the 10-year term premium going <em>negative</em> for extended periods from 2015 to 2020, driven by QE and global demand for safe assets. When the term premium is negative, the raw yield curve can invert even if the market expects rates to remain flat &mdash; a &ldquo;false&rdquo; inversion in some sense, though the recession track record held up anyway.</p>
+
+<hr>
+
+<h2>7. Other Spreads Worth Watching</h2>
+
+<p>The 2s10s is the most popular measure, but it is not the only one. Different spreads capture different aspects of curve shape and policy expectations.</p>
+
+<h3>3-month / 10-year spread</h3>
+
+<p>The Federal Reserve&rsquo;s own research tends to favour the <strong>3M/10Y spread</strong>. The 3-month T-bill rate is a near-perfect proxy for the current fed funds rate, so the 3M/10Y spread directly measures how much the market expects policy to change over the next 10 years. Some studies find it has a slightly better recession-prediction track record than the 2s10s.</p>
+
+<h3>2-year / 30-year spread</h3>
+
+<p>The 2Y/30Y spread captures a wider section of the curve. It is less commonly cited but can diverge from the 2s10s when the very long end behaves differently (e.g., due to pension demand or term premium shifts at the 30-year point).</p>
+
+<h3>Near-term forward spread</h3>
+
+<p>Engstrom and Sharpe (Fed Board of Governors, 2019) proposed the <strong>near-term forward spread</strong>: the difference between the 18-month forward rate implied by Treasury bills and the current 3-month rate. This isolates the market&rsquo;s expectation of Fed policy changes over the next 18 months and strips out longer-term factors. They argue it is a cleaner recession signal than any spot spread.</p>
+
+<h3>Comparing the signals</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; text-align:center;">
+  <tr><th>Spread</th><th>What it captures</th><th>Strengths</th></tr>
+  <tr><td>2s10s</td><td>Policy vs. medium-term expectations</td><td>Most watched, longest history</td></tr>
+  <tr><td>3M/10Y</td><td>Current policy vs. long-term expectations</td><td>Fed-preferred, clean policy proxy</td></tr>
+  <tr><td>2Y/30Y</td><td>Policy vs. very long-term</td><td>Wider curve snapshot</td></tr>
+  <tr><td>Near-term forward</td><td>Expected policy changes in next 18 months</td><td>Isolates near-term Fed moves</td></tr>
+</table>
+
+<p>No single spread is perfect. Monitoring multiple spreads together gives a more robust picture than relying on any one.</p>
+
+<hr>
+
+<h2>8. What to Do with This Information</h2>
+
+<p>The yield curve inversion is a powerful signal, but using it well requires discipline and humility.</p>
+
+<h3>It is not a trading signal on its own</h3>
+
+<p>The lead time between inversion and recession ranges from 6 to 24 months. If you sell stocks the day the curve inverts, you might wait two years while the market rallies another 30%. Timing markets off the yield curve has historically been very difficult.</p>
+
+<h3>It is a risk management signal</h3>
+
+<p>Where the curve inversion adds real value is in <strong>risk management</strong>:</p>
+
+<ul>
+  <li><strong>Tighten credit limits:</strong> if you run a credit portfolio, an inverted curve is a warning to reduce exposure to cyclical and leveraged borrowers.</li>
+  <li><strong>Reduce cyclical exposure:</strong> shift equity allocations toward defensive sectors (utilities, healthcare, consumer staples) and away from cyclicals (financials, industrials, consumer discretionary).</li>
+  <li><strong>Stress test portfolios:</strong> run scenarios where earnings fall 20&ndash;30% and spreads widen 200&ndash;300 bps. How does your portfolio hold up?</li>
+  <li><strong>Build cash buffers:</strong> higher short-term rates during an inversion mean you get paid to hold cash &mdash; a rare luxury that also provides dry powder for buying distressed assets later.</li>
+</ul>
+
+<h3>Watch for the un-inversion</h3>
+
+<p>As discussed in Section 5, the un-inversion is the <strong>action signal</strong>. When the curve steepens back to normal (especially because the Fed is cutting), the recession is likely imminent. This is the time to be most defensive.</p>
+
+<hr>
+
+<h2>9. How to Compute It in Python</h2>
+
+<p>The FRED (Federal Reserve Economic Data) API provides daily Treasury yields going back decades. Here is a quick snippet to fetch the 2-year and 10-year yields, compute the spread, and plot the result.</p>
+
+<pre><code class="language-python">import pandas as pd
+import matplotlib.pyplot as plt
+
+# Fetch 2Y and 10Y yields from FRED
+# DGS2 = 2-Year Treasury Constant Maturity Rate
+# DGS10 = 10-Year Treasury Constant Maturity Rate
+two_yr = pd.read_csv(
+    "https://fred.stlouisfed.org/graph/fredgraph.csv"
+    "?bgcolor=%23e1e9f0&chart_type=line"
+    "&id=DGS2&cosd=2020-01-01",
+    parse_dates=["DATE"], index_col="DATE"
+)
+ten_yr = pd.read_csv(
+    "https://fred.stlouisfed.org/graph/fredgraph.csv"
+    "?bgcolor=%23e1e9f0&chart_type=line"
+    "&id=DGS10&cosd=2020-01-01",
+    parse_dates=["DATE"], index_col="DATE"
+)
+
+# Clean: FRED uses '.' for missing values
+two_yr = two_yr.replace(".", float("nan")).astype(float)
+ten_yr = ten_yr.replace(".", float("nan")).astype(float)
+
+# Compute spread in basis points
+spread = (ten_yr["DGS10"] - two_yr["DGS2"]) * 100
+
+# Plot
+fig, ax = plt.subplots(figsize=(12, 5))
+ax.plot(spread.index, spread.values, color="steelblue", linewidth=1)
+ax.axhline(0, color="red", linestyle="--", linewidth=0.8, label="Zero line")
+ax.fill_between(
+    spread.index, spread.values, 0,
+    where=spread.values < 0, color="salmon", alpha=0.4, label="Inverted"
+)
+ax.set_title("2s10s Treasury Spread (bps)")
+ax.set_ylabel("10Y minus 2Y (bps)")
+ax.legend()
+plt.tight_layout()
+plt.show()</code></pre>
+
+<p>If you prefer the <code>fredapi</code> library (which uses an API key), the code is even simpler:</p>
+
+<pre><code class="language-python">from fredapi import Fred
+import pandas as pd
+
+fred = Fred(api_key="YOUR_FRED_API_KEY")
+
+dgs2  = fred.get_series("DGS2",  observation_start="2020-01-01")
+dgs10 = fred.get_series("DGS10", observation_start="2020-01-01")
+
+spread_bps = (dgs10 - dgs2) * 100
+print(spread_bps.tail(10))
+print(f"\nCurrent 2s10s spread: {spread_bps.iloc[-1]:.0f} bps")</code></pre>
+
+<p>In QuantLab, Exercise 09 (FRED data ingestion) already pulls Treasury yields from FRED into a local database. You can compute any spread &mdash; 2s10s, 3M/10Y, or the near-term forward spread &mdash; from that stored data and track it over time. The <a href="/math-finance/yield-curves-and-rates/">Yield Curves &amp; Rates post</a> covers how to go from those raw yields to bootstrapped spot rates and fitted curves.</p>

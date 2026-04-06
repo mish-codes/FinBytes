@@ -1,0 +1,340 @@
+---
+layout: post
+title: "Discounted Cash Flow & Time Value of Money: The Foundation of Everything"
+date: 2026-04-30
+tags: [math, finance, dcf, time-value-of-money, present-value, future-value, discount-factor, npv, irr, annuity, quant-lab]
+categories:
+- Math / Finance
+section: math-finance
+permalink: "/math-finance/dcf-time-value/"
+---
+
+<h2>1. The Core Idea: A Dollar Today &ne; A Dollar Tomorrow</h2>
+
+<p>Every model in this project &mdash; bond pricing, VaR, OAS, curve bootstrapping &mdash; rests on one principle: <strong>money has a time value</strong>. A dollar in your hand today is worth more than a dollar promised to you a year from now.</p>
+
+<p>Why? Because you can invest today&rsquo;s dollar and earn interest. If you deposit $100 at a bank paying 5% annual interest, you will have $105 in one year. Working backward, $105 received one year from now is &ldquo;worth&rdquo; only $100 in today&rsquo;s terms. That $100 is the <strong>present value</strong> of the future $105.</p>
+
+<p>This single idea generates the entire machinery below: future value, present value, discount factors, NPV, IRR, annuities, and every pricing formula built on top of them.</p>
+
+<hr>
+
+<h2>2. Future Value (FV)</h2>
+
+<p>Future value answers the question: &ldquo;If I invest a known amount today at a given rate, what will it grow to after <em>n</em> periods?&rdquo;</p>
+
+<p style="margin-left:2em;"><strong>FV = PV &times; (1 + r)<sup>n</sup></strong></p>
+
+<p>where PV is the present value (the amount invested today), r is the interest rate per period, and n is the number of periods.</p>
+
+<h3>Worked example: $1,000 at 6% for 3 years (annual compounding)</h3>
+
+<pre><code>Year 1:  $1,000.00 &times; 1.06 = $1,060.00
+Year 2:  $1,060.00 &times; 1.06 = $1,123.60
+Year 3:  $1,123.60 &times; 1.06 = $1,191.02
+
+Or directly:  FV = 1,000 &times; (1.06)&sup3; = 1,000 &times; 1.19102 = $1,191.02</code></pre>
+
+<p>Notice the growth is not $60 each year. Year 2 earns $63.60 and Year 3 earns $67.42 because you earn <strong>interest on prior interest</strong>. This is compounding.</p>
+
+<h3>Compounding frequency matters</h3>
+
+<p>The same 6% nominal rate produces different future values depending on how often interest compounds:</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; text-align:center;">
+  <tr><th>Frequency</th><th>Formula</th><th>FV of $1,000 after 3 years</th></tr>
+  <tr><td>Annual</td><td>1,000 &times; (1 + 0.06/1)<sup>3</sup></td><td>$1,191.02</td></tr>
+  <tr><td>Semi-annual</td><td>1,000 &times; (1 + 0.06/2)<sup>6</sup></td><td>$1,194.05</td></tr>
+  <tr><td>Quarterly</td><td>1,000 &times; (1 + 0.06/4)<sup>12</sup></td><td>$1,195.62</td></tr>
+  <tr><td>Monthly</td><td>1,000 &times; (1 + 0.06/12)<sup>36</sup></td><td>$1,196.68</td></tr>
+  <tr><td>Continuous</td><td>1,000 &times; e<sup>0.06&times;3</sup></td><td>$1,197.22</td></tr>
+</table>
+
+<p>As compounding becomes more frequent, FV increases and converges to the continuous limit. The continuous formula PV &times; e<sup>rT</sup> is used throughout derivatives pricing because it simplifies the mathematics.</p>
+
+<pre><code class="language-python">import math
+
+pv = 1_000
+r  = 0.06
+n  = 3
+
+# Annual compounding
+fv_annual = pv * (1 + r) ** n
+print(f"Annual:     ${fv_annual:,.2f}")       # $1,191.02
+
+# Semi-annual compounding
+fv_semi = pv * (1 + r / 2) ** (2 * n)
+print(f"Semi-annual: ${fv_semi:,.2f}")        # $1,194.05
+
+# Continuous compounding
+fv_cont = pv * math.exp(r * n)
+print(f"Continuous:  ${fv_cont:,.2f}")        # $1,197.22</code></pre>
+
+<hr>
+
+<h2>3. Present Value (PV)</h2>
+
+<p>Present value is future value in reverse. It answers: &ldquo;What is a future cash flow worth <em>today</em>?&rdquo;</p>
+
+<p style="margin-left:2em;"><strong>PV = FV / (1 + r)<sup>n</sup></strong></p>
+
+<h3>Worked example: $10,000 in 5 years, discount rate 8%</h3>
+
+<pre><code>PV = 10,000 / (1.08)&sup5;
+   = 10,000 / 1.46933
+   = $6,805.83</code></pre>
+
+<p>Interpretation: you would pay <strong>at most $6,806 today</strong> for a guaranteed promise of $10,000 in five years, if your required return is 8%. Paying more than that means you earn less than 8%; paying less means you earn more.</p>
+
+<p>The higher the discount rate, the lower the present value. The longer you have to wait, the lower the present value. Both effects are intuitive &mdash; riskier or more distant cash flows are worth less today.</p>
+
+<hr>
+
+<h2>4. Discount Factors</h2>
+
+<p>A <strong>discount factor</strong> is simply the present value of $1 received at time <em>t</em>:</p>
+
+<p style="margin-left:2em;"><strong>DF(t) = 1 / (1 + r)<sup>t</sup></strong></p>
+
+<p>To get the present value of any cash flow CF at time <em>t</em>, multiply: PV = CF &times; DF(t). Discount factors are always between 0 and 1 (assuming positive rates), and they decline as maturity increases.</p>
+
+<h3>Discount factor table at 5%</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; text-align:center;">
+  <tr><th>Year (t)</th><th>DF(t) = 1 / 1.05<sup>t</sup></th></tr>
+  <tr><td>1</td><td>0.9524</td></tr>
+  <tr><td>2</td><td>0.9070</td></tr>
+  <tr><td>3</td><td>0.8638</td></tr>
+  <tr><td>4</td><td>0.8227</td></tr>
+  <tr><td>5</td><td>0.7835</td></tr>
+  <tr><td>6</td><td>0.7462</td></tr>
+  <tr><td>7</td><td>0.7107</td></tr>
+  <tr><td>8</td><td>0.6768</td></tr>
+  <tr><td>9</td><td>0.6446</td></tr>
+  <tr><td>10</td><td>0.6139</td></tr>
+</table>
+
+<p>At 5%, a dollar received 10 years from now is worth only 61 cents today. At 10%, it would be worth only 39 cents. Discount factors make the effect of rates and time viscerally concrete.</p>
+
+<p><strong>Connection to the spot curve:</strong> in practice, rates are <em>not</em> the same at every maturity. The spot curve gives a different rate s<sub>t</sub> for each maturity, and the discount factor becomes DF(t) = 1 / (1 + s<sub>t</sub>)<sup>t</sup>. A set of discount factors across all maturities <em>is</em> the spot curve &mdash; just expressed differently. See the <a href="/math-finance/yield-curves-and-rates/">yield curves reference</a> for the full treatment.</p>
+
+<hr>
+
+<h2>5. Net Present Value (NPV)</h2>
+
+<p>NPV applies present value to an <strong>entire stream of cash flows</strong>, including the initial investment (which is negative because money goes out). It is the primary decision tool in corporate finance and project evaluation.</p>
+
+<p style="margin-left:2em;"><strong>NPV = &sum; CF<sub>t</sub> / (1 + r)<sup>t</sup></strong> &nbsp; for t = 0, 1, 2, &hellip;, n</p>
+
+<p>If NPV &gt; 0, the project creates value &mdash; accept. If NPV &lt; 0, the project destroys value &mdash; reject.</p>
+
+<h3>Worked example: invest $5,000 today, receive $1,500/year for 4 years, rate = 10%</h3>
+
+<pre><code>t=0:  CF = -5,000.00   DF = 1.0000   PV = -5,000.00
+t=1:  CF = +1,500.00   DF = 0.9091   PV = +1,363.64
+t=2:  CF = +1,500.00   DF = 0.8264   PV = +1,239.67
+t=3:  CF = +1,500.00   DF = 0.7513   PV = +1,126.97
+t=4:  CF = +1,500.00   DF = 0.6830   PV = +1,024.52
+
+NPV = -5,000.00 + 1,363.64 + 1,239.67 + 1,126.97 + 1,024.52
+    = <strong>-$245.20</strong></code></pre>
+
+<p>NPV is negative &mdash; this project does not earn 10%. At a 10% required return, you would reject it.</p>
+
+<h3>What if the annual payment rises to $1,600?</h3>
+
+<pre><code>t=0:  CF = -5,000.00   DF = 1.0000   PV = -5,000.00
+t=1:  CF = +1,600.00   DF = 0.9091   PV = +1,454.55
+t=2:  CF = +1,600.00   DF = 0.8264   PV = +1,322.31
+t=3:  CF = +1,600.00   DF = 0.7513   PV = +1,202.10
+t=4:  CF = +1,600.00   DF = 0.6830   PV = +1,092.82
+
+NPV = -5,000.00 + 1,454.55 + 1,322.31 + 1,202.10 + 1,092.82
+    = <strong>+$71.78</strong></code></pre>
+
+<p>NPV flipped positive. An extra $100/year turned a value-destroying project into a value-creating one. That is the power of NPV &mdash; it tells you the exact dollar amount of value created or destroyed.</p>
+
+<pre><code class="language-python">def npv(rate, cash_flows):
+    """Compute NPV given a discount rate and a list of cash flows.
+    cash_flows[0] is at t=0 (usually negative), cash_flows[1] at t=1, etc.
+    """
+    return sum(cf / (1 + rate) ** t for t, cf in enumerate(cash_flows))
+
+# Project A: $1,500/year
+npv_a = npv(0.10, [-5_000, 1_500, 1_500, 1_500, 1_500])
+print(f"NPV (A) = ${npv_a:,.2f}")    # -$245.20
+
+# Project B: $1,600/year
+npv_b = npv(0.10, [-5_000, 1_600, 1_600, 1_600, 1_600])
+print(f"NPV (B) = ${npv_b:,.2f}")    # +$71.78</code></pre>
+
+<hr>
+
+<h2>6. Internal Rate of Return (IRR)</h2>
+
+<p>The IRR is the discount rate that makes NPV exactly zero. It answers: &ldquo;What is the implied yield of this investment?&rdquo;</p>
+
+<p style="margin-left:2em;"><strong>0 = &sum; CF<sub>t</sub> / (1 + IRR)<sup>t</sup></strong></p>
+
+<p>There is no closed-form solution for IRR in general &mdash; you find it by trial and error or a numerical solver.</p>
+
+<h3>Worked example: invest $1,000, receive $400/year for 3 years</h3>
+
+<p>We need to find the rate r such that:</p>
+
+<pre><code>0 = -1,000 + 400/(1+r)&sup1; + 400/(1+r)&sup2; + 400/(1+r)&sup3;</code></pre>
+
+<p><strong>Try r = 10%:</strong></p>
+<pre><code>NPV = -1,000 + 400/1.10 + 400/1.21 + 400/1.331
+    = -1,000 + 363.64 + 330.58 + 300.53
+    = -5.25   (slightly negative &mdash; rate is a bit too high)</code></pre>
+
+<p><strong>Try r = 9%:</strong></p>
+<pre><code>NPV = -1,000 + 400/1.09 + 400/1.1881 + 400/1.2950
+    = -1,000 + 366.97 + 336.67 + 308.88
+    = +12.52   (positive &mdash; rate is a bit too low)</code></pre>
+
+<p><strong>Try r = 9.7%:</strong></p>
+<pre><code>NPV = -1,000 + 400/1.097 + 400/1.2034 + 400/1.3201
+    = -1,000 + 364.63 + 332.41 + 303.01
+    = +0.05   &asymp; 0  &check;</code></pre>
+
+<p>The IRR is approximately <strong>9.70%</strong>. This investment yields 9.7% &mdash; compare that to your cost of capital. If your hurdle rate is 8%, accept. If it is 12%, reject.</p>
+
+<pre><code class="language-python">from scipy.optimize import brentq
+
+def irr(cash_flows):
+    """Find the IRR using Brent's method (bisection variant)."""
+    def npv_at(r):
+        return sum(cf / (1 + r) ** t for t, cf in enumerate(cash_flows))
+    return brentq(npv_at, -0.50, 10.0)  # search between -50% and 1000%
+
+rate = irr([-1_000, 400, 400, 400])
+print(f"IRR = {rate:.2%}")   # IRR = 9.70%</code></pre>
+
+<p><strong>Caveat:</strong> IRR assumes all intermediate cash flows are reinvested at the IRR itself, which may be unrealistic. For mutually exclusive projects of different sizes or durations, NPV is the more reliable criterion.</p>
+
+<hr>
+
+<h2>7. Annuities and Perpetuities</h2>
+
+<p>Many financial instruments pay a <strong>fixed amount at regular intervals</strong>. Rather than discounting each payment individually, closed-form formulas handle the entire stream at once.</p>
+
+<h3>Ordinary annuity</h3>
+
+<p>A series of equal payments C, made at the end of each period, for n periods at rate r:</p>
+
+<p style="margin-left:2em;"><strong>PV<sub>annuity</sub> = C &times; [(1 &minus; (1 + r)<sup>&minus;n</sup>) / r]</strong></p>
+
+<p>The bracketed term is called the <strong>annuity factor</strong>. It is the sum of the first n discount factors.</p>
+
+<h3>Worked example: $500/year for 20 years at 7%</h3>
+
+<pre><code>Annuity factor = (1 &minus; (1.07)^(-20)) / 0.07
+               = (1 &minus; 1/3.8697) / 0.07
+               = (1 &minus; 0.25842) / 0.07
+               = 0.74158 / 0.07
+               = 10.594
+
+PV = 500 &times; 10.594 = <strong>$5,297</strong></code></pre>
+
+<p>Instead of discounting 20 separate payments, one multiplication gives the answer. The 20 payments of $500 (total nominal = $10,000) are worth only $5,297 today &mdash; the remaining $4,703 is the &ldquo;cost&rdquo; of waiting, consumed by discounting.</p>
+
+<h3>Perpetuity</h3>
+
+<p>A perpetuity is an annuity that never ends (n &rarr; &infin;). As n grows, (1 + r)<sup>&minus;n</sup> &rarr; 0, and the formula collapses to:</p>
+
+<p style="margin-left:2em;"><strong>PV<sub>perpetuity</sub> = C / r</strong></p>
+
+<h3>Worked example: $500/year forever at 7%</h3>
+
+<pre><code>PV = 500 / 0.07 = <strong>$7,143</strong></code></pre>
+
+<p>An infinite stream of $500 payments is worth a finite amount &mdash; $7,143. This result is not paradoxical: each successive payment is worth less in present-value terms, and the series converges. The perpetuity formula is used to value preferred stock, consol bonds, and the terminal value in corporate valuation models.</p>
+
+<h3>Growing perpetuity</h3>
+
+<p>If payments grow at a constant rate g (where g &lt; r):</p>
+
+<p style="margin-left:2em;"><strong>PV = C / (r &minus; g)</strong></p>
+
+<p>Example: $500 growing at 2% per year, discounted at 7%:</p>
+
+<pre><code>PV = 500 / (0.07 &minus; 0.02) = 500 / 0.05 = <strong>$10,000</strong></code></pre>
+
+<p>Growth dramatically increases value. A 2% growth rate nearly doubled the perpetuity from $7,143 to $10,000. This is the Gordon Growth Model used to value equities.</p>
+
+<hr>
+
+<h2>8. How DCF Connects to Everything in QuantLab</h2>
+
+<p>Every quantitative model in this project is a variation on the theme: <strong>discount a stream of cash flows</strong>. Once you internalise the mechanics above, the more advanced topics become applications rather than new concepts.</p>
+
+<ul>
+  <li><strong>Bond pricing</strong> = DCF of the coupon stream plus face value. A 5% coupon bond paying semi-annual coupons is just a sequence of $2.50 payments plus $100 at maturity, each multiplied by the appropriate discount factor. See the <a href="/math-finance/bond-pricing/">bond pricing reference</a>.</li>
+
+  <li><strong>Bootstrapping the spot curve</strong> = solving for the discount factor at each maturity such that observed bond prices are reproduced. You already know DF(t) = 1 / (1 + s<sub>t</sub>)<sup>t</sup>; bootstrapping recovers each s<sub>t</sub> sequentially. See the <a href="/math-finance/yield-curves-and-rates/">yield curves reference</a>.</li>
+
+  <li><strong>Z-spread</strong> = the single constant spread z added to every spot rate such that the DCF of a risky bond equals its market price. It generalises NPV to a world with a non-flat discount curve: Market Price = &sum; CF<sub>t</sub> / (1 + s<sub>t</sub> + z)<sup>t</sup>.</li>
+
+  <li><strong>OAS (option-adjusted spread)</strong> = like the Z-spread, but computed across a tree of interest rate scenarios to account for embedded options (calls, puts). At each node the bond is priced by backward induction &mdash; discounting one period at a time, exactly as in the PV formula above.</li>
+
+  <li><strong>NPV of a swap</strong> = the difference in present values of the two legs. The fixed leg is an annuity (Section 7); the floating leg resets to par at each payment date. The swap&rsquo;s NPV is the net of these two DCF calculations.</li>
+
+  <li><strong>Value at Risk (VaR)</strong> = simulating how the DCF changes under many different rate or spread scenarios, then reading off the loss at a given percentile. Monte Carlo VaR generates thousands of yield curve shifts, reprices the portfolio via DCF under each, and ranks the results. See the <a href="/math-finance/portfolio-risk-var/">portfolio risk reference</a>.</li>
+</ul>
+
+<p>The formula PV = CF / (1 + r)<sup>t</sup> is the atom. Everything else is a molecule built from it.</p>
+
+<hr>
+
+<h2>Summary of Formulas</h2>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse;">
+  <tr><th>Concept</th><th>Formula</th><th>Use</th></tr>
+  <tr>
+    <td>Future Value</td>
+    <td>FV = PV &times; (1 + r)<sup>n</sup></td>
+    <td>How much will my money grow to?</td>
+  </tr>
+  <tr>
+    <td>Present Value</td>
+    <td>PV = FV / (1 + r)<sup>n</sup></td>
+    <td>What is a future payment worth today?</td>
+  </tr>
+  <tr>
+    <td>Discount Factor</td>
+    <td>DF(t) = 1 / (1 + r)<sup>t</sup></td>
+    <td>Multiplier to convert future &rarr; present</td>
+  </tr>
+  <tr>
+    <td>NPV</td>
+    <td>&sum; CF<sub>t</sub> / (1 + r)<sup>t</sup></td>
+    <td>Should I accept this project?</td>
+  </tr>
+  <tr>
+    <td>IRR</td>
+    <td>Rate where NPV = 0</td>
+    <td>What yield does this investment offer?</td>
+  </tr>
+  <tr>
+    <td>Annuity</td>
+    <td>C &times; [(1 &minus; (1+r)<sup>&minus;n</sup>) / r]</td>
+    <td>PV of n equal payments</td>
+  </tr>
+  <tr>
+    <td>Perpetuity</td>
+    <td>C / r</td>
+    <td>PV of infinite equal payments</td>
+  </tr>
+  <tr>
+    <td>Growing Perpetuity</td>
+    <td>C / (r &minus; g)</td>
+    <td>PV of infinite growing payments</td>
+  </tr>
+  <tr>
+    <td>Continuous FV</td>
+    <td>PV &times; e<sup>rT</sup></td>
+    <td>Growth under continuous compounding</td>
+  </tr>
+</table>
