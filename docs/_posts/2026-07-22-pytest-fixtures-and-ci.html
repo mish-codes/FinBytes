@@ -1,0 +1,470 @@
+---
+layout: post
+title: "pytest Fixtures, Scope, and CI Gotchas"
+date: 2026-07-22
+tags: [pytest, fixtures, scope, conftest, ci-cd, testing, python]
+categories: [Python, Testing]
+section: testing
+permalink: "/python/pytest-fixtures-ci/"
+---
+
+<h2>Fixtures: Setup That Scales</h2>
+
+<p>A pytest fixture is a function that provides data or state to your tests. Instead of repeating setup code in every test, you define it once and pytest injects it by name.</p>
+
+<pre><code class="language-python">import pytest
+
+@pytest.fixture
+def sample_portfolio():
+    """Provide a small portfolio for testing."""
+    return {
+        "AAPL": {"qty": 100, "price": 189.5},
+        "MSFT": {"qty": 50, "price": 420.1},
+        "GOOG": {"qty": 30, "price": 175.3},
+    }
+
+def test_portfolio_total(sample_portfolio):
+    total = sum(v["qty"] * v["price"] for v in sample_portfolio.values())
+    assert total == pytest.approx(100 * 189.5 + 50 * 420.1 + 30 * 175.3)
+
+def test_portfolio_has_three_positions(sample_portfolio):
+    assert len(sample_portfolio) == 3
+</code></pre>
+
+<h3>Setup and teardown with yield</h3>
+
+<p>Code before <code>yield</code> runs as setup. Code after <code>yield</code> runs as teardown, even if the test fails.</p>
+
+<pre><code class="language-python">from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from models import Base
+
+@pytest.fixture
+def db_session():
+    """Provide a clean in-memory database, torn down after each test."""
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    Session = sessionmaker(bind=engine)
+    session = Session()
+
+    yield session          # <-- test runs here
+
+    session.close()        # <-- teardown: always runs
+    engine.dispose()
+</code></pre>
+
+<h2>Scope Levels</h2>
+
+<p>Scope controls how often the fixture is created and destroyed. Choosing the right scope is the difference between a 5-second test suite and a 5-minute one.</p>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Scope</th>
+      <th style="text-align:left; padding:0.4rem;">Created</th>
+      <th style="text-align:left; padding:0.4rem;">Destroyed</th>
+      <th style="text-align:left; padding:0.4rem;">Use When</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>function</code> (default)</td>
+      <td style="padding:0.4rem;">Before each test</td>
+      <td style="padding:0.4rem;">After each test</td>
+      <td style="padding:0.4rem;">State must be fresh (DB sessions, mutable data)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>class</code></td>
+      <td style="padding:0.4rem;">Once per test class</td>
+      <td style="padding:0.4rem;">After last test in class</td>
+      <td style="padding:0.4rem;">Expensive setup, tests only read (no mutation)</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>module</code></td>
+      <td style="padding:0.4rem;">Once per .py file</td>
+      <td style="padding:0.4rem;">After last test in file</td>
+      <td style="padding:0.4rem;">Docker containers, large data loads</td>
+    </tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);">
+      <td style="padding:0.4rem;"><code>session</code></td>
+      <td style="padding:0.4rem;">Once per test run</td>
+      <td style="padding:0.4rem;">After all tests finish</td>
+      <td style="padding:0.4rem;">Connection pools, compiled models</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Seeing scope in action</h3>
+
+<pre><code class="language-python">import pytest
+
+@pytest.fixture(scope="session")
+def db_engine():
+    print("\n  [SESSION] Creating engine")
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    yield engine
+    print("\n  [SESSION] Disposing engine")
+    engine.dispose()
+
+@pytest.fixture(scope="function")
+def db_session(db_engine):
+    print("\n  [FUNCTION] Opening session")
+    Session = sessionmaker(bind=db_engine)
+    session = Session()
+    yield session
+    print("\n  [FUNCTION] Rolling back + closing session")
+    session.rollback()
+    session.close()
+</code></pre>
+
+<pre><code class="language-bash">$ pytest -s -v test_scopes.py
+
+test_scopes.py::test_one
+  [SESSION] Creating engine
+  [FUNCTION] Opening session
+PASSED
+  [FUNCTION] Rolling back + closing session
+
+test_scopes.py::test_two
+  [FUNCTION] Opening session
+PASSED
+  [FUNCTION] Rolling back + closing session
+
+test_scopes.py::test_three
+  [FUNCTION] Opening session
+PASSED
+  [FUNCTION] Rolling back + closing session
+  [SESSION] Disposing engine
+</code></pre>
+
+<p>The engine is created once. Each test gets a fresh session that rolls back changes, keeping tests isolated without the overhead of recreating the schema every time.</p>
+
+<h2>conftest.py: Shared Fixtures Without Imports</h2>
+
+<p>Any fixture defined in <code>conftest.py</code> is automatically available to tests in the same directory (and subdirectories). No import needed.</p>
+
+<pre><code class="language-text">project/
+  conftest.py          # fixtures available to ALL tests
+  tests/
+    conftest.py        # fixtures available to tests/ and below
+    test_scanner.py
+    integration/
+      conftest.py      # fixtures available only in integration/
+      test_db.py
+</code></pre>
+
+<h3>Layering: inner conftest overrides outer</h3>
+
+<pre><code class="language-python"># project/conftest.py
+@pytest.fixture
+def api_url():
+    return "https://api.example.com"
+
+# project/tests/integration/conftest.py
+@pytest.fixture
+def api_url():
+    return "http://localhost:8000"   # override for integration tests
+</code></pre>
+
+<p>Tests in <code>tests/integration/</code> get the local URL. Tests in <code>tests/</code> get the production-like URL. No conditional logic needed.</p>
+
+<h3>Useful shared fixtures</h3>
+
+<pre><code class="language-python"># conftest.py (project root)
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from models import Base
+
+@pytest.fixture
+def db_session():
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    session = sessionmaker(bind=engine)()
+    yield session
+    session.close()
+
+@pytest.fixture
+def sample_prices():
+    return {
+        "AAPL": [189.5, 190.1, 188.3, 191.2, 189.8],
+        "MSFT": [420.1, 418.5, 422.0, 419.3, 421.7],
+    }
+
+@pytest.fixture
+def mock_env(monkeypatch):
+    """Set standard env vars for all tests."""
+    monkeypatch.setenv("FRED_API_KEY", "test-key")
+    monkeypatch.setenv("DB_URL", "sqlite:///:memory:")
+    monkeypatch.setenv("ENVIRONMENT", "test")
+</code></pre>
+
+<h2>Parametrize: Data-Driven Tests</h2>
+
+<h3>@pytest.mark.parametrize</h3>
+
+<p>Run the same test logic with different inputs. Each parameter set is a separate test case in the output.</p>
+
+<pre><code class="language-python">import pytest
+from bond_math import present_value
+
+@pytest.mark.parametrize("rate, periods, fv, expected_pv", [
+    (0.05, 10, 1000, 613.91),     # 5% rate, 10 years
+    (0.03, 5,  1000, 862.61),     # 3% rate, 5 years
+    (0.00, 10, 1000, 1000.00),    # 0% rate, no discounting
+    (0.10, 1,  1000, 909.09),     # 10% rate, 1 year
+])
+def test_present_value(rate, periods, fv, expected_pv):
+    result = present_value(rate, periods, fv)
+    assert result == pytest.approx(expected_pv, rel=1e-2)
+</code></pre>
+
+<pre><code class="language-bash">$ pytest -v test_bond_math.py::test_present_value
+test_bond_math.py::test_present_value[0.05-10-1000-613.91] PASSED
+test_bond_math.py::test_present_value[0.03-5-1000-862.61] PASSED
+test_bond_math.py::test_present_value[0.0-10-1000-1000.0] PASSED
+test_bond_math.py::test_present_value[0.1-1-1000-909.09] PASSED
+</code></pre>
+
+<h3>@pytest.fixture(params=[...])</h3>
+
+<p>Fixture-level parametrization runs all tests that use the fixture once per parameter.</p>
+
+<pre><code class="language-python">@pytest.fixture(params=["sqlite:///:memory:", "postgresql://test:test@localhost/testdb"])
+def db_engine(request):
+    """Run tests against both SQLite and PostgreSQL."""
+    engine = create_engine(request.param)
+    Base.metadata.create_all(engine)
+    yield engine
+    engine.dispose()
+
+def test_insert_position(db_engine):
+    """This test runs twice: once with SQLite, once with PostgreSQL."""
+    session = sessionmaker(bind=db_engine)()
+    session.add(Position(ticker="AAPL", quantity=100, price=189.5))
+    session.commit()
+    assert session.query(Position).count() == 1
+    session.close()
+</code></pre>
+
+<p><strong>When to use which:</strong> use <code>@pytest.mark.parametrize</code> when varying test inputs. Use <code>@pytest.fixture(params=...)</code> when varying infrastructure (different databases, different API versions, different configs).</p>
+
+<h2>CI Gotchas: Tests Pass Locally, Fail in CI</h2>
+
+<h3>1. Path separators: backslash vs forward slash</h3>
+
+<pre><code class="language-python"># WRONG: hardcoded Windows path — fails on Linux CI
+def test_report_path():
+    assert report.output_path == "reports\\daily\\var.csv"
+
+# RIGHT: use pathlib (platform-agnostic)
+from pathlib import Path
+
+def test_report_path():
+    expected = Path("reports") / "daily" / "var.csv"
+    assert Path(report.output_path) == expected
+
+# Or use os.sep / forward slashes in assertions
+def test_report_path_alt():
+    assert report.output_path.replace("\\", "/") == "reports/daily/var.csv"
+</code></pre>
+
+<h3>2. Timezone dependence</h3>
+
+<pre><code class="language-python"># WRONG: depends on local timezone (your machine is EST, CI is UTC)
+from datetime import datetime
+
+def test_report_date():
+    report = generate_report()
+    assert report["date"] == datetime.now().strftime("%Y-%m-%d")  # off by 1 day at 11pm EST
+
+# RIGHT: use UTC explicitly or freeze time
+from datetime import datetime, timezone
+
+def test_report_date():
+    report = generate_report()
+    expected = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    assert report["date"] == expected
+
+# BEST: freeze time so the test is fully deterministic
+from freezegun import freeze_time
+
+@freeze_time("2026-07-22 14:00:00", tz_offset=0)
+def test_report_date():
+    report = generate_report()
+    assert report["date"] == "2026-07-22"
+</code></pre>
+
+<h3>3. Import order: editable install vs PYTHONPATH</h3>
+
+<p>Locally you run <code>pip install -e .</code> which puts your package on <code>sys.path</code>. In CI, the runner might not do an editable install. Tests fail with <code>ModuleNotFoundError</code>.</p>
+
+<pre><code class="language-ini"># pyproject.toml — the fix used in QuantLab exercises
+[tool.pytest.ini_options]
+pythonpath = [".", "src"]
+testpaths = ["tests"]
+</code></pre>
+
+<p>This tells pytest to add the project root and <code>src/</code> to <code>sys.path</code> before running tests. Works identically in CI and locally.</p>
+
+<h3>4. Fixture scope leaks</h3>
+
+<pre><code class="language-python"># DANGEROUS: session-scoped mutable fixture
+@pytest.fixture(scope="session")
+def shared_config():
+    return {"max_positions": 100, "risk_limit": 1_000_000}
+
+def test_update_limit(shared_config):
+    shared_config["risk_limit"] = 500_000   # mutates the shared object!
+    assert shared_config["risk_limit"] == 500_000
+
+def test_default_limit(shared_config):
+    # FAILS: risk_limit is still 500_000 from the previous test
+    assert shared_config["risk_limit"] == 1_000_000
+</code></pre>
+
+<pre><code class="language-python"># FIX: return a fresh copy, or use function scope for mutable state
+@pytest.fixture(scope="session")
+def _base_config():
+    return {"max_positions": 100, "risk_limit": 1_000_000}
+
+@pytest.fixture
+def shared_config(_base_config):
+    return _base_config.copy()   # fresh copy per test
+</code></pre>
+
+<h3>5. Parallel execution with pytest-xdist</h3>
+
+<pre><code class="language-bash"># Run tests across 4 workers
+pytest -n 4
+</code></pre>
+
+<p>Tests run in random order across workers. Problems that surface:</p>
+
+<ul>
+  <li>Two tests write to the same file &mdash; use <code>tmp_path</code> instead of hardcoded paths</li>
+  <li>Two tests share a database table &mdash; use unique table names or separate schemas per worker</li>
+  <li>Session-scoped fixtures run once <strong>per worker</strong>, not once total</li>
+</ul>
+
+<pre><code class="language-python"># Worker-safe temp directory pattern
+@pytest.fixture
+def output_dir(tmp_path, worker_id):
+    """Each xdist worker gets its own output directory."""
+    if worker_id == "master":
+        return tmp_path / "output"
+    return tmp_path / f"output-{worker_id}"
+</code></pre>
+
+<h3>6. Missing environment variables</h3>
+
+<pre><code class="language-python"># Locally you have .env loaded by direnv or IDE.
+# CI has no .env file. Tests crash with KeyError.
+
+# FIX: set defaults in conftest.py
+@pytest.fixture(autouse=True)
+def set_test_env(monkeypatch):
+    """Ensure critical env vars exist in every test, including CI."""
+    defaults = {
+        "FRED_API_KEY": "test-key",
+        "DB_URL": "sqlite:///:memory:",
+        "ENVIRONMENT": "test",
+        "AWS_DEFAULT_REGION": "us-east-1",
+    }
+    for key, val in defaults.items():
+        monkeypatch.setenv(key, val)
+</code></pre>
+
+<p><code>autouse=True</code> means this fixture runs for every test without being explicitly requested. Every test gets a consistent environment.</p>
+
+<h2>pytest Configuration: pyproject.toml</h2>
+
+<p>The QuantLab project uses <code>pyproject.toml</code> for all pytest configuration. Here is a production-ready setup:</p>
+
+<pre><code class="language-ini">[tool.pytest.ini_options]
+# Where to find tests
+testpaths = ["tests"]
+
+# Add project root to sys.path (the QuantLab fix)
+pythonpath = [".", "src"]
+
+# Default command-line options
+addopts = "-v --tb=short -q --strict-markers"
+
+# Register custom markers so typos are caught
+markers = [
+    "slow: marks tests that take > 5 seconds (deselect with '-m \"not slow\"')",
+    "integration: marks tests using fake external services",
+    "e2e: marks end-to-end tests requiring real infrastructure",
+]
+
+# Minimum pytest version
+minversion = "7.0"
+
+# Pattern for test discovery
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+</code></pre>
+
+<pre><code class="language-bash"># Common commands
+pytest                              # run all tests with configured defaults
+pytest -m "not slow"                # skip slow tests
+pytest -m integration               # run only integration tests
+pytest -k "test_var"                # run tests matching "test_var" in name
+pytest --co                         # collect only (list tests, don't run)
+pytest -x                           # stop on first failure
+pytest --lf                         # re-run only last-failed tests
+pytest -n auto                      # parallel execution (requires pytest-xdist)
+</code></pre>
+
+<h2>Putting It Together: A Real conftest.py</h2>
+
+<pre><code class="language-python"># tests/conftest.py — from a QuantLab exercise project
+import pytest
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from models import Base
+
+# ---------- Database ----------
+@pytest.fixture(scope="session")
+def engine():
+    """One engine for the entire test run."""
+    eng = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(eng)
+    yield eng
+    eng.dispose()
+
+@pytest.fixture
+def db_session(engine):
+    """Fresh session per test, rolled back after."""
+    connection = engine.connect()
+    transaction = connection.begin()
+    session = sessionmaker(bind=connection)()
+    yield session
+    session.close()
+    transaction.rollback()
+    connection.close()
+
+# ---------- Environment ----------
+@pytest.fixture(autouse=True)
+def test_env(monkeypatch):
+    monkeypatch.setenv("ENVIRONMENT", "test")
+    monkeypatch.setenv("DB_URL", "sqlite:///:memory:")
+
+# ---------- Sample data ----------
+@pytest.fixture
+def price_series():
+    return [100.0, 102.0, 99.5, 101.3, 103.8, 98.7, 105.2]
+
+@pytest.fixture
+def portfolio_positions():
+    return [
+        {"ticker": "AAPL", "qty": 100, "sector": "tech"},
+        {"ticker": "JPM",  "qty": 200, "sector": "financials"},
+        {"ticker": "XOM",  "qty": 150, "sector": "energy"},
+    ]
+</code></pre>
+
+<p>This conftest gives every test file access to a database session, environment variables, and sample data, with zero imports and full isolation between tests.</p>
