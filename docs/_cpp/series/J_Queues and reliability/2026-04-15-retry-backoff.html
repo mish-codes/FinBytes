@@ -201,7 +201,7 @@ struct DeadLetterQueue {
 impl DeadLetterQueue {
     async fn push(&amp;self, msg: &amp;str, reason: &amp;str) -&gt; std::io::Result&lt;()&gt; {
         let entry = format!(
-            "{{\"msg\":\"{}\",\"reason\":\"{}\",\"ts\":{}}}\n",
+{% raw %}            "{{\"msg\":\"{}\",\"reason\":\"{}\",\"ts\":{}}}\n",{% endraw %}
             msg, reason, std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH).unwrap().as_secs_f64()
         );
