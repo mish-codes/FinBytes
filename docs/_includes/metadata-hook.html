@@ -1,0 +1,11 @@
+<!-- Dark/light mode logo swap -->
+<style>
+[data-mode="dark"] #sidebar img {
+  filter: invert(1) hue-rotate(180deg);
+}
+@media (prefers-color-scheme: dark) {
+  html:not([data-mode="light"]) #sidebar img {
+    filter: invert(1) hue-rotate(180deg);
+  }
+}
+</style>
