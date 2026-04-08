@@ -437,6 +437,38 @@ pytest -v</code></pre>
   </table>
 </div>
 
+<div id="tab-explained" class="ql-tab-content" style="display:none">
+  <h2>QuantLab Phase 1 Explained</h2>
+  <p>A comprehensive guide to every technology and concept behind the Stock Risk Scanner &mdash; explained like you're 12.</p>
+
+  <h3>The 8 exercises that built this</h3>
+  <table>
+    <thead><tr><th>Exercise</th><th>Technology</th><th>What it became in the Scanner</th></tr></thead>
+    <tbody>
+      <tr><td>01</td><td>pytest / TDD</td><td>27 tests across all modules</td></tr>
+      <tr><td>02</td><td>Pydantic</td><td>ScanRequest, RiskMetrics, ScanResult models</td></tr>
+      <tr><td>03</td><td>FastAPI</td><td>API endpoints (/api/scan, /api/scans/{id})</td></tr>
+      <tr><td>04</td><td>Async Python</td><td>Concurrent price fetching, async DB calls</td></tr>
+      <tr><td>05</td><td>yfinance</td><td>market_data.py (fetch prices)</td></tr>
+      <tr><td>06</td><td>Claude API</td><td>narrative.py (AI risk commentary)</td></tr>
+      <tr><td>07</td><td>Docker</td><td>Dockerfile, docker-compose.yml</td></tr>
+      <tr><td>08</td><td>PostgreSQL</td><td>db_models.py, db.py (persistence)</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Key design patterns used</h3>
+  <ul>
+    <li><strong>HTTP 202</strong> &mdash; accept scan request now, process in background, client polls for result</li>
+    <li><strong>Graceful degradation</strong> &mdash; Claude API fails &rarr; fall back to raw metrics text</li>
+    <li><strong>Pure functions</strong> &mdash; market_data.py, risk.py, narrative.py each do one thing, testable in isolation</li>
+    <li><strong>Test pyramid</strong> &mdash; fast unit tests with mocks, slower integration tests with real DB</li>
+  </ul>
+
+  <h3>Full explainer post</h3>
+  <p>For the complete walkthrough of every technology, every finance concept, and the full architecture with diagrams:</p>
+  <p><a href="{{ "/2026/04/03/quantlab-phase1-explained/" | relative_url }}" style="font-weight:600; font-size:1.05rem;">&rarr; Read the full Phase 1 Explained post</a></p>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js">
 <script>
 mermaid.initialize({startOnLoad: true});
