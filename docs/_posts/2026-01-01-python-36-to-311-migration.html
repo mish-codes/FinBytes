@@ -1,0 +1,242 @@
+---
+layout: post
+title: "Python 3.6 → 3.11 Migration: What Breaks and How to Fix It"
+date: 2026-01-01
+tags: [python, migration, upgrade, compatibility, python-3.11]
+categories: [Python]
+section: python
+permalink: "/python/py36-to-311/"
+---
+
+<h2>Dates &amp; Datetimes</h2>
+
+<h3>date - datetime mixing (TypeError in 3.11)</h3>
+
+<pre><code class="language-python"># 3.6: silently works    3.11: TypeError
+from datetime import date, datetime
+
+d = date(2024, 1, 1)
+dt = datetime(2024, 1, 1, 0, 0)
+dt - d  # TypeError in 3.11
+
+# Fix: convert explicitly
+dt - datetime.combine(d, datetime.min.time())  # timedelta(0)
+</code></pre>
+
+<h3>datetime.utcnow() deprecated (3.12+)</h3>
+
+<pre><code class="language-python"># Old
+from datetime import datetime
+now = datetime.utcnow()  # naive UTC — deprecated
+
+# Fix: use timezone-aware
+from datetime import datetime, timezone
+now = datetime.now(timezone.utc)
+</code></pre>
+
+<h2>Dict Ordering</h2>
+
+<h3>dict is insertion-ordered (3.7+)</h3>
+
+<pre><code class="language-python"># 3.6: dict order was CPython implementation detail, not guaranteed
+# 3.7+: dict preserves insertion order (language spec)
+
+# You can now rely on this:
+config = {"host": "localhost", "port": 5432, "db": "quantlab"}
+assert list(config.keys()) == ["host", "port", "db"]  # guaranteed
+
+# No longer need OrderedDict for this use case
+</code></pre>
+
+<h2>Type Hints</h2>
+
+<h3>Built-in generics (3.9+)</h3>
+
+<pre><code class="language-python"># 3.6: need typing imports
+from typing import List, Dict, Optional, Tuple
+
+def get_prices(tickers: List[str]) -> Dict[str, float]: ...
+
+# 3.9+: use built-in types directly
+def get_prices(tickers: list[str]) -> dict[str, float]: ...
+</code></pre>
+
+<h3>Union with | operator (3.10+)</h3>
+
+<pre><code class="language-python"># 3.6-3.9
+from typing import Union, Optional
+
+def get_price(ticker: str) -> Optional[float]: ...
+def fetch(source: Union[str, Path]) -> bytes: ...
+
+# 3.10+
+def get_price(ticker: str) -> float | None: ...
+def fetch(source: str | Path) -> bytes: ...
+</code></pre>
+
+<h3>TypeAlias and type statement (3.10/3.12)</h3>
+
+<pre><code class="language-python"># 3.10
+from typing import TypeAlias
+PriceMap: TypeAlias = dict[str, float]
+
+# 3.12
+type PriceMap = dict[str, float]
+</code></pre>
+
+<h2>String Formatting</h2>
+
+<h3>f-string improvements (3.8, 3.12)</h3>
+
+<pre><code class="language-python"># 3.8: = for debugging
+price = 189.50
+print(f"{price=}")           # price=189.5
+
+# 3.12: any expression in f-strings (nested quotes, lambdas)
+data = {"AAPL": 189.5}
+print(f"{data["AAPL"]:.2f}")  # 189.50 — quotes inside f-string OK in 3.12
+</code></pre>
+
+<h2>Pattern Matching (3.10+)</h2>
+
+<pre><code class="language-python"># Replace long if/elif chains
+def classify_spread(bps: float) -> str:
+    match bps:
+        case x if x < 50:
+            return "tight"
+        case x if x < 150:
+            return "normal"
+        case x if x < 300:
+            return "wide"
+        case _:
+            return "distressed"
+
+# Works on types too
+def handle_event(event: dict):
+    match event:
+        case {"type": "trade", "ticker": str(t), "qty": int(q)}:
+            process_trade(t, q)
+        case {"type": "cancel", "order_id": str(oid)}:
+            cancel_order(oid)
+        case _:
+            log_unknown(event)
+</code></pre>
+
+<h2>Exception Handling</h2>
+
+<h3>Exception groups (3.11)</h3>
+
+<pre><code class="language-python"># Raise multiple errors at once (useful for validation)
+errors = []
+if qty <= 0:
+    errors.append(ValueError("quantity must be positive"))
+if ticker == "":
+    errors.append(ValueError("ticker required"))
+if errors:
+    raise ExceptionGroup("validation failed", errors)
+
+# Catch selectively
+try:
+    validate(request)
+except* ValueError as eg:
+    for e in eg.exceptions:
+        print(f"Validation error: {e}")
+</code></pre>
+
+<h3>Exception notes (3.11)</h3>
+
+<pre><code class="language-python">try:
+    price = get_price("INVALID")
+except Exception as e:
+    e.add_note(f"Occurred while pricing portfolio P-123")
+    e.add_note(f"Timestamp: {datetime.now(timezone.utc)}")
+    raise  # notes appear in traceback
+</code></pre>
+
+<h2>Performance (3.11)</h2>
+
+<h3>CPython 10-60% faster</h3>
+
+<pre><code class="language-python"># No code changes needed — same code runs faster
+# Adaptive specialising interpreter (PEP 659)
+# Biggest gains: pure Python loops, attribute access, function calls
+
+# Benchmark tip:
+import timeit
+timeit.timeit("sum(range(1_000_000))", number=100)
+# 3.6:  ~4.2s
+# 3.11: ~2.8s  (roughly 30% faster on this micro-benchmark)
+</code></pre>
+
+<h2>Async Improvements</h2>
+
+<h3>asyncio.TaskGroup (3.11)</h3>
+
+<pre><code class="language-python"># 3.6: asyncio.gather — if one task fails, others keep running
+results = await asyncio.gather(fetch("AAPL"), fetch("MSFT"))
+
+# 3.11: TaskGroup — structured concurrency, cancels siblings on failure
+async with asyncio.TaskGroup() as tg:
+    t1 = tg.create_task(fetch("AAPL"))
+    t2 = tg.create_task(fetch("MSFT"))
+# both done here, or ExceptionGroup raised if any failed
+</code></pre>
+
+<h3>asyncio.Runner (3.11)</h3>
+
+<pre><code class="language-python"># 3.6
+asyncio.get_event_loop().run_until_complete(main())
+
+# 3.10+
+asyncio.run(main())
+
+# 3.11: Runner for multiple calls in same loop
+with asyncio.Runner() as runner:
+    runner.run(setup())
+    runner.run(main())
+    runner.run(cleanup())
+</code></pre>
+
+<h2>Other Breaking Changes</h2>
+
+<h3>collections.abc moved</h3>
+
+<pre><code class="language-python"># 3.6: works
+from collections import Mapping, Sequence
+
+# 3.10+: removed — use collections.abc
+from collections.abc import Mapping, Sequence
+</code></pre>
+
+<h3>importlib.resources</h3>
+
+<pre><code class="language-python"># 3.6: pkg_resources (slow, deprecated)
+import pkg_resources
+data = pkg_resources.resource_string("mypackage", "data.json")
+
+# 3.9+: importlib.resources (fast, stdlib)
+from importlib.resources import files
+data = files("mypackage").joinpath("data.json").read_text()
+</code></pre>
+
+<h3>ssl defaults tightened</h3>
+
+<pre><code class="language-python"># 3.10+: ssl module rejects older TLS versions by default
+# If connecting to legacy systems:
+import ssl
+ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+ctx.minimum_version = ssl.TLSVersion.TLSv1_2  # explicit minimum
+</code></pre>
+
+<h2>Migration Checklist</h2>
+
+<ol>
+  <li>Run <code>python -W all</code> to surface DeprecationWarnings</li>
+  <li>Search for <code>from typing import List, Dict, Tuple, Optional</code> &mdash; replace with built-ins</li>
+  <li>Search for <code>Union[</code> &mdash; replace with <code>|</code></li>
+  <li>Search for <code>datetime.utcnow()</code> &mdash; replace with <code>datetime.now(timezone.utc)</code></li>
+  <li>Search for <code>from collections import</code> (non-abc) &mdash; add <code>.abc</code></li>
+  <li>Run <code>pyupgrade --py311-plus **/*.py</code> for automated fixes</li>
+  <li>Run full test suite under 3.11 &mdash; watch for date/datetime TypeError</li>
+  <li>Check CI uses the same Python version as production</li>
+</ol>
