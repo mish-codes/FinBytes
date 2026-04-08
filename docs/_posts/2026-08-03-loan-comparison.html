@@ -1,0 +1,164 @@
+---
+layout: post
+title: "Loan Repayment Comparison"
+date: 2026-08-03
+tags: [python, finance, calculator, loan, comparison]
+categories: [Finance Tools]
+section: tools
+permalink: "/tools/loan-comparison/"
+---
+
+<h2>Why compare?</h2>
+
+<p>A lower rate does not always mean the cheapest loan. Shorter terms raise the monthly payment but slash total interest. This tool puts two or three loan options side by side so you can see the trade-off at a glance.</p>
+
+<h2>Comparison engine</h2>
+
+<pre><code class="language-python">from dataclasses import dataclass
+
+
+@dataclass
+class LoanSummary:
+    label: str
+    principal: float
+    annual_rate: float
+    years: int
+    monthly_payment: float
+    total_interest: float
+    total_cost: float
+
+
+def pmt(principal: float, annual_rate: float, years: int) -> float:
+    r = annual_rate / 12
+    n = years * 12
+    if r == 0:
+        return round(principal / n, 2)
+    return round(principal * r * (1 + r) ** n / ((1 + r) ** n - 1), 2)
+
+
+def summarise_loan(
+    label: str,
+    principal: float,
+    annual_rate: float,
+    years: int,
+) -> LoanSummary:
+    """Compute headline numbers for a single loan."""
+    monthly = pmt(principal, annual_rate, years)
+    n = years * 12
+    total_cost = round(monthly * n, 2)
+    total_interest = round(total_cost - principal, 2)
+    return LoanSummary(
+        label=label,
+        principal=principal,
+        annual_rate=annual_rate,
+        years=years,
+        monthly_payment=monthly,
+        total_interest=total_interest,
+        total_cost=total_cost,
+    )
+
+
+def compare_loans(
+    principal: float,
+    options: list[tuple[str, float, int]],
+) -> list[LoanSummary]:
+    """Compare multiple (label, rate, years) options.
+
+    Parameters
+    ----------
+    principal : float
+        Loan amount (same for all options).
+    options : list[tuple[str, float, int]]
+        Each tuple is (label, annual_rate, term_years).
+
+    Returns
+    -------
+    list[LoanSummary]
+    """
+    return [
+        summarise_loan(label, principal, rate, years)
+        for label, rate, years in options
+    ]
+
+
+# --- demo ---
+loans = compare_loans(
+    principal=300_000,
+    options=[
+        ("30-yr @ 6.5 %", 0.065, 30),
+        ("20-yr @ 6.0 %", 0.060, 20),
+        ("15-yr @ 5.5 %", 0.055, 15),
+    ],
+)
+
+for ln in loans:
+    print(f"{ln.label:18s}  PMT ${ln.monthly_payment:>9,.2f}  "
+          f"Interest ${ln.total_interest:>11,.2f}  "
+          f"Total ${ln.total_cost:>11,.2f}")
+</code></pre>
+
+<h2>Side-by-side table</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0; font-size:0.9rem;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Option</th>
+      <th style="text-align:right; padding:0.4rem;">Monthly PMT</th>
+      <th style="text-align:right; padding:0.4rem;">Total Interest</th>
+      <th style="text-align:right; padding:0.4rem;">Total Cost</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">30-yr @ 6.5 %</td><td style="text-align:right; padding:0.4rem;">$1,896.20</td><td style="text-align:right; padding:0.4rem;">$382,633</td><td style="text-align:right; padding:0.4rem;">$682,633</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">20-yr @ 6.0 %</td><td style="text-align:right; padding:0.4rem;">$2,149.29</td><td style="text-align:right; padding:0.4rem;">$215,830</td><td style="text-align:right; padding:0.4rem;">$515,830</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">15-yr @ 5.5 %</td><td style="text-align:right; padding:0.4rem;">$2,451.25</td><td style="text-align:right; padding:0.4rem;">$141,225</td><td style="text-align:right; padding:0.4rem;">$441,225</td></tr>
+  </tbody>
+</table>
+
+<p style="font-size:0.82rem; color:var(--text-muted-color, #999);">All options assume a $300,000 principal with no extra payments.</p>
+
+<h2>Total cost bar chart</h2>
+
+<pre><code class="language-python">import plotly.graph_objects as go
+
+loans = compare_loans(
+    principal=300_000,
+    options=[
+        ("30-yr @ 6.5 %", 0.065, 30),
+        ("20-yr @ 6.0 %", 0.060, 20),
+        ("15-yr @ 5.5 %", 0.055, 15),
+    ],
+)
+
+labels = [ln.label for ln in loans]
+principals = [ln.principal for ln in loans]
+interests = [ln.total_interest for ln in loans]
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=labels, y=principals,
+    name="Principal",
+    marker_color="#636EFA",
+))
+fig.add_trace(go.Bar(
+    x=labels, y=interests,
+    name="Interest",
+    marker_color="#EF553B",
+))
+fig.update_layout(
+    barmode="stack",
+    title="Total Loan Cost: Principal + Interest",
+    yaxis_title="Dollars ($)",
+    template="plotly_dark",
+    margin=dict(t=50, b=40, l=60, r=20),
+)
+fig.show()
+</code></pre>
+
+<h2>Key takeaways</h2>
+
+<ul>
+  <li>Switching from 30 to 15 years <strong>saves over $241,000</strong> in interest, but your monthly payment increases by about $555.</li>
+  <li>The 20-year option is a middle ground &mdash; meaningful interest savings with a more manageable payment bump.</li>
+  <li>Always compare the <em>total cost</em>, not just the monthly payment, to see the true price of a loan.</li>
+</ul>

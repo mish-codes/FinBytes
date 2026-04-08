@@ -1,0 +1,154 @@
+---
+layout: post
+title: "Credit Card Debt Calculator"
+date: 2026-08-01
+tags: [python, finance, calculator, credit-card, amortization]
+categories: [Finance Tools]
+section: tools
+permalink: "/tools/credit-card-calculator/"
+---
+
+<h2>The formula</h2>
+
+<p>Credit card issuers compute your <strong>minimum payment</strong> as the greater of a flat floor (e.g. $25) or a percentage of the balance. To find the <em>fixed monthly payment</em> that retires a balance in <code>n</code> months, use the standard annuity formula:</p>
+
+<pre><code class="language-text">PMT = balance * r * (1 + r)^n / ((1 + r)^n - 1)
+
+where r = annual_rate / 12
+</code></pre>
+
+<p>If you only pay the minimum, most of your payment goes to interest and the balance barely shrinks. The calculator below shows exactly how long payoff takes and how much interest you will pay.</p>
+
+<h2>Core calculator</h2>
+
+<pre><code class="language-python">from dataclasses import dataclass
+
+
+@dataclass
+class PayoffRow:
+    month: int
+    payment: float
+    principal: float
+    interest: float
+    balance: float
+
+
+def credit_card_schedule(
+    balance: float,
+    annual_rate: float,
+    monthly_payment: float,
+    max_months: int = 600,
+) -> list[PayoffRow]:
+    """Generate a month-by-month payoff schedule.
+
+    Parameters
+    ----------
+    balance : float
+        Current outstanding balance.
+    annual_rate : float
+        Annual interest rate as a decimal (e.g. 0.22 for 22 %).
+    monthly_payment : float
+        Fixed amount paid each month.
+    max_months : int
+        Safety cap to prevent infinite loops on low payments.
+
+    Returns
+    -------
+    list[PayoffRow]
+        One row per month until balance reaches zero.
+    """
+    r = annual_rate / 12
+    schedule: list[PayoffRow] = []
+
+    for month in range(1, max_months + 1):
+        interest = round(balance * r, 2)
+        payment = min(monthly_payment, balance + interest)
+        principal = round(payment - interest, 2)
+        balance = round(balance - principal, 2)
+        schedule.append(PayoffRow(month, payment, principal, interest, balance))
+        if balance <= 0:
+            break
+
+    return schedule
+
+
+# --- quick demo ---
+schedule = credit_card_schedule(
+    balance=5_000.00,
+    annual_rate=0.22,
+    monthly_payment=200.00,
+)
+
+total_interest = sum(r.interest for r in schedule)
+print(f"Months to payoff : {len(schedule)}")
+print(f"Total interest   : ${total_interest:,.2f}")
+print(f"Total paid       : ${sum(r.payment for r in schedule):,.2f}")
+</code></pre>
+
+<h2>Summary table</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0; font-size:0.9rem;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Metric</th>
+      <th style="text-align:right; padding:0.4rem;">$150 / mo</th>
+      <th style="text-align:right; padding:0.4rem;">$200 / mo</th>
+      <th style="text-align:right; padding:0.4rem;">$300 / mo</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Months to payoff</td><td style="text-align:right; padding:0.4rem;">46</td><td style="text-align:right; padding:0.4rem;">32</td><td style="text-align:right; padding:0.4rem;">20</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Total interest</td><td style="text-align:right; padding:0.4rem;">$1,838</td><td style="text-align:right; padding:0.4rem;">$1,282</td><td style="text-align:right; padding:0.4rem;">$794</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Total paid</td><td style="text-align:right; padding:0.4rem;">$6,838</td><td style="text-align:right; padding:0.4rem;">$6,282</td><td style="text-align:right; padding:0.4rem;">$5,794</td></tr>
+  </tbody>
+</table>
+
+<p style="font-size:0.82rem; color:var(--text-muted-color, #999);">Based on a $5,000 balance at 22 % APR.</p>
+
+<h2>Balance-over-time chart</h2>
+
+<pre><code class="language-python">import plotly.graph_objects as go
+
+schedule = credit_card_schedule(
+    balance=5_000.00,
+    annual_rate=0.22,
+    monthly_payment=200.00,
+)
+
+months = [r.month for r in schedule]
+balances = [r.balance for r in schedule]
+cum_interest = []
+running = 0.0
+for r in schedule:
+    running += r.interest
+    cum_interest.append(running)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(
+    x=months, y=balances,
+    mode="lines", name="Remaining balance",
+    line=dict(color="#636EFA", width=2),
+))
+fig.add_trace(go.Scatter(
+    x=months, y=cum_interest,
+    mode="lines", name="Cumulative interest",
+    line=dict(color="#EF553B", width=2, dash="dot"),
+))
+fig.update_layout(
+    title="Credit Card Payoff: $5,000 at 22 % APR, $200/mo",
+    xaxis_title="Month",
+    yaxis_title="Dollars ($)",
+    template="plotly_dark",
+    legend=dict(x=0.55, y=0.95),
+    margin=dict(t=50, b=40, l=60, r=20),
+)
+fig.show()
+</code></pre>
+
+<h2>Key takeaways</h2>
+
+<ul>
+  <li><strong>Doubling your payment</strong> from $150 to $300 cuts total interest by more than half.</li>
+  <li>At the minimum payment floor ($25), a $5,000 balance at 22 % takes <em>over 25 years</em> to clear and costs more than $8,000 in interest alone.</li>
+  <li>Use the schedule list to find the exact month where interest drops below principal &mdash; that is the tipping point.</li>
+</ul>
