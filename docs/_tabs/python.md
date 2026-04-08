@@ -10,113 +10,103 @@ permalink: /python/
 .py-lede { color:var(--text-muted-color, #666); font-size:.95rem; margin-bottom:2.5rem; max-width:580px; line-height:1.7; }
 .py-section { margin-bottom:2.5rem; }
 .py-section-hdr {
-  display:flex; align-items:baseline; gap:.75rem;
   font-size:.72rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--text-muted-color, #999);
   margin-bottom:.6rem; padding-bottom:.5rem; border-bottom:1px solid var(--border-color, #ebebeb);
 }
-.py-section-hdr .sub { font-weight:400; font-size:.7rem; color:var(--text-muted-color, #bbb); letter-spacing:0; text-transform:none; }
 .py-list { list-style:none; margin:0; padding:0; }
-.py-list li { display:flex; align-items:baseline; gap:1rem; padding:.4rem 0; border-bottom:1px solid var(--border-color, #f4f4f4); }
+.py-list li { padding:.5rem 0; border-bottom:1px solid var(--border-color, #f4f4f4); }
 .py-list li:last-child { border-bottom:none; }
-.py-date { font-size:.78rem; color:var(--text-muted-color, #ccc); white-space:nowrap; min-width:72px; }
-.py-list a { font-size:.93rem; color:var(--text-color, #333); text-decoration:none; line-height:1.4; }
+.py-list a { font-size:.93rem; color:var(--text-color, #333); text-decoration:none; font-weight:600; }
 .py-list a:hover { color:var(--link-color, #2a7ae2); text-decoration:underline; }
+.py-desc { display:block; font-size:.82rem; color:var(--text-muted-color, #999); margin-top:.15rem; }
 </style>
 
-<p class="py-lede">A documentary learning journal. Python from finance basics through to testing, systems, and tooling — written as I learned it.</p>
+<p class="py-lede">Python references and guides &mdash; testing, patterns, tools, and the QuantLab exercise blog posts.</p>
 
-<div class="py-section" id="basics">
-  <div class="py-section-hdr">Python fundamentals <span class="sub">core language &middot; early 2023</span></div>
+<div class="py-section">
+  <div class="py-section-hdr">Python References</div>
   <ul class="py-list">
-    {% for p in site.posts %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% assign sl = p.slug %}
-      {% assign show = false %}
-      {% if p.section == "basics" %}{% assign show = true %}{% endif %}
-      {% if pd >= "2023-03-18" and pd <= "2023-04-22" %}
-        {% if sl contains "variable" or sl contains "error" or sl contains "loop" or sl contains "functions-in" or sl contains "role-of-python-in-modern" or sl contains "big-o" or sl contains "creating-a-person" or sl contains "decorator" or sl contains "module" or sl contains "caching-in-net" %}
-          {% assign show = true %}
-        {% endif %}
-      {% endif %}
-      {% if show %}
-        <li><span class="py-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
-      {% endif %}
-    {% endfor %}
+    <li>
+      <a href="{{ "/python/decorators/" | relative_url }}">Decorators</a>
+      <span class="py-desc">Patterns you'll actually use &mdash; timer, retry, cache, validation, stacking</span>
+    </li>
+    <li>
+      <a href="{{ "/python/big-o/" | relative_url }}">Big O Notation</a>
+      <span class="py-desc">Complexity table, Python data structure operations, common mistakes</span>
+    </li>
+    <li>
+      <a href="{{ "/python/py36-to-311/" | relative_url }}">Python 3.6 &rarr; 3.11 Migration</a>
+      <span class="py-desc">What breaks and how to fix it &mdash; type hints, dates, pattern matching, async</span>
+    </li>
   </ul>
 </div>
 
-<div class="py-section" id="finance">
-  <div class="py-section-hdr">Finance &amp; data projects <span class="sub">applied Python &middot; early 2023</span></div>
+<div class="py-section">
+  <div class="py-section-hdr">Testing &mdash; pytest</div>
   <ul class="py-list">
-    {% for p in site.posts %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% assign sl = p.slug %}
-      {% assign show = false %}
-      {% if p.section == "finance" %}{% assign show = true %}{% endif %}
-      {% if pd >= "2023-03-18" and pd <= "2023-04-22" %}
-        {% unless sl contains "variable" or sl contains "error" or sl contains "loop" or sl contains "functions-in" or sl contains "role-of-python-in-modern" or sl contains "big-o" or sl contains "creating-a-person" or sl contains "decorator" or sl contains "module" or sl contains "caching-in-net" %}
-          {% assign show = true %}
-        {% endunless %}
-      {% endif %}
-      {% if show %}
-        <li><span class="py-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
-      {% endif %}
-    {% endfor %}
+    <li>
+      <a href="{{ "/python/pytest-mocking/" | relative_url }}">Mocking &amp; Monkeypatch</a>
+      <span class="py-desc">monkeypatch vs mock.patch, patch-where-used rule, AsyncMock, edge cases</span>
+    </li>
+    <li>
+      <a href="{{ "/python/testing-side-effects/" | relative_url }}">Testing Side Effects</a>
+      <span class="py-desc">Files, emails, HTTP APIs, databases &mdash; tmp_path, mock_open, moto, fakeredis</span>
+    </li>
+    <li>
+      <a href="{{ "/python/pytest-fixtures-ci/" | relative_url }}">Fixtures &amp; CI Gotchas</a>
+      <span class="py-desc">Scope levels, conftest, parametrize, 6 CI failure modes, pyproject.toml</span>
+    </li>
   </ul>
 </div>
 
-<div class="py-section" id="testing">
-  <div class="py-section-hdr">Testing — pytest deep dive <span class="sub">monkeypatch, fixtures, enterprise gotchas &middot; Nov&ndash;Dec 2025</span></div>
+<div class="py-section">
+  <div class="py-section-hdr">QuantLab Exercise Posts</div>
   <ul class="py-list">
-    {% for p in site.posts %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% assign show = false %}
-      {% if p.section == "testing" or p.tags contains "pytest" or p.tags contains "monkeypatch" %}{% assign show = true %}{% endif %}
-      {% if pd >= "2025-11-14" and pd <= "2025-12-31" %}{% assign show = true %}{% endif %}
-      {% if show %}
-        <li><span class="py-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
-      {% endif %}
-    {% endfor %}
+    <li>
+      <a href="{{ "/2026/04/01/pytest-tdd-financial-python/" | relative_url }}">TDD with pytest</a>
+      <span class="py-desc">Exercise 01 &mdash; red-green-refactor, daily returns, max drawdown</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/02/pydantic-models-for-trading-data/" | relative_url }}">Pydantic v2 Models</a>
+      <span class="py-desc">Exercise 02 &mdash; field validators, computed fields, trading data contracts</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/02/fastapi-your-first-financial-api/" | relative_url }}">FastAPI</a>
+      <span class="py-desc">Exercise 03 &mdash; routes, status codes, TestClient, OpenAPI docs</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/02/async-python-for-market-data/" | relative_url }}">Async Python</a>
+      <span class="py-desc">Exercise 04 &mdash; asyncio, aiohttp, gather, concurrent price fetching</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/02/yfinance-fetching-market-data/" | relative_url }}">yfinance</a>
+      <span class="py-desc">Exercise 05 &mdash; fetching prices, pandas wrangling, data quality</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/02/claude-api-ai-risk-analysis/" | relative_url }}">Claude API</a>
+      <span class="py-desc">Exercise 06 &mdash; AI-powered risk narratives, graceful degradation</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/02/docker-for-python-services/" | relative_url }}">Docker</a>
+      <span class="py-desc">Exercise 07 &mdash; multi-stage builds, compose, .dockerignore</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/02/postgresql-sqlalchemy-async/" | relative_url }}">PostgreSQL &amp; SQLAlchemy</a>
+      <span class="py-desc">Exercise 08 &mdash; async ORM, Alembic migrations, testing with SQLite</span>
+    </li>
   </ul>
 </div>
 
-<div class="py-section" id="systems">
-  <div class="py-section-hdr">Systems and infrastructure <span class="sub">Redis, caching, request tracing &middot; Jan&ndash;Feb 2026</span></div>
+<div class="py-section">
+  <div class="py-section-hdr">Explainers</div>
   <ul class="py-list">
-    {% for p in site.posts %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% assign show = false %}
-      {% if p.section == "systems" or p.tags contains "redis" or p.tags contains "caching" %}{% assign show = true %}{% endif %}
-      {% if pd >= "2026-01-01" and pd <= "2026-02-08" %}{% assign show = true %}{% endif %}
-      {% if show %}
-        <li><span class="py-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="py-section" id="tools">
-  <div class="py-section-hdr">Tools and workflow <span class="sub">argparse, CLI, Git &middot; Feb&ndash;Mar 2026</span></div>
-  <ul class="py-list">
-    {% for p in site.posts %}
-      {% assign pd = p.date | date: "%Y-%m-%d" %}
-      {% assign show = false %}
-      {% if p.section == "tools" or p.tags contains "argparse" or p.tags contains "git" or p.tags contains "cli" %}{% assign show = true %}{% endif %}
-      {% if pd >= "2026-02-09" and pd <= "2026-03-31" %}{% assign show = true %}{% endif %}
-      {% if show %}
-        <li><span class="py-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
-      {% endif %}
-    {% endfor %}
-  </ul>
-</div>
-
-<div class="py-section" id="all">
-  <div class="py-section-hdr">All posts <span class="sub">{{ site.posts.size }} total &middot; newest first</span></div>
-  <ul class="py-list">
-    {% for p in site.posts %}
-      {% unless p.tags contains "cpp" or p.tags contains "c++" or p.tags contains "design-patterns" or p.tags contains "defensive" or p.tags contains "queues" or p.tags contains "reliability" %}
-        <li><span class="py-date">{{ p.date | date: "%-d %b %Y" }}</span><a href="{{ p.url | relative_url }}">{{ p.title }}</a></li>
-      {% endunless %}
-    {% endfor %}
+    <li>
+      <a href="{{ "/2026/04/03/quantlab-phase1-explained/" | relative_url }}">Phase 1 Explained</a>
+      <span class="py-desc">Every technology and concept from exercises 01&ndash;08, explained from scratch</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/16/quantlab-phase2-explained/" | relative_url }}">Phase 2 Explained</a>
+      <span class="py-desc">Every AWS service and finance formula from exercises 09&ndash;20</span>
+    </li>
   </ul>
 </div>
