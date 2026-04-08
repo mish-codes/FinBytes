@@ -8,4 +8,40 @@
     filter: invert(1) hue-rotate(180deg);
   }
 }
+.svc-panel { margin:1rem 1.5rem; font-size:0.78rem; }
+.svc-toggle { cursor:pointer; display:flex; align-items:center; gap:0.4rem;
+  color:rgba(255,255,255,0.5); font-size:0.72rem; font-weight:600;
+  letter-spacing:0.05em; text-transform:uppercase; padding:0.4rem 0;
+  border:none; background:none; width:100%; text-align:left; }
+.svc-toggle:hover { color:#fff; }
+.svc-caret { font-size:0.6rem; transition:transform 0.15s; display:inline-block; }
+.svc-toggle.open .svc-caret { transform:rotate(90deg); }
+.svc-body { display:none; padding:0.3rem 0; }
+.svc-body.open { display:block; }
+.svc-body a { display:flex; justify-content:space-between; align-items:center;
+  padding:0.25rem 0; color:rgba(255,255,255,0.5); text-decoration:none;
+  font-size:0.72rem; border-bottom:1px solid rgba(255,255,255,0.06); }
+.svc-body a:last-child { border-bottom:none; }
+.svc-body a:hover { color:#fff; }
+.svc-badge { font-size:0.62rem; padding:1px 5px; border-radius:3px; background:rgba(255,255,255,0.08); }
 </style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  var sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  var panel = document.createElement('div');
+  panel.className = 'svc-panel';
+  panel.innerHTML =
+    '<button class="svc-toggle" onclick="this.classList.toggle(\'open\');this.nextElementSibling.classList.toggle(\'open\');">' +
+    '<span class="svc-caret">&#9656;</span> Services</button>' +
+    '<div class="svc-body">' +
+    '<a href="https://finbytes.streamlit.app" target="_blank">Dashboard <span class="svc-badge">Streamlit</span></a>' +
+    '<a href="https://finbytes-scanner.onrender.com" target="_blank">Scanner API <span class="svc-badge">Render</span></a>' +
+    '<a href="https://github.com/MishCodesFinBytes/QuantLab/actions" target="_blank">CI Pipeline <span class="svc-badge">Actions</span></a>' +
+    '<a href="https://github.com/MishCodesFinBytes/QuantLab" target="_blank">QuantLab <span class="svc-badge">GitHub</span></a>' +
+    '<a href="https://github.com/MishCodesFinBytes/FinBytes" target="_blank">FinBytes <span class="svc-badge">GitHub</span></a>' +
+    '</div>';
+  sidebar.appendChild(panel);
+});
+</script>
