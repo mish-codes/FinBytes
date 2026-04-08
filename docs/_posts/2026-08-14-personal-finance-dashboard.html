@@ -1,0 +1,196 @@
+---
+layout: post
+title: "Personal Finance Dashboard"
+date: 2026-08-14
+tags: [python, finance, dashboard, personal-finance, net-worth, plotly]
+categories: [Finance Tools]
+section: tools
+permalink: "/tools/personal-finance/"
+---
+
+<h2>The approach</h2>
+
+<p>A personal finance dashboard tracks three things: net worth (assets minus liabilities), savings rate, and expense trends over time. The code below uses sample data &mdash; swap in a CSV or database for a real tracker.</p>
+
+<h2>Net worth calculator</h2>
+
+<pre><code class="language-python">from dataclasses import dataclass, field
+
+
+@dataclass
+class NetWorth:
+    """Snapshot of assets and liabilities."""
+    assets: dict[str, float] = field(default_factory=dict)
+    liabilities: dict[str, float] = field(default_factory=dict)
+
+    @property
+    def total_assets(self) -> float:
+        return round(sum(self.assets.values()), 2)
+
+    @property
+    def total_liabilities(self) -> float:
+        return round(sum(self.liabilities.values()), 2)
+
+    @property
+    def net_worth(self) -> float:
+        return round(self.total_assets - self.total_liabilities, 2)
+
+    @property
+    def debt_to_asset_ratio(self) -> float:
+        if self.total_assets == 0:
+            return 0.0
+        return round(self.total_liabilities / self.total_assets, 4)
+
+    def summary(self) -> str:
+        lines = [
+            f"Total assets      : ${self.total_assets:>12,.2f}",
+            f"Total liabilities : ${self.total_liabilities:>12,.2f}",
+            f"Net worth         : ${self.net_worth:>12,.2f}",
+            f"Debt/asset ratio  : {self.debt_to_asset_ratio:.1%}",
+        ]
+        return "\n".join(lines)
+
+
+nw = NetWorth(
+    assets={
+        "Checking account": 8_500,
+        "Savings account": 25_000,
+        "401(k)": 62_000,
+        "Roth IRA": 18_500,
+        "Brokerage": 34_200,
+        "Car value": 15_000,
+    },
+    liabilities={
+        "Student loans": 22_000,
+        "Car loan": 8_500,
+        "Credit card": 1_200,
+    },
+)
+print(nw.summary())
+</code></pre>
+
+<h2>Net worth breakdown chart</h2>
+
+<pre><code class="language-python">import plotly.graph_objects as go
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    name="Assets",
+    x=list(nw.assets.keys()),
+    y=list(nw.assets.values()),
+    marker_color="#00CC96",
+))
+fig.add_trace(go.Bar(
+    name="Liabilities",
+    x=list(nw.liabilities.keys()),
+    y=[-v for v in nw.liabilities.values()],
+    marker_color="#EF553B",
+))
+fig.update_layout(
+    title=f"Net Worth Breakdown &mdash; ${nw.net_worth:,.0f}",
+    yaxis_title="USD",
+    template="plotly_dark",
+    barmode="relative",
+    margin=dict(t=50, b=80, l=60, r=20),
+)
+fig.show()
+</code></pre>
+
+<h2>Monthly expense trends</h2>
+
+<pre><code class="language-python">import pandas as pd
+
+# Sample 12-month expense data
+months = pd.date_range("2025-07", periods=12, freq="MS")
+data = {
+    "Housing": [1600] * 12,
+    "Food": [420, 450, 380, 410, 470, 440, 430, 460, 400, 450, 480, 420],
+    "Transport": [250, 230, 270, 240, 260, 250, 220, 280, 250, 240, 260, 230],
+    "Entertainment": [120, 150, 100, 130, 180, 160, 140, 170, 110, 130, 150, 120],
+    "Utilities": [180, 190, 170, 160, 150, 200, 220, 210, 180, 170, 190, 185],
+}
+expenses_df = pd.DataFrame(data, index=months)
+expenses_df["Total"] = expenses_df.sum(axis=1)
+
+fig = go.Figure()
+for col in expenses_df.columns[:-1]:
+    fig.add_trace(go.Scatter(
+        x=expenses_df.index, y=expenses_df[col],
+        mode="lines+markers", name=col, stackgroup="expenses",
+    ))
+
+fig.update_layout(
+    title="Monthly Expenses (stacked area)",
+    yaxis_title="USD",
+    template="plotly_dark",
+    margin=dict(t=50, b=40, l=60, r=20),
+    hovermode="x unified",
+)
+fig.show()
+</code></pre>
+
+<h2>Savings rate tracker</h2>
+
+<pre><code class="language-python">monthly_income = [6300] * 12  # gross monthly income
+monthly_expenses = expenses_df["Total"].values
+savings = [inc - exp for inc, exp in zip(monthly_income, monthly_expenses)]
+savings_rate = [round(s / inc * 100, 1) for s, inc in zip(savings, monthly_income)]
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    x=expenses_df.index, y=savings_rate,
+    marker_color=[
+        "#00CC96" if r >= 20 else "#FFA15A" if r >= 10 else "#EF553B"
+        for r in savings_rate
+    ],
+    text=[f"{r}%" for r in savings_rate],
+    textposition="outside",
+))
+fig.add_hline(y=20, line_dash="dash", line_color="#636EFA",
+              annotation_text="20% target")
+fig.update_layout(
+    title="Monthly Savings Rate",
+    yaxis_title="Savings Rate (%)",
+    template="plotly_dark",
+    margin=dict(t=50, b=40, l=60, r=20),
+    yaxis=dict(range=[0, max(savings_rate) + 10]),
+)
+fig.show()
+</code></pre>
+
+<h2>Net worth over time</h2>
+
+<pre><code class="language-python">import numpy as np
+
+# Simulate net worth growth: start at $131,500, add monthly savings + 7% annual growth
+nw_history = [nw.net_worth]
+for i in range(11):
+    monthly_return = nw_history[-1] * (0.07 / 12)  # investment growth
+    nw_history.append(nw_history[-1] + savings[i + 1] + monthly_return)
+
+fig = go.Figure(go.Scatter(
+    x=expenses_df.index,
+    y=nw_history,
+    mode="lines+markers",
+    line=dict(color="#636EFA", width=2),
+    fill="tozeroy",
+    fillcolor="rgba(99,110,250,0.15)",
+))
+fig.update_layout(
+    title="Net Worth Trajectory",
+    yaxis_title="USD",
+    template="plotly_dark",
+    margin=dict(t=50, b=40, l=60, r=20),
+    yaxis_tickprefix="$",
+)
+fig.show()
+</code></pre>
+
+<h2>Key takeaways</h2>
+
+<ul>
+  <li>The <strong>debt-to-asset ratio</strong> measures financial fragility. Below 0.3 is healthy; above 0.5 warrants a payoff plan.</li>
+  <li>Color-coding savings rate bars (green &ge; 20%, orange &ge; 10%, red &lt; 10%) gives an instant visual signal on whether you are hitting your target.</li>
+  <li>Even a modest 7% annual return compounds significantly over time. The net worth trajectory chart makes this tangible.</li>
+  <li>Replace the hardcoded dicts with <code>pd.read_csv("expenses.csv")</code> to turn this into a real personal tracker.</li>
+</ul>
