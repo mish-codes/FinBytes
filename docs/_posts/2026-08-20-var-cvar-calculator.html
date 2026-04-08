@@ -1,0 +1,153 @@
+---
+layout: post
+title: "VaR & CVaR Calculator"
+date: 2026-08-20
+tags: [python, finance, var, cvar, risk, monte-carlo, plotly]
+categories: [Finance Tools]
+section: tools
+permalink: "/tools/var-cvar/"
+---
+
+<h2>What VaR and CVaR measure</h2>
+
+<p><strong>Value at Risk (VaR)</strong> answers: "What is the worst loss I can expect over a given period at a given confidence level?" A 95% daily VaR of -2.1% means that on 95 out of 100 days, the loss will not exceed 2.1%.</p>
+
+<p><strong>Conditional Value at Risk (CVaR)</strong>, also called Expected Shortfall, answers: "When things go beyond VaR, how bad is it on average?" It is the mean of all losses in the tail beyond VaR. Regulators increasingly prefer CVaR because it captures the severity of extreme losses, not just their threshold.</p>
+
+<h2>Generate synthetic returns</h2>
+
+<pre><code class="language-python">import numpy as np
+import pandas as pd
+
+np.random.seed(42)
+
+# Simulate 2 years of daily returns (approx 504 trading days)
+n_days = 504
+daily_returns = np.random.normal(loc=0.0004, scale=0.015, size=n_days)
+
+# Inject a few tail events to make it realistic
+tail_events = np.random.normal(loc=-0.04, scale=0.02, size=10)
+indices = np.random.choice(n_days, size=10, replace=False)
+daily_returns[indices] = tail_events
+
+returns = pd.Series(daily_returns, name="daily_return")
+print(f"Mean: {returns.mean():.4f}  Std: {returns.std():.4f}")
+print(f"Min:  {returns.min():.4f}  Max: {returns.max():.4f}")
+</code></pre>
+
+<p>Real return distributions have fatter tails than a normal distribution. The injected tail events simulate crash days that a pure Gaussian would underestimate.</p>
+
+<h2>Historical VaR</h2>
+
+<pre><code class="language-python">def historical_var(returns: np.ndarray, confidence: float = 0.95) -> float:
+    """VaR as the percentile of the return distribution."""
+    return float(np.percentile(returns, (1 - confidence) * 100))
+
+var_95 = historical_var(returns.values)
+print(f"Historical VaR (95%): {var_95:.4f}")
+</code></pre>
+
+<p>This is the simplest approach: sort the returns and pick the value at the 5th percentile. No distributional assumptions. It works well when you have enough historical data, but it cannot extrapolate beyond the observed range.</p>
+
+<h2>Parametric VaR</h2>
+
+<pre><code class="language-python">from scipy import stats
+
+def parametric_var(returns: np.ndarray, confidence: float = 0.95) -> float:
+    """VaR assuming returns are normally distributed."""
+    mu = np.mean(returns)
+    sigma = np.std(returns)
+    return float(stats.norm.ppf(1 - confidence, loc=mu, scale=sigma))
+
+param_var_95 = parametric_var(returns.values)
+print(f"Parametric VaR (95%): {param_var_95:.4f}")
+</code></pre>
+
+<p>Parametric VaR fits a normal distribution to the returns and reads off the quantile analytically. It is fast and smooth, but underestimates tail risk because real returns are not normal. The gap between historical and parametric VaR tells you how fat your tails are.</p>
+
+<h2>CVaR (Expected Shortfall)</h2>
+
+<pre><code class="language-python">def historical_cvar(returns: np.ndarray, confidence: float = 0.95) -> float:
+    """Average loss beyond the VaR threshold."""
+    var = historical_var(returns, confidence)
+    tail_losses = returns[returns <= var]
+    return float(np.mean(tail_losses))
+
+cvar_95 = historical_cvar(returns.values)
+print(f"CVaR (95%): {cvar_95:.4f}")
+</code></pre>
+
+<p>CVaR takes all the returns that fall at or below VaR and averages them. If VaR is the door to the tail, CVaR tells you what the room behind it looks like. A portfolio with low VaR but very negative CVaR has concentrated tail risk.</p>
+
+<h2>Summary table</h2>
+
+<pre><code class="language-python">summary = pd.DataFrame({
+    "Metric": ["Historical VaR (95%)", "Parametric VaR (95%)", "CVaR (95%)"],
+    "Value": [f"{var_95:.4f}", f"{param_var_95:.4f}", f"{cvar_95:.4f}"],
+    "Interpretation": [
+        "5% of days had losses worse than this",
+        "Same, assuming normal distribution",
+        "Average loss on those worst 5% of days",
+    ],
+})
+print(summary.to_string(index=False))
+</code></pre>
+
+<h2>Histogram with VaR and CVaR lines</h2>
+
+<pre><code class="language-python">import plotly.graph_objects as go
+
+fig = go.Figure()
+
+fig.add_trace(go.Histogram(
+    x=returns.values,
+    nbinsx=60,
+    marker_color="steelblue",
+    opacity=0.7,
+    name="Daily Returns",
+))
+
+fig.add_vline(x=var_95, line_dash="dash", line_color="red",
+              annotation_text=f"VaR 95%: {var_95:.4f}",
+              annotation_position="top left")
+
+fig.add_vline(x=cvar_95, line_dash="dot", line_color="darkred",
+              annotation_text=f"CVaR 95%: {cvar_95:.4f}",
+              annotation_position="top left")
+
+fig.update_layout(
+    title="Return Distribution with VaR & CVaR",
+    xaxis_title="Daily Return",
+    yaxis_title="Frequency",
+    template="plotly_white",
+    showlegend=False,
+    width=800,
+    height=450,
+)
+fig.show()
+</code></pre>
+
+<p>The red dashed line marks the VaR threshold. Everything to the left is the tail. The dark red dotted line marks CVaR, the average of that tail. The further apart these two lines are, the more severe the extreme losses.</p>
+
+<h2>Scaling VaR to different horizons</h2>
+
+<pre><code class="language-python"># Square-root-of-time rule: scale daily VaR to N-day VaR
+for horizon in [1, 5, 10, 21]:
+    scaled = var_95 * np.sqrt(horizon)
+    print(f"{horizon:>2}-day VaR (95%): {scaled:.4f}")
+</code></pre>
+
+<p>The square-root-of-time rule assumes returns are i.i.d. It is a rough approximation. In practice, volatility clusters (bad days follow bad days), so multi-day VaR computed this way underestimates risk during crises. For more accurate multi-day estimates, use Monte Carlo simulation with a GARCH volatility model.</p>
+
+<h2>When to use which</h2>
+
+<table>
+  <thead><tr><th>Method</th><th>Strength</th><th>Weakness</th></tr></thead>
+  <tbody>
+    <tr><td>Historical VaR</td><td>No distributional assumption</td><td>Needs large sample, cannot extrapolate</td></tr>
+    <tr><td>Parametric VaR</td><td>Fast, smooth, works with small samples</td><td>Underestimates fat tails</td></tr>
+    <tr><td>CVaR</td><td>Captures tail severity</td><td>Noisier estimate (fewer data points in tail)</td></tr>
+  </tbody>
+</table>
+
+<p>For a production risk system, use all three and compare. When parametric VaR diverges significantly from historical VaR, your returns are non-normal and the parametric estimate is unreliable.</p>

@@ -1,0 +1,226 @@
+---
+layout: post
+title: "Portfolio Optimization & Efficient Frontier"
+date: 2026-08-26
+tags: [python, finance, portfolio, optimization, efficient-frontier, scipy, plotly]
+categories: [Finance Tools]
+section: tools
+permalink: "/tools/portfolio-optimization/"
+---
+
+<h2>The idea</h2>
+
+<p>Markowitz portfolio theory says: for any target return, there is a portfolio with the minimum possible risk. The set of all such portfolios forms the <strong>efficient frontier</strong>. Any portfolio below the frontier is suboptimal because you could get the same return with less risk, or more return for the same risk.</p>
+
+<h2>Simulated asset returns</h2>
+
+<pre><code class="language-python">import numpy as np
+import pandas as pd
+
+np.random.seed(42)
+
+# 5 assets, 252 trading days
+n_assets = 5
+n_days = 252
+asset_names = ["Tech", "Finance", "Health", "Energy", "Bonds"]
+
+# Realistic annual returns and volatilities
+annual_returns = np.array([0.12, 0.08, 0.10, 0.06, 0.03])
+annual_vols = np.array([0.22, 0.18, 0.15, 0.25, 0.05])
+daily_returns_mean = annual_returns / 252
+daily_returns_std = annual_vols / np.sqrt(252)
+
+# Generate correlated returns
+correlation = np.array([
+    [1.0, 0.6, 0.3, 0.2, -0.2],
+    [0.6, 1.0, 0.4, 0.3, -0.1],
+    [0.3, 0.4, 1.0, 0.1, 0.0],
+    [0.2, 0.3, 0.1, 1.0, -0.15],
+    [-0.2, -0.1, 0.0, -0.15, 1.0],
+])
+
+L = np.linalg.cholesky(correlation)
+uncorrelated = np.random.normal(size=(n_days, n_assets))
+correlated = uncorrelated @ L.T
+
+returns = correlated * daily_returns_std + daily_returns_mean
+returns_df = pd.DataFrame(returns, columns=asset_names)
+
+print("Annualized returns:")
+print((returns_df.mean() * 252).round(4))
+print("\nAnnualized volatility:")
+print((returns_df.std() * np.sqrt(252)).round(4))
+</code></pre>
+
+<h2>Portfolio metrics</h2>
+
+<pre><code class="language-python">def portfolio_performance(
+    weights: np.ndarray,
+    mean_returns: np.ndarray,
+    cov_matrix: np.ndarray,
+    risk_free_rate: float = 0.04,
+) -> tuple[float, float, float]:
+    """Return annualized return, volatility, and Sharpe ratio."""
+    ret = np.sum(mean_returns * weights) * 252
+    vol = np.sqrt(weights @ cov_matrix @ weights) * np.sqrt(252)
+    sharpe = (ret - risk_free_rate) / vol
+    return ret, vol, sharpe
+
+mean_returns = returns_df.mean().values
+cov_matrix = returns_df.cov().values
+</code></pre>
+
+<h2>Random portfolios</h2>
+
+<pre><code class="language-python">n_portfolios = 8000
+results = np.zeros((n_portfolios, 3))
+all_weights = np.zeros((n_portfolios, n_assets))
+
+for i in range(n_portfolios):
+    w = np.random.dirichlet(np.ones(n_assets))
+    all_weights[i] = w
+    results[i] = portfolio_performance(w, mean_returns, cov_matrix)
+
+portfolios = pd.DataFrame(results, columns=["return", "volatility", "sharpe"])
+print(f"Max Sharpe:     {portfolios['sharpe'].max():.3f}")
+print(f"Min volatility: {portfolios['volatility'].min():.4f}")
+</code></pre>
+
+<h2>Optimal portfolios via scipy</h2>
+
+<pre><code class="language-python">from scipy.optimize import minimize
+
+def neg_sharpe(weights, mean_returns, cov_matrix, rf=0.04):
+    r, v, s = portfolio_performance(weights, mean_returns, cov_matrix, rf)
+    return -s
+
+def portfolio_volatility(weights, mean_returns, cov_matrix):
+    return np.sqrt(weights @ cov_matrix @ weights) * np.sqrt(252)
+
+constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1}
+bounds = tuple((0, 1) for _ in range(n_assets))
+init = np.ones(n_assets) / n_assets
+
+# Maximum Sharpe ratio portfolio
+max_sharpe_result = minimize(
+    neg_sharpe, init, args=(mean_returns, cov_matrix),
+    method="SLSQP", bounds=bounds, constraints=constraints,
+)
+max_sharpe_weights = max_sharpe_result.x
+ms_ret, ms_vol, ms_sharpe = portfolio_performance(max_sharpe_weights, mean_returns, cov_matrix)
+
+# Minimum variance portfolio
+min_vol_result = minimize(
+    portfolio_volatility, init, args=(mean_returns, cov_matrix),
+    method="SLSQP", bounds=bounds, constraints=constraints,
+)
+min_vol_weights = min_vol_result.x
+mv_ret, mv_vol, mv_sharpe = portfolio_performance(min_vol_weights, mean_returns, cov_matrix)
+
+print("Max Sharpe Portfolio:")
+for name, w in zip(asset_names, max_sharpe_weights):
+    print(f"  {name}: {w:.1%}")
+print(f"  Return: {ms_ret:.2%}  Vol: {ms_vol:.2%}  Sharpe: {ms_sharpe:.3f}")
+
+print("\nMin Variance Portfolio:")
+for name, w in zip(asset_names, min_vol_weights):
+    print(f"  {name}: {w:.1%}")
+print(f"  Return: {mv_ret:.2%}  Vol: {mv_vol:.2%}  Sharpe: {mv_sharpe:.3f}")
+</code></pre>
+
+<h2>Efficient frontier</h2>
+
+<pre><code class="language-python">def efficient_frontier(mean_returns, cov_matrix, n_points=50):
+    """Compute the efficient frontier by minimizing volatility at each target return."""
+    target_returns = np.linspace(mv_ret, returns_df.mean().max() * 252, n_points)
+    frontier_vols = []
+
+    for target in target_returns:
+        cons = [
+            {"type": "eq", "fun": lambda w: np.sum(w) - 1},
+            {"type": "eq", "fun": lambda w, t=target: np.sum(mean_returns * w) * 252 - t},
+        ]
+        result = minimize(
+            portfolio_volatility, init, args=(mean_returns, cov_matrix),
+            method="SLSQP", bounds=bounds, constraints=cons,
+        )
+        frontier_vols.append(result.fun)
+
+    return target_returns, frontier_vols
+
+ef_returns, ef_vols = efficient_frontier(mean_returns, cov_matrix)
+</code></pre>
+
+<h2>Risk-return scatter with frontier</h2>
+
+<pre><code class="language-python">import plotly.graph_objects as go
+
+fig = go.Figure()
+
+# Random portfolios colored by Sharpe
+fig.add_trace(go.Scatter(
+    x=portfolios["volatility"], y=portfolios["return"],
+    mode="markers",
+    marker=dict(size=3, color=portfolios["sharpe"], colorscale="Viridis",
+                colorbar=dict(title="Sharpe"), opacity=0.5),
+    name="Random portfolios",
+))
+
+# Efficient frontier
+fig.add_trace(go.Scatter(
+    x=ef_vols, y=ef_returns, mode="lines",
+    line=dict(color="red", width=3), name="Efficient Frontier",
+))
+
+# Max Sharpe point
+fig.add_trace(go.Scatter(
+    x=[ms_vol], y=[ms_ret], mode="markers",
+    marker=dict(size=15, color="gold", symbol="star", line=dict(width=2, color="black")),
+    name=f"Max Sharpe ({ms_sharpe:.2f})",
+))
+
+# Min variance point
+fig.add_trace(go.Scatter(
+    x=[mv_vol], y=[mv_ret], mode="markers",
+    marker=dict(size=15, color="lime", symbol="diamond", line=dict(width=2, color="black")),
+    name=f"Min Variance",
+))
+
+fig.update_layout(
+    title="Portfolio Optimization: Efficient Frontier",
+    xaxis_title="Annualized Volatility",
+    yaxis_title="Annualized Return",
+    height=550, width=800, template="plotly_white",
+)
+fig.show()
+</code></pre>
+
+<h2>Weight allocation chart</h2>
+
+<pre><code class="language-python">weights_df = pd.DataFrame({
+    "Asset": asset_names,
+    "Max Sharpe": max_sharpe_weights,
+    "Min Variance": min_vol_weights,
+}).round(4)
+
+fig = go.Figure()
+fig.add_trace(go.Bar(name="Max Sharpe", x=asset_names, y=max_sharpe_weights,
+                     marker_color="steelblue"))
+fig.add_trace(go.Bar(name="Min Variance", x=asset_names, y=min_vol_weights,
+                     marker_color="firebrick"))
+
+fig.update_layout(
+    title="Optimal Portfolio Weights",
+    yaxis_title="Weight", barmode="group",
+    height=400, width=650, template="plotly_white",
+)
+fig.show()
+</code></pre>
+
+<h2>Caveats</h2>
+
+<ul>
+  <li><strong>Estimation error</strong> &mdash; Markowitz optimization is notoriously sensitive to input estimates. Small changes in expected returns produce large weight swings. In practice, use shrinkage estimators (Ledoit-Wolf) or Black-Litterman.</li>
+  <li><strong>No short selling</strong> &mdash; the bounds <code>(0, 1)</code> enforce long-only. Remove bounds for a long-short portfolio.</li>
+  <li><strong>Static model</strong> &mdash; this assumes constant correlations and returns. Real markets are non-stationary. Rebalance periodically.</li>
+</ul>
