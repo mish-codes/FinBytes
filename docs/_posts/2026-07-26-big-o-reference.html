@@ -1,0 +1,136 @@
+---
+layout: post
+title: "Big O Notation: Quick Reference for Data Structure Decisions"
+date: 2026-07-26
+tags: [python, big-o, complexity, data-structures, performance, reference]
+categories: [Python]
+section: python
+permalink: "/python/big-o/"
+---
+
+<h2>The table</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0; font-size:0.9rem;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Notation</th>
+      <th style="text-align:left; padding:0.4rem;">Name</th>
+      <th style="text-align:left; padding:0.4rem;">Example</th>
+      <th style="text-align:right; padding:0.4rem;">1K items</th>
+      <th style="text-align:right; padding:0.4rem;">1M items</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>O(1)</code></td><td style="padding:0.4rem;">Constant</td><td style="padding:0.4rem;">dict lookup, list index</td><td style="text-align:right; padding:0.4rem;">1</td><td style="text-align:right; padding:0.4rem;">1</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>O(log n)</code></td><td style="padding:0.4rem;">Logarithmic</td><td style="padding:0.4rem;">binary search, BST lookup</td><td style="text-align:right; padding:0.4rem;">10</td><td style="text-align:right; padding:0.4rem;">20</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>O(n)</code></td><td style="padding:0.4rem;">Linear</td><td style="padding:0.4rem;">list scan, sum()</td><td style="text-align:right; padding:0.4rem;">1,000</td><td style="text-align:right; padding:0.4rem;">1,000,000</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>O(n log n)</code></td><td style="padding:0.4rem;">Linearithmic</td><td style="padding:0.4rem;">sorted(), merge sort</td><td style="text-align:right; padding:0.4rem;">10,000</td><td style="text-align:right; padding:0.4rem;">20,000,000</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>O(n&sup2;)</code></td><td style="padding:0.4rem;">Quadratic</td><td style="padding:0.4rem;">nested loop, bubble sort</td><td style="text-align:right; padding:0.4rem;">1,000,000</td><td style="text-align:right; padding:0.4rem;">10&sup1;&sup2;</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>O(2&#8319;)</code></td><td style="padding:0.4rem;">Exponential</td><td style="padding:0.4rem;">all subsets, brute force</td><td style="text-align:right; padding:0.4rem;">&infin;</td><td style="text-align:right; padding:0.4rem;">&infin;</td></tr>
+  </tbody>
+</table>
+
+<h2>Python data structure operations</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0; font-size:0.9rem;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Operation</th>
+      <th style="text-align:left; padding:0.4rem;">list</th>
+      <th style="text-align:left; padding:0.4rem;">dict</th>
+      <th style="text-align:left; padding:0.4rem;">set</th>
+      <th style="text-align:left; padding:0.4rem;">deque</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Index / lookup</td><td style="padding:0.4rem;">O(1)</td><td style="padding:0.4rem;">O(1)</td><td style="padding:0.4rem;">&mdash;</td><td style="padding:0.4rem;">O(n)</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Search (x in)</td><td style="padding:0.4rem;">O(n)</td><td style="padding:0.4rem;">O(1)</td><td style="padding:0.4rem;">O(1)</td><td style="padding:0.4rem;">O(n)</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Append / add</td><td style="padding:0.4rem;">O(1)*</td><td style="padding:0.4rem;">O(1)*</td><td style="padding:0.4rem;">O(1)*</td><td style="padding:0.4rem;">O(1)</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Insert at 0</td><td style="padding:0.4rem;">O(n)</td><td style="padding:0.4rem;">&mdash;</td><td style="padding:0.4rem;">&mdash;</td><td style="padding:0.4rem;">O(1)</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Pop last</td><td style="padding:0.4rem;">O(1)</td><td style="padding:0.4rem;">&mdash;</td><td style="padding:0.4rem;">O(1)</td><td style="padding:0.4rem;">O(1)</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Pop first</td><td style="padding:0.4rem;">O(n)</td><td style="padding:0.4rem;">&mdash;</td><td style="padding:0.4rem;">&mdash;</td><td style="padding:0.4rem;">O(1)</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Delete by value</td><td style="padding:0.4rem;">O(n)</td><td style="padding:0.4rem;">O(1)</td><td style="padding:0.4rem;">O(1)</td><td style="padding:0.4rem;">O(n)</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Sort</td><td style="padding:0.4rem;">O(n log n)</td><td style="padding:0.4rem;">&mdash;</td><td style="padding:0.4rem;">&mdash;</td><td style="padding:0.4rem;">&mdash;</td></tr>
+  </tbody>
+</table>
+
+<p style="font-size:0.82rem; color:var(--text-muted-color, #999);">* = amortised. Occasional resize is O(n) but averaged over many operations it's O(1).</p>
+
+<h2>Common mistakes</h2>
+
+<h3>Searching a list when you should use a set</h3>
+
+<pre><code class="language-python"># O(n) per check — 1M items × 1K checks = 1 billion operations
+watchlist = ["AAPL", "MSFT", "GOOG", ...]  # list
+if "TSLA" in watchlist:  # scans entire list
+    ...
+
+# O(1) per check — use a set
+watchlist = {"AAPL", "MSFT", "GOOG", ...}  # set
+if "TSLA" in watchlist:  # hash lookup
+    ...
+</code></pre>
+
+<h3>Appending to the front of a list</h3>
+
+<pre><code class="language-python">from collections import deque
+
+# O(n) — shifts every element right
+prices = []
+prices.insert(0, 189.50)  # slow at scale
+
+# O(1) — use deque
+prices = deque(maxlen=1000)
+prices.appendleft(189.50)  # always fast
+</code></pre>
+
+<h3>Nested loop when you can use a dict</h3>
+
+<pre><code class="language-python"># O(n²) — matching trades to positions
+for trade in trades:          # n trades
+    for pos in positions:     # m positions
+        if trade.ticker == pos.ticker:
+            pos.update(trade)
+
+# O(n) — index positions by ticker first
+pos_map = {p.ticker: p for p in positions}  # O(m)
+for trade in trades:                         # O(n)
+    if trade.ticker in pos_map:              # O(1)
+        pos_map[trade.ticker].update(trade)
+</code></pre>
+
+<h3>Sorting when you only need min/max</h3>
+
+<pre><code class="language-python">import heapq
+
+# O(n log n) — sorts everything to find top 5
+top5 = sorted(returns, reverse=True)[:5]
+
+# O(n log k) — heap only tracks top k
+top5 = heapq.nlargest(5, returns)
+
+# O(n) — just need the one biggest/smallest
+worst = min(returns)
+best = max(returns)
+</code></pre>
+
+<h2>Quick decision guide</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0; font-size:0.9rem;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">I need to...</th>
+      <th style="text-align:left; padding:0.4rem;">Use</th>
+      <th style="text-align:left; padding:0.4rem;">Why</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Look up by key</td><td style="padding:0.4rem;"><code>dict</code></td><td style="padding:0.4rem;">O(1) lookup</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Check membership</td><td style="padding:0.4rem;"><code>set</code></td><td style="padding:0.4rem;">O(1) vs list's O(n)</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Queue (FIFO)</td><td style="padding:0.4rem;"><code>deque</code></td><td style="padding:0.4rem;">O(1) both ends</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Ordered + fast lookup</td><td style="padding:0.4rem;"><code>dict</code> (3.7+)</td><td style="padding:0.4rem;">Insertion order + O(1)</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Top-K items</td><td style="padding:0.4rem;"><code>heapq.nlargest</code></td><td style="padding:0.4rem;">O(n log k) vs O(n log n)</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Count occurrences</td><td style="padding:0.4rem;"><code>Counter</code></td><td style="padding:0.4rem;">One-pass O(n)</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;">Default values</td><td style="padding:0.4rem;"><code>defaultdict</code></td><td style="padding:0.4rem;">No KeyError checks</td></tr>
+  </tbody>
+</table>
