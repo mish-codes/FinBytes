@@ -1,0 +1,70 @@
+---
+layout: quant-lab-mini
+title: "Loan Repayment Comparison"
+description: "Compare multiple loan options side by side to find the cheapest total cost."
+date: 2026-08-03
+permalink: /quant-lab/loan-comparison/
+tech: [Python, NumPy, Plotly]
+demo_url: "https://finbytes.streamlit.app/Loan_Comparison"
+category: calculators
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Puts two or three loan options side by side, computing monthly payment, total interest, and total cost for each. A lower rate does not always mean the cheapest loan -- shorter terms raise the monthly payment but slash total interest.</p>
+
+  <h3>The math</h3>
+  <p>Each option uses the standard PMT formula. The comparison adds up <code>PMT * n</code> to get total cost and subtracts the principal to isolate total interest. The bar chart stacks principal and interest to make the trade-off visual.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this when choosing between loan terms. Switching from 30 to 15 years on a $300,000 loan saves over $241,000 in interest, but the monthly payment increases by about $555. Always compare total cost, not just the monthly payment.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">from dataclasses import dataclass
+
+
+@dataclass
+class LoanSummary:
+    label: str
+    principal: float
+    annual_rate: float
+    years: int
+    monthly_payment: float
+    total_interest: float
+    total_cost: float
+
+
+def pmt(principal: float, annual_rate: float, years: int) -> float:
+    r = annual_rate / 12
+    n = years * 12
+    if r == 0:
+        return round(principal / n, 2)
+    return round(principal * r * (1 + r) ** n / ((1 + r) ** n - 1), 2)
+
+
+def compare_loans(
+    principal: float,
+    options: list[tuple[str, float, int]],
+) -> list[LoanSummary]:
+    """Compare multiple (label, rate, years) options."""
+    results = []
+    for label, rate, years in options:
+        monthly = pmt(principal, rate, years)
+        total_cost = round(monthly * years * 12, 2)
+        total_interest = round(total_cost - principal, 2)
+        results.append(LoanSummary(label, principal, rate, years,
+                                   monthly, total_interest, total_cost))
+    return results
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">loans = compare_loans(300_000, [
+    ("30-yr @ 6.5%", 0.065, 30),
+    ("15-yr @ 5.5%", 0.055, 15),
+])
+for ln in loans:
+    print(f"{ln.label}: PMT ${ln.monthly_payment:,.2f}  Interest ${ln.total_interest:,.2f}")
+  </code></pre>
+</div>

@@ -1,0 +1,75 @@
+---
+layout: quant-lab-mini
+title: "Stock Price Prediction with ML"
+description: "Predict next-day returns using engineered features and Random Forest regression."
+date: 2026-08-28
+permalink: /quant-lab/stock-prediction/
+tech: [Python, scikit-learn, yfinance, Plotly]
+demo_url: "https://finbytes.streamlit.app/Stock_Prediction"
+category: ml-quant
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Predicts next-day stock returns using engineered features: lagged returns, SMA ratios, RSI, rolling volatility, and volume changes. Uses a Random Forest regressor with a proper chronological train/test split. Evaluates directional accuracy and strategy Sharpe ratio.</p>
+
+  <h3>The math</h3>
+  <p>Every feature uses only past data to avoid look-ahead bias. SMA ratio = price / SMA(window) tells if price is above/below trend. RSI captures overbought/oversold. The model is evaluated by MAE, correlation with actual returns, and directional accuracy (can it predict up vs down?).</p>
+
+  <h3>When to use it</h3>
+  <p>This is educational. Markets are efficient-ish -- if simple features predicted returns reliably, the signal would vanish. A directional accuracy above 52% with real data and transaction costs is exceptional. Use TimeSeriesSplit cross-validation and retrain regularly as features decay across regimes.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import pandas as pd
+import numpy as np
+from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_absolute_error
+
+
+def build_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Create ML features from price and volume data."""
+    feat = pd.DataFrame(index=df.index)
+    for lag in [1, 2, 3, 5, 10]:
+        feat[f"return_lag{lag}"] = df["return"].shift(lag)
+    for window in [5, 10, 20, 50]:
+        feat[f"sma{window}_ratio"] = df["price"] / df["price"].rolling(window).mean()
+    delta = df["price"].diff()
+    gain = delta.where(delta > 0, 0).rolling(14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+    feat["rsi_14"] = 100 - (100 / (1 + gain / loss))
+    feat["vol_10d"] = df["return"].rolling(10).std()
+    feat["volume_change"] = df["volume"].pct_change()
+    feat["target"] = df["return"].shift(-1)
+    return feat.dropna()
+
+
+def train_predict(features_df: pd.DataFrame, train_frac: float = 0.7):
+    """Train Random Forest and return predictions + metrics."""
+    feature_cols = [c for c in features_df.columns if c != "target"]
+    split = int(len(features_df) * train_frac)
+    X_train = features_df[feature_cols].iloc[:split]
+    y_train = features_df["target"].iloc[:split]
+    X_test = features_df[feature_cols].iloc[split:]
+    y_test = features_df["target"].iloc[split:]
+
+    model = RandomForestRegressor(n_estimators=300, max_depth=8, random_state=42)
+    model.fit(X_train, y_train)
+    y_pred = model.predict(X_test)
+
+    return {
+        "y_test": y_test, "y_pred": y_pred,
+        "mae": mean_absolute_error(y_test, y_pred),
+        "direction_accuracy": (np.sign(y_pred) == np.sign(y_test.values)).mean(),
+        "feature_importance": dict(zip(feature_cols, model.feature_importances_)),
+    }
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">features_df = build_features(df)
+results = train_predict(features_df)
+print(f"MAE: {results['mae']:.6f}")
+print(f"Directional accuracy: {results['direction_accuracy']:.1%}")
+  </code></pre>
+</div>

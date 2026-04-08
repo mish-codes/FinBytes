@@ -1,0 +1,62 @@
+---
+layout: quant-lab-mini
+title: "Market Sentiment Dashboard"
+description: "Combine price data with VADER sentiment scores to detect price-sentiment divergences."
+date: 2026-08-29
+permalink: /quant-lab/market-insights/
+tech: [Python, VADER, yfinance, Plotly]
+demo_url: "https://finbytes.streamlit.app/Market_Insights"
+category: ml-quant
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Merges price data with VADER sentiment scores from news headlines into a dual-axis dashboard. Detects divergences where market mood and price action disagree -- when headlines turn negative while prices rise, it can signal a potential reversal.</p>
+
+  <h3>The math</h3>
+  <p>VADER compound score (-1 to +1) is computed per headline, then aggregated daily with a 3-day rolling average. Divergence is flagged when price is above its 5-day SMA but rolling sentiment is negative, or vice versa. Correlation analysis measures same-day and lagged (next-day) relationships.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this as a contrarian signal generator. Key limitation: 20 headlines is too few for reliable correlation -- production systems process thousands per day. Correlation does not imply causation; headlines often react to prices, not the other way around. For longer articles, consider FinBERT over VADER.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import pandas as pd
+from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+
+analyzer = SentimentIntensityAnalyzer()
+
+
+def score_headlines(headlines_df: pd.DataFrame) -> pd.DataFrame:
+    """Score headlines with VADER and classify as Positive/Negative/Neutral."""
+    df = headlines_df.copy()
+    df["compound"] = df["headline"].apply(
+        lambda h: analyzer.polarity_scores(h)["compound"]
+    )
+    df["label"] = "Neutral"
+    df.loc[df["compound"] >= 0.05, "label"] = "Positive"
+    df.loc[df["compound"] <= -0.05, "label"] = "Negative"
+    return df
+
+
+def detect_divergence(daily: pd.DataFrame) -> pd.DataFrame:
+    """Flag days where price trend and sentiment disagree."""
+    df = daily.copy()
+    df["price_sma5"] = df["price"].rolling(5, min_periods=1).mean()
+    df["sentiment_3d"] = df["sentiment"].rolling(3, min_periods=1).mean()
+    df["price_above_sma"] = df["price"] > df["price_sma5"]
+    df["sentiment_positive"] = df["sentiment_3d"] > 0
+    df["divergence"] = df["price_above_sma"] != df["sentiment_positive"]
+    return df
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">scored = score_headlines(headlines_df)
+print(f"Positive: {(scored['label']=='Positive').sum()}")
+print(f"Negative: {(scored['label']=='Negative').sum()}")
+
+daily = detect_divergence(merged_df)
+print(f"Divergence days: {daily['divergence'].sum()}")
+  </code></pre>
+</div>

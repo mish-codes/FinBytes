@@ -1,0 +1,77 @@
+---
+layout: quant-lab-mini
+title: "Retirement Savings Calculator"
+description: "Monte Carlo simulation of retirement savings with percentile bands and success probability."
+date: 2026-08-04
+permalink: /quant-lab/retirement-calculator/
+tech: [Python, NumPy, Plotly, Monte Carlo]
+demo_url: "https://finbytes.streamlit.app/Retirement_Calculator"
+category: calculators
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Runs thousands of random return paths using Monte Carlo simulation to show the range of possible retirement outcomes. Instead of a single projected line, you get percentile bands (p10, p50, p90) and a probability of reaching your savings goal.</p>
+
+  <h3>The math</h3>
+  <p>Each simulation draws annual returns from a log-normal distribution: <code>r ~ N(mu - 0.5*sigma^2, sigma)</code>. The balance compounds as <code>B(t) = (B(t-1) + contribution) * exp(r_t)</code>. After all simulations, percentiles are computed at each time step.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this to stress-test retirement plans. A single projected line hides enormous variance. Starting early matters: $20K/yr over 30 years dominates $40K/yr over 15 years because of compounding. Adjust volatility to model conservative vs aggressive portfolios.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import numpy as np
+from dataclasses import dataclass
+
+
+@dataclass
+class RetirementResult:
+    years: np.ndarray
+    p10: np.ndarray
+    p50: np.ndarray
+    p90: np.ndarray
+    prob_success: float
+
+
+def retirement_monte_carlo(
+    current_savings: float,
+    annual_contribution: float,
+    expected_return: float,
+    volatility: float,
+    horizon_years: int,
+    goal: float,
+    n_simulations: int = 5_000,
+    seed: int = 42,
+) -> RetirementResult:
+    rng = np.random.default_rng(seed)
+    annual_returns = rng.normal(
+        loc=expected_return - 0.5 * volatility ** 2,
+        scale=volatility,
+        size=(n_simulations, horizon_years),
+    )
+    balances = np.zeros((n_simulations, horizon_years))
+    for t in range(horizon_years):
+        prev = balances[:, t - 1] if t > 0 else current_savings
+        balances[:, t] = (prev + annual_contribution) * np.exp(annual_returns[:, t])
+
+    years = np.arange(1, horizon_years + 1)
+    return RetirementResult(
+        years, np.percentile(balances, 10, axis=0),
+        np.percentile(balances, 50, axis=0),
+        np.percentile(balances, 90, axis=0),
+        float(np.mean(balances[:, -1] >= goal)),
+    )
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">result = retirement_monte_carlo(
+    current_savings=50_000, annual_contribution=20_000,
+    expected_return=0.07, volatility=0.15,
+    horizon_years=30, goal=1_500_000,
+)
+print(f"Median final balance: ${result.p50[-1]:,.0f}")
+print(f"P(reach $1.5M):      {result.prob_success:.1%}")
+  </code></pre>
+</div>

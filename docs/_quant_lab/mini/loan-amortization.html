@@ -1,0 +1,76 @@
+---
+layout: quant-lab-mini
+title: "Loan Amortization Schedule"
+description: "Build a full month-by-month amortization schedule for fixed-rate loans."
+date: 2026-08-02
+permalink: /quant-lab/loan-amortization/
+tech: [Python, NumPy, Plotly]
+demo_url: "https://finbytes.streamlit.app/Loan_Amortization"
+category: calculators
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Computes the constant monthly payment for a fixed-rate loan and generates a complete amortization schedule showing how each payment splits between principal and interest over the life of the loan.</p>
+
+  <h3>The math</h3>
+  <pre><code class="language-text">PMT = P * r * (1 + r)^n / ((1 + r)^n - 1)
+
+P = principal, r = annual_rate / 12, n = total months</code></pre>
+  <p>Early payments are interest-heavy; later ones are principal-heavy. The crossover point on a 30-year mortgage at 6.5% does not arrive until roughly month 218.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this to understand the true cost of a mortgage or auto loan. On a $300,000 loan at 6.5% over 30 years, you pay roughly $383,000 in interest on top of the principal. Even small extra payments early on shave months off the schedule.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">from dataclasses import dataclass
+
+
+@dataclass
+class AmortRow:
+    month: int
+    payment: float
+    principal: float
+    interest: float
+    balance: float
+
+
+def pmt(principal: float, annual_rate: float, years: int) -> float:
+    """Monthly payment for a fixed-rate loan."""
+    r = annual_rate / 12
+    n = years * 12
+    if r == 0:
+        return round(principal / n, 2)
+    return round(principal * r * (1 + r) ** n / ((1 + r) ** n - 1), 2)
+
+
+def amortization_schedule(
+    principal: float, annual_rate: float, years: int,
+) -> list[AmortRow]:
+    """Full month-by-month amortization schedule."""
+    r = annual_rate / 12
+    n = years * 12
+    monthly = pmt(principal, annual_rate, years)
+    balance = principal
+    schedule: list[AmortRow] = []
+
+    for month in range(1, n + 1):
+        interest = round(balance * r, 2)
+        princ = round(monthly - interest, 2)
+        if month == n:
+            princ = round(balance, 2)
+            monthly = princ + interest
+        balance = round(balance - princ, 2)
+        schedule.append(AmortRow(month, monthly, princ, interest, balance))
+
+    return schedule
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">rows = amortization_schedule(principal=300_000, annual_rate=0.065, years=30)
+print(f"Monthly payment: ${rows[0].payment:,.2f}")
+print(f"Total interest:  ${sum(r.interest for r in rows):,.2f}")
+  </code></pre>
+</div>

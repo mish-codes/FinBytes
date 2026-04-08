@@ -1,0 +1,63 @@
+---
+layout: quant-lab-mini
+title: "Technical Stock Analysis"
+description: "Multi-panel technical analysis with SMA, RSI, MACD, and Bollinger Bands."
+date: 2026-08-12
+permalink: /quant-lab/stock-analysis/
+tech: [Python, yfinance, Plotly, Technical Analysis]
+demo_url: "https://finbytes.streamlit.app/Stock_Analysis"
+category: dashboards
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Computes four core technical indicators -- SMA/EMA, RSI, MACD, and Bollinger Bands -- and stacks them in a multi-panel Plotly chart. Each indicator reveals a different aspect of price behavior: trend, momentum, and volatility.</p>
+
+  <h3>The math</h3>
+  <p><strong>RSI</strong> = 100 - 100/(1 + avg_gain/avg_loss) over 14 periods. Above 70 = overbought, below 30 = oversold. <strong>MACD</strong> = EMA(12) - EMA(26), with a 9-period signal line. <strong>Bollinger Bands</strong> = SMA(20) +/- 2 standard deviations. A squeeze (bands narrowing) often precedes a big move.</p>
+
+  <h3>When to use it</h3>
+  <p>No single indicator is reliable alone. The stacked layout lets you check multiple signals at the same timestamp. When the short-term MA crosses above the long-term MA (golden cross) while RSI is not overbought and MACD confirms, the signal is stronger.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import pandas as pd
+
+
+def rsi(series: pd.Series, period: int = 14) -> pd.Series:
+    """RSI: 0-100 oscillator measuring momentum."""
+    delta = series.diff()
+    gain = delta.where(delta > 0, 0.0)
+    loss = -delta.where(delta < 0, 0.0)
+    avg_gain = gain.ewm(alpha=1 / period, min_periods=period).mean()
+    avg_loss = loss.ewm(alpha=1 / period, min_periods=period).mean()
+    rs = avg_gain / avg_loss
+    return 100 - (100 / (1 + rs))
+
+
+def bollinger_bands(series: pd.Series, window: int = 20, num_std: float = 2.0):
+    """Upper band, middle (SMA), lower band."""
+    middle = series.rolling(window).mean()
+    std = series.rolling(window).std()
+    return middle + num_std * std, middle, middle - num_std * std
+
+
+def macd(series: pd.Series, fast: int = 12, slow: int = 26, signal: int = 9):
+    """Returns MACD line, signal line, and histogram."""
+    ema_fast = series.ewm(span=fast, adjust=False).mean()
+    ema_slow = series.ewm(span=slow, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
+    return macd_line, signal_line, macd_line - signal_line
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">import yfinance as yf
+
+df = yf.download("AAPL", period="1y", interval="1d", progress=False)
+close = pd.Series(df["Close"].values.flatten(), index=df.index)
+print(f"RSI (latest):  {rsi(close).iloc[-1]:.1f}")
+print(f"MACD (latest): {macd(close)[0].iloc[-1]:.2f}")
+  </code></pre>
+</div>

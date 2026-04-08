@@ -1,0 +1,63 @@
+---
+layout: quant-lab-mini
+title: "Loan Default Prediction"
+description: "Binary classification with Logistic Regression and Random Forest to predict loan defaults."
+date: 2026-08-24
+permalink: /quant-lab/loan-default/
+tech: [Python, scikit-learn, Plotly]
+demo_url: "https://finbytes.streamlit.app/Loan_Default"
+category: ml-quant
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Predicts which loan applicants will default using features like income, credit score, and debt-to-income ratio. Compares Logistic Regression (interpretable baseline) with Random Forest (captures non-linear interactions). Includes confusion matrices, feature importance, and threshold tuning.</p>
+
+  <h3>The math</h3>
+  <p>Logistic Regression models log-odds as a linear function of features: <code>log(p/(1-p)) = w*x + b</code>. Random Forest aggregates many decision trees. In credit risk, recall (catching actual defaults) matters more than precision -- a missed default costs the full loan amount.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this for credit risk screening. Start with Logistic Regression as a baseline, then try Random Forest. Always check feature importance -- if the model relies on a leaky feature, remove it. Adjust the classification threshold to trade precision for recall based on business costs.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import numpy as np
+
+
+def train_default_model(X, y, test_size=0.2):
+    """Train a Random Forest classifier for loan default prediction."""
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, random_state=42, stratify=y,
+    )
+    scaler = StandardScaler()
+    X_train_s = scaler.fit_transform(X_train)
+    X_test_s = scaler.transform(X_test)
+
+    rf = RandomForestClassifier(n_estimators=200, max_depth=6, random_state=42)
+    rf.fit(X_train_s, y_train)
+    y_pred = rf.predict(X_test_s)
+
+    return {
+        "model": rf, "scaler": scaler,
+        "accuracy": accuracy_score(y_test, y_pred),
+        "precision": precision_score(y_test, y_pred),
+        "recall": recall_score(y_test, y_pred),
+        "f1": f1_score(y_test, y_pred),
+        "feature_importance": rf.feature_importances_,
+    }
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">import pandas as pd
+
+# Assuming df has columns: income, credit_score, loan_amount, dti_ratio, default
+features = ["income", "credit_score", "loan_amount", "dti_ratio"]
+results = train_default_model(df[features], df["default"])
+print(f"F1: {results['f1']:.3f}  Recall: {results['recall']:.3f}")
+  </code></pre>
+</div>

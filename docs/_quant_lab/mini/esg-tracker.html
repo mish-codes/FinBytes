@@ -1,0 +1,58 @@
+---
+layout: quant-lab-mini
+title: "ESG Score Tracker"
+description: "Radar charts, sector comparisons, and heatmaps for Environmental, Social, and Governance scores."
+date: 2026-08-15
+permalink: /quant-lab/esg-tracker/
+tech: [Python, yfinance, Plotly]
+demo_url: "https://finbytes.streamlit.app/ESG_Tracker"
+category: dashboards
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Visualizes ESG (Environmental, Social, Governance) scores across companies and sectors using radar charts, grouped bar charts, heatmaps, and ranked bar charts. Helps investors evaluate companies beyond pure financials.</p>
+
+  <h3>The math</h3>
+  <p>Each company gets three pillar scores (E, S, G) on a 0-100 scale, plus a total composite. Radar charts expose the shape of a profile -- a company might score high overall but have a single weak pillar. Sector averages reveal structural biases (energy firms score low on E by nature).</p>
+
+  <h3>When to use it</h3>
+  <p>Use this for ESG screening and comparison. Scores vary dramatically across providers (MSCI, Sustainalytics, S&amp;P often disagree). The heatmap is the fastest way to scan many companies at once -- red cells jump out as areas needing attention.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import pandas as pd
+import plotly.graph_objects as go
+
+
+esg_data = pd.DataFrame([
+    {"company": "AAPL",  "sector": "Technology",  "E": 78, "S": 72, "G": 85, "total": 78},
+    {"company": "MSFT",  "sector": "Technology",  "E": 82, "S": 80, "G": 88, "total": 83},
+    {"company": "XOM",   "sector": "Energy",      "E": 40, "S": 55, "G": 70, "total": 55},
+    {"company": "JNJ",   "sector": "Healthcare",  "E": 74, "S": 82, "G": 78, "total": 78},
+    {"company": "NEE",   "sector": "Utilities",   "E": 88, "S": 70, "G": 76, "total": 78},
+])
+
+
+def esg_radar(companies: list[str], data: pd.DataFrame) -> go.Figure:
+    """Build a radar chart comparing ESG pillars across companies."""
+    categories = ["Environmental", "Social", "Governance"]
+    fig = go.Figure()
+    for company in companies:
+        row = data[data["company"] == company].iloc[0]
+        values = [row["E"], row["S"], row["G"]]
+        fig.add_trace(go.Scatterpolar(
+            r=values + [values[0]],
+            theta=categories + [categories[0]],
+            name=company, fill="toself", opacity=0.6,
+        ))
+    fig.update_layout(polar=dict(radialaxis=dict(range=[0, 100])))
+    return fig
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">fig = esg_radar(["AAPL", "MSFT", "XOM"], esg_data)
+fig.show()
+  </code></pre>
+</div>

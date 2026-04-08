@@ -1,0 +1,63 @@
+---
+layout: quant-lab-mini
+title: "Automated Financial Reports"
+description: "Generate multi-stock summary reports with returns, volatility, Sharpe ratios, and CSV export."
+date: 2026-08-16
+permalink: /quant-lab/financial-reporting/
+tech: [Python, yfinance, Plotly, pandas]
+demo_url: "https://finbytes.streamlit.app/Financial_Reporting"
+category: dashboards
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Pulls stock data via yfinance, computes summary statistics (return, volatility, Sharpe ratio), generates a risk-return scatter plot, and exports everything to CSV. A complete automated reporting pipeline for any list of tickers.</p>
+
+  <h3>The math</h3>
+  <p>Sharpe ratio = (annualized return - risk-free rate) / annualized volatility. A Sharpe above 1.0 means the return more than compensates for the volatility. The risk-return scatter uses bubble size to encode Sharpe, so the best risk-adjusted performers jump out visually.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this for weekly or monthly portfolio reviews. Normalizing prices to percentage change lets you compare stocks with very different price levels on the same chart. Automate with a cron job for scheduled reporting.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import yfinance as yf
+import numpy as np
+from dataclasses import dataclass
+
+
+@dataclass
+class StockReport:
+    ticker: str
+    start_price: float
+    end_price: float
+    total_return_pct: float
+    annualized_vol: float
+    sharpe_ratio: float
+
+    @classmethod
+    def from_ticker(cls, ticker: str, period: str = "1y") -> "StockReport":
+        df = yf.download(ticker, period=period, interval="1d", progress=False)
+        close = df["Close"].values.flatten()
+        daily_returns = np.diff(close) / close[:-1]
+        total_return = (close[-1] / close[0] - 1) * 100
+        ann_vol = np.std(daily_returns) * np.sqrt(252) * 100
+        sharpe = (np.mean(daily_returns) * 252) / (np.std(daily_returns) * np.sqrt(252))
+        return cls(
+            ticker=ticker,
+            start_price=round(close[0], 2),
+            end_price=round(close[-1], 2),
+            total_return_pct=round(total_return, 2),
+            annualized_vol=round(ann_vol, 2),
+            sharpe_ratio=round(sharpe, 2),
+        )
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">tickers = ["AAPL", "MSFT", "GOOGL"]
+reports = [StockReport.from_ticker(t) for t in tickers]
+for r in reports:
+    print(f"{r.ticker}: {r.total_return_pct:+.2f}% return, Sharpe {r.sharpe_ratio:.2f}")
+  </code></pre>
+</div>

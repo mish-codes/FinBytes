@@ -1,0 +1,62 @@
+---
+layout: quant-lab-mini
+title: "Personal Budget Tracker"
+description: "Track income, expenses, surplus, and savings rate with a spending breakdown chart."
+date: 2026-08-06
+permalink: /quant-lab/budget-tracker/
+tech: [Python, Plotly]
+demo_url: "https://finbytes.streamlit.app/Budget_Tracker"
+category: calculators
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Structures income and expenses as dictionaries, computes the monthly surplus or deficit, calculates the savings rate, and generates a spending breakdown pie chart. A simple but effective personal finance foundation.</p>
+
+  <h3>The math</h3>
+  <p>Surplus = total income - total expenses. Savings rate = surplus / total income. The 50/30/20 rule suggests 50% needs, 30% wants, 20% savings. The tracker lets you measure where you stand against that target.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this to get a clear monthly picture of your finances. Track savings rate monthly -- a consistent 15%+ rate is the single best predictor of long-term financial health. Swap the hardcoded dicts for a CSV or database to build a real persistent tracker.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">from dataclasses import dataclass, field
+
+
+@dataclass
+class Budget:
+    """Monthly personal budget."""
+    income: dict[str, float] = field(default_factory=dict)
+    expenses: dict[str, float] = field(default_factory=dict)
+
+    @property
+    def total_income(self) -> float:
+        return round(sum(self.income.values()), 2)
+
+    @property
+    def total_expenses(self) -> float:
+        return round(sum(self.expenses.values()), 2)
+
+    @property
+    def surplus(self) -> float:
+        return round(self.total_income - self.total_expenses, 2)
+
+    @property
+    def savings_rate(self) -> float:
+        if self.total_income == 0:
+            return 0.0
+        return round(self.surplus / self.total_income, 4)
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">budget = Budget(
+    income={"Salary": 5_500, "Freelance": 800},
+    expenses={"Rent": 1_600, "Groceries": 450, "Utilities": 180,
+              "Transport": 250, "Insurance": 320},
+)
+print(f"Surplus:      ${budget.surplus:,.2f}")
+print(f"Savings rate: {budget.savings_rate:.1%}")
+  </code></pre>
+</div>

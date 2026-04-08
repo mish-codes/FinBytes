@@ -1,0 +1,64 @@
+---
+layout: quant-lab-mini
+title: "Stock Price Tracker"
+description: "Candlestick charts with volume, key metrics, and 52-week range gauges for any ticker."
+date: 2026-08-11
+permalink: /quant-lab/stock-tracker/
+tech: [Python, yfinance, Plotly]
+demo_url: "https://finbytes.streamlit.app/Stock_Tracker"
+category: dashboards
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Fetches stock data via yfinance and builds an interactive candlestick chart with volume bars, a key metrics snapshot (price, market cap, P/E, 52-week range), and a gauge chart showing where the current price sits within its 52-week range.</p>
+
+  <h3>The math</h3>
+  <p>Candlestick charts encode open, high, low, close in a single bar. Volume bars are color-coded by candle direction (green for up, red for down) to show conviction behind price moves. The 52-week gauge provides an instant read on relative valuation.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this for daily monitoring of a watchlist. The gauge chart shows whether a stock is near its 52-week low (potential value) or high (potential overextension). Wrap the snapshot class in a loop to build a full dashboard table programmatically.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import yfinance as yf
+from dataclasses import dataclass
+
+
+@dataclass
+class StockSnapshot:
+    ticker: str
+    price: float
+    change_pct: float
+    market_cap: str
+    pe_ratio: float | None
+    week52_low: float
+    week52_high: float
+    volume: int
+
+    @classmethod
+    def from_yfinance(cls, ticker: str) -> "StockSnapshot":
+        t = yf.Ticker(ticker)
+        info = t.info
+        prev = info.get("previousClose", 1)
+        price = info.get("currentPrice", info.get("regularMarketPrice", 0))
+        cap = info.get("marketCap", 0)
+        cap_str = f"${cap/1e12:.2f}T" if cap >= 1e12 else f"${cap/1e9:.2f}B"
+        return cls(
+            ticker=ticker, price=price,
+            change_pct=round((price / prev - 1) * 100, 2),
+            market_cap=cap_str,
+            pe_ratio=info.get("trailingPE"),
+            week52_low=info.get("fiftyTwoWeekLow", 0),
+            week52_high=info.get("fiftyTwoWeekHigh", 0),
+            volume=info.get("volume", 0),
+        )
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">snap = StockSnapshot.from_yfinance("AAPL")
+print(f"{snap.ticker}: ${snap.price:.2f} ({snap.change_pct:+.2f}%)")
+print(f"52-week: ${snap.week52_low:.2f} - ${snap.week52_high:.2f}")
+  </code></pre>
+</div>

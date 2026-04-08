@@ -1,0 +1,72 @@
+---
+layout: quant-lab-mini
+title: "Credit Card Debt Calculator"
+description: "Compute payoff timelines, total interest, and amortization schedules for credit card debt."
+date: 2026-08-01
+permalink: /quant-lab/credit-card-calculator/
+tech: [Python, NumPy, Plotly]
+demo_url: "https://finbytes.streamlit.app/Credit_Card_Calculator"
+category: calculators
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Generates a month-by-month payoff schedule for credit card debt, showing how each payment splits between principal and interest. Compares different monthly payment amounts to reveal the true cost of carrying a balance.</p>
+
+  <h3>The math</h3>
+  <p>The fixed monthly payment that retires a balance in <code>n</code> months uses the standard annuity formula:</p>
+  <pre><code class="language-text">PMT = balance * r * (1 + r)^n / ((1 + r)^n - 1)
+where r = annual_rate / 12</code></pre>
+  <p>If you only pay the minimum, most of your payment goes to interest and the balance barely shrinks.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this to compare payoff strategies. Doubling your payment from $150 to $300 on a $5,000 balance at 22% APR cuts total interest by more than half. At the minimum payment floor ($25), that same balance takes over 25 years to clear.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">from dataclasses import dataclass
+
+
+@dataclass
+class PayoffRow:
+    month: int
+    payment: float
+    principal: float
+    interest: float
+    balance: float
+
+
+def credit_card_schedule(
+    balance: float,
+    annual_rate: float,
+    monthly_payment: float,
+    max_months: int = 600,
+) -> list[PayoffRow]:
+    """Generate a month-by-month payoff schedule."""
+    r = annual_rate / 12
+    schedule: list[PayoffRow] = []
+
+    for month in range(1, max_months + 1):
+        interest = round(balance * r, 2)
+        payment = min(monthly_payment, balance + interest)
+        principal = round(payment - interest, 2)
+        balance = round(balance - principal, 2)
+        schedule.append(PayoffRow(month, payment, principal, interest, balance))
+        if balance <= 0:
+            break
+
+    return schedule
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">schedule = credit_card_schedule(
+    balance=5_000.00,
+    annual_rate=0.22,
+    monthly_payment=200.00,
+)
+total_interest = sum(r.interest for r in schedule)
+print(f"Months to payoff: {len(schedule)}")
+print(f"Total interest:   ${total_interest:,.2f}")
+  </code></pre>
+</div>
