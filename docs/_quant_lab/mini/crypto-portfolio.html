@@ -1,0 +1,71 @@
+---
+layout: quant-lab-mini
+title: "Crypto Portfolio Tracker"
+description: "Live crypto prices from CoinGecko, portfolio valuation, and allocation charts."
+date: 2026-08-13
+permalink: /quant-lab/crypto-portfolio/
+tech: [Python, CoinGecko API, Plotly]
+demo_url: "https://finbytes.streamlit.app/Crypto_Portfolio"
+category: dashboards
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Fetches live crypto prices from CoinGecko's free API (no key required), values your holdings in USD, computes allocation percentages, and visualizes the portfolio with a donut chart and stacked area chart over time.</p>
+
+  <h3>The math</h3>
+  <p>Valuation is straightforward: <code>value = quantity * price</code>. Allocation = <code>value / total_value * 100</code>. The stacked area chart uses yfinance crypto tickers (e.g., BTC-USD) to show historical portfolio value with each coin's contribution visible.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this to monitor crypto exposure and rebalance. CoinGecko's <code>/simple/price</code> endpoint is free with a rate limit of ~10-30 calls/minute. Crypto trades 24/7, so there are no market-hours gaps in the data.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import requests
+from dataclasses import dataclass, field
+
+
+def fetch_crypto_prices(coin_ids: list[str], currency: str = "usd") -> dict:
+    """Fetch price, 24h change, and market cap from CoinGecko."""
+    url = "https://api.coingecko.com/api/v3/simple/price"
+    params = {
+        "ids": ",".join(coin_ids),
+        "vs_currencies": currency,
+        "include_24hr_change": "true",
+        "include_market_cap": "true",
+    }
+    resp = requests.get(url, params=params, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+@dataclass
+class CryptoPortfolio:
+    holdings: dict[str, float] = field(default_factory=dict)
+    prices: dict[str, dict] | None = None
+
+    def refresh_prices(self) -> None:
+        self.prices = fetch_crypto_prices(list(self.holdings.keys()))
+
+    def valuations(self) -> dict[str, float]:
+        if self.prices is None:
+            self.refresh_prices()
+        return {
+            coin: qty * self.prices[coin]["usd"]
+            for coin, qty in self.holdings.items()
+        }
+
+    @property
+    def total_value(self) -> float:
+        return sum(self.valuations().values())
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">portfolio = CryptoPortfolio(holdings={
+    "bitcoin": 0.5, "ethereum": 4.0, "solana": 25.0,
+})
+portfolio.refresh_prices()
+print(f"Total value: ${portfolio.total_value:,.2f}")
+  </code></pre>
+</div>

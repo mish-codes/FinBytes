@@ -1,0 +1,61 @@
+---
+layout: quant-lab-mini
+title: "Personal Finance Dashboard"
+description: "Net worth tracking, savings rate monitoring, and expense trend analysis."
+date: 2026-08-14
+permalink: /quant-lab/personal-finance/
+tech: [Python, Plotly]
+demo_url: "https://finbytes.streamlit.app/Personal_Finance"
+category: dashboards
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Tracks three pillars of personal finance: net worth (assets minus liabilities), monthly savings rate, and expense trends over time. Includes a debt-to-asset ratio and color-coded savings rate bars for instant visual feedback.</p>
+
+  <h3>The math</h3>
+  <p>Net worth = total assets - total liabilities. Debt-to-asset ratio = liabilities / assets (below 0.3 is healthy, above 0.5 warrants a payoff plan). Savings rate = (income - expenses) / income. The net worth trajectory compounds monthly savings with an assumed investment return.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this for a monthly financial health check. Color-coded savings rate bars (green at 20%+, orange at 10%+, red below 10%) give an instant visual signal. Even a modest 7% annual return compounds significantly over time.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">from dataclasses import dataclass, field
+
+
+@dataclass
+class NetWorth:
+    """Snapshot of assets and liabilities."""
+    assets: dict[str, float] = field(default_factory=dict)
+    liabilities: dict[str, float] = field(default_factory=dict)
+
+    @property
+    def total_assets(self) -> float:
+        return round(sum(self.assets.values()), 2)
+
+    @property
+    def total_liabilities(self) -> float:
+        return round(sum(self.liabilities.values()), 2)
+
+    @property
+    def net_worth(self) -> float:
+        return round(self.total_assets - self.total_liabilities, 2)
+
+    @property
+    def debt_to_asset_ratio(self) -> float:
+        if self.total_assets == 0:
+            return 0.0
+        return round(self.total_liabilities / self.total_assets, 4)
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">nw = NetWorth(
+    assets={"Savings": 25_000, "401(k)": 62_000, "Brokerage": 34_200},
+    liabilities={"Student loans": 22_000, "Car loan": 8_500},
+)
+print(f"Net worth:        ${nw.net_worth:,.2f}")
+print(f"Debt/asset ratio: {nw.debt_to_asset_ratio:.1%}")
+  </code></pre>
+</div>

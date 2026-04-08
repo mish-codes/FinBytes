@@ -1,0 +1,59 @@
+---
+layout: quant-lab-mini
+title: "Financial Anomaly Detection"
+description: "Detect outliers in financial data using Z-scores and Isolation Forest, with visual comparison."
+date: 2026-08-23
+permalink: /quant-lab/anomaly-detection/
+tech: [Python, scikit-learn, Plotly]
+demo_url: "https://finbytes.streamlit.app/Anomaly_Detection"
+category: ml-quant
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Detects anomalies in financial return data using two methods: Z-score (statistical threshold) and Isolation Forest (tree-based, multivariate). Compares their results and overlays flagged points on a price chart with a returns subplot.</p>
+
+  <h3>The math</h3>
+  <p><strong>Z-score</strong>: measures standard deviations from the mean. A threshold of 2.5 catches extreme moves but assumes static volatility. <strong>Isolation Forest</strong>: randomly partitions data; anomalies are isolated in fewer splits because they are far from the bulk. The <code>contamination</code> parameter sets the expected anomaly fraction.</p>
+
+  <h3>When to use it</h3>
+  <p>Use both methods together. Points flagged by both are high-confidence anomalies. Points flagged by only one deserve manual review. A rolling Z-score adapts to changing volatility regimes, avoiding false-positive floods during turbulent markets.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import numpy as np
+import pandas as pd
+from sklearn.ensemble import IsolationForest
+
+
+def zscore_anomalies(returns: np.ndarray, threshold: float = 2.5) -> np.ndarray:
+    """Flag observations where |z-score| exceeds threshold."""
+    mu = np.mean(returns)
+    sigma = np.std(returns)
+    z_scores = (returns - mu) / sigma
+    return np.abs(z_scores) > threshold
+
+
+def isolation_forest_anomalies(
+    df: pd.DataFrame,
+    features: list[str],
+    contamination: float = 0.03,
+) -> np.ndarray:
+    """Use Isolation Forest to detect anomalies. Returns boolean array."""
+    model = IsolationForest(
+        contamination=contamination, random_state=42, n_estimators=200,
+    )
+    predictions = model.fit_predict(df[features].values)
+    return predictions == -1
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">np.random.seed(42)
+returns = np.random.normal(0.0003, 0.012, 300)
+returns[30] = -0.06  # inject anomaly
+
+zs = zscore_anomalies(returns)
+print(f"Z-score anomalies: {zs.sum()}")
+  </code></pre>
+</div>

@@ -1,0 +1,56 @@
+---
+layout: quant-lab-mini
+title: "VaR & CVaR Calculator"
+description: "Historical and parametric Value at Risk with Expected Shortfall visualization."
+date: 2026-08-20
+permalink: /quant-lab/var-cvar/
+tech: [Python, NumPy, SciPy, Plotly]
+demo_url: "https://finbytes.streamlit.app/VaR_CVaR"
+category: ml-quant
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Computes Value at Risk (VaR) and Conditional Value at Risk (CVaR / Expected Shortfall) using both historical and parametric methods. Visualizes the return distribution with VaR and CVaR threshold lines.</p>
+
+  <h3>The math</h3>
+  <p><strong>VaR (95%)</strong>: the 5th percentile of the return distribution -- on 95 out of 100 days, the loss will not exceed this value. <strong>CVaR</strong>: the mean of all losses beyond VaR. If VaR is the door to the tail, CVaR tells you what the room behind it looks like. Parametric VaR assumes normality and reads off <code>ppf(0.05, mu, sigma)</code>.</p>
+
+  <h3>When to use it</h3>
+  <p>Use both methods and compare. When parametric VaR diverges significantly from historical VaR, your returns are non-normal and the parametric estimate is unreliable. CVaR is preferred by regulators because it captures tail severity, not just the threshold.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import numpy as np
+from scipy import stats
+
+
+def historical_var(returns: np.ndarray, confidence: float = 0.95) -> float:
+    """VaR as the percentile of the return distribution."""
+    return float(np.percentile(returns, (1 - confidence) * 100))
+
+
+def parametric_var(returns: np.ndarray, confidence: float = 0.95) -> float:
+    """VaR assuming returns are normally distributed."""
+    mu = np.mean(returns)
+    sigma = np.std(returns)
+    return float(stats.norm.ppf(1 - confidence, loc=mu, scale=sigma))
+
+
+def historical_cvar(returns: np.ndarray, confidence: float = 0.95) -> float:
+    """Average loss beyond the VaR threshold."""
+    var = historical_var(returns, confidence)
+    tail_losses = returns[returns <= var]
+    return float(np.mean(tail_losses))
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">np.random.seed(42)
+returns = np.random.normal(0.0004, 0.015, 504)
+
+print(f"Historical VaR (95%): {historical_var(returns):.4f}")
+print(f"Parametric VaR (95%): {parametric_var(returns):.4f}")
+print(f"CVaR (95%):           {historical_cvar(returns):.4f}")
+  </code></pre>
+</div>

@@ -1,0 +1,57 @@
+---
+layout: quant-lab-mini
+title: "Currency Dashboard"
+description: "Live exchange rates, currency conversion, and historical forex charts."
+date: 2026-08-10
+permalink: /quant-lab/currency-dashboard/
+tech: [Python, Plotly, Exchange Rate API]
+demo_url: "https://finbytes.streamlit.app/Currency_Dashboard"
+category: dashboards
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Fetches live spot rates from a free exchange rate API, builds a cross-rate matrix, converts between any currency pair, and plots historical forex data. A complete currency monitoring tool.</p>
+
+  <h3>The math</h3>
+  <p>Conversion uses triangulation through a base currency: <code>amount_dst = (amount / rate_src) * rate_dst</code>. The cross-rate matrix shows every pair at a glance. Normalizing historical data to percentage change lets you compare pairs with very different scales on the same chart.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this for monitoring forex exposure, travel planning, or spotting arbitrage opportunities. If <code>A-&gt;B-&gt;C-&gt;A</code> yields more than 1.0 in the cross-rate matrix, something is mispriced.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import requests
+from dataclasses import dataclass
+
+
+@dataclass
+class CurrencyConverter:
+    """Convert between currencies using live rates."""
+    base: str = "USD"
+    rates: dict[str, float] | None = None
+
+    def fetch_rates(self) -> None:
+        url = f"https://api.exchangerate.host/latest?base={self.base}"
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        self.rates = resp.json()["rates"]
+
+    def convert(self, amount: float, src: str, dst: str) -> float:
+        if self.rates is None:
+            self.fetch_rates()
+        in_base = amount / self.rates[src]
+        return round(in_base * self.rates[dst], 4)
+
+    def rate(self, src: str, dst: str) -> float:
+        return self.convert(1.0, src, dst)
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">fx = CurrencyConverter(base="USD")
+fx.fetch_rates()
+print(f"1 EUR = {fx.rate('EUR', 'USD'):.4f} USD")
+print(f"1 GBP = {fx.rate('GBP', 'JPY'):.2f} JPY")
+  </code></pre>
+</div>

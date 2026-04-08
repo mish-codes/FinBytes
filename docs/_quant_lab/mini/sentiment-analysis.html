@@ -1,0 +1,57 @@
+---
+layout: quant-lab-mini
+title: "Market Sentiment Analysis"
+description: "Score financial headlines with VADER and TextBlob, compare results, and track sentiment over time."
+date: 2026-08-22
+permalink: /quant-lab/sentiment-analysis/
+tech: [Python, VADER, TextBlob, Plotly]
+demo_url: "https://finbytes.streamlit.app/Sentiment_Analysis"
+category: ml-quant
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Quantifies the emotional tone of financial headlines using two NLP tools: TextBlob (pattern-based polarity) and VADER (valence-aware, better for short texts). Compares their agreement rate and visualizes sentiment over time with rolling averages.</p>
+
+  <h3>The math</h3>
+  <p>VADER's compound score ranges from -1 (most negative) to +1 (most positive). Common thresholds: compound &gt;= 0.05 is positive, &lt;= -0.05 is negative. TextBlob returns polarity (-1 to 1) and subjectivity (0 to 1). Both are lexicon-based -- they look up words and average scores.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this as a first pass on news sentiment. A negative sentiment shift in coverage often precedes price drops. However, general-purpose tools misread financial jargon ("volatile" is neutral in finance). For production, consider FinBERT or a transformer fine-tuned on financial text.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
+from textblob import TextBlob
+import pandas as pd
+
+analyzer = SentimentIntensityAnalyzer()
+
+
+def vader_sentiment(text: str) -> dict:
+    """Return VADER compound score and component scores."""
+    scores = analyzer.polarity_scores(text)
+    return {
+        "compound": scores["compound"],
+        "positive": scores["pos"],
+        "negative": scores["neg"],
+        "neutral": scores["neu"],
+    }
+
+
+def textblob_sentiment(text: str) -> dict:
+    """Return polarity (-1 to 1) and subjectivity (0 to 1)."""
+    blob = TextBlob(text)
+    return {
+        "polarity": round(blob.sentiment.polarity, 4),
+        "subjectivity": round(blob.sentiment.subjectivity, 4),
+    }
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">headline = "Tech stocks surge on strong earnings beat"
+print(f"VADER:    {vader_sentiment(headline)['compound']:.3f}")
+print(f"TextBlob: {textblob_sentiment(headline)['polarity']:.3f}")
+  </code></pre>
+</div>

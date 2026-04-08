@@ -1,0 +1,119 @@
+---
+layout: page
+---
+<article class="post">
+  <header class="post-header">
+    <h1 class="post-title">{{ page.title }}</h1>
+    {% if page.description %}
+      <p class="post-description" style="color:var(--text-muted-color, #666); margin-bottom:0.5rem;">{{ page.description }}</p>
+    {% endif %}
+    {% if page.tech.size > 0 %}
+      <div class="mini-tech-badges">
+        {% for t in page.tech %}
+          <span class="mini-tech-badge">{{ t }}</span>
+        {% endfor %}
+      </div>
+    {% endif %}
+  </header>
+
+  <div class="ql-tabs">
+    <button class="ql-tab-btn active" onclick="showTab('concept', this)">Concept</button>
+    <button class="ql-tab-btn" onclick="showTab('code', this)">Code</button>
+    <button class="ql-tab-btn" onclick="showTab('demo', this)">Demo</button>
+  </div>
+
+  {{ content }}
+
+  {% if page.demo_url %}
+  <div id="tab-demo" class="ql-tab-content" style="display:none">
+    <div class="demo-bar">
+      <span>Live interactive demo</span>
+      <a href="{{ page.demo_url }}" target="_blank">Open in new tab &#8599;</a>
+    </div>
+    <div class="demo-frame">
+      <iframe src="{{ page.demo_url }}?embedded=true" allow="clipboard-write"></iframe>
+    </div>
+  </div>
+  {% endif %}
+
+</article>
+
+<style>
+.ql-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 24px 0 0 0;
+  border-bottom: 2px solid var(--border-color, #e8e8e8);
+  flex-wrap: wrap;
+}
+.ql-tab-btn {
+  padding: 8px 20px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: var(--text-muted-color, #555);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -2px;
+  font-family: inherit;
+}
+.ql-tab-btn.active {
+  color: var(--link-color, #2a7ae2);
+  border-bottom: 2px solid var(--link-color, #2a7ae2);
+  font-weight: 600;
+}
+.ql-tab-content {
+  padding: 24px 0;
+}
+.mini-tech-badges {
+  display: flex;
+  gap: 0.4em;
+  flex-wrap: wrap;
+  margin: 0.6rem 0 0.2rem;
+}
+.mini-tech-badge {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 3px;
+  background: var(--badge-bg, rgba(42,122,226,0.1));
+  color: var(--link-color, #2a7ae2);
+}
+.demo-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  color: var(--text-muted-color, #999);
+  border-bottom: 1px solid var(--border-color, #e8e8e8);
+}
+.demo-bar a {
+  color: var(--link-color, #2a7ae2);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.demo-bar a:hover { text-decoration: underline; }
+.demo-frame {
+  position: relative;
+  width: 100%;
+  height: calc(100vh - 200px);
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 0 0 8px 8px;
+  overflow: hidden;
+}
+.demo-frame iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+</style>
+
+<script>
+function showTab(name, btn) {
+  document.querySelectorAll('.ql-tab-content').forEach(el => el.style.display = 'none');
+  document.querySelectorAll('.ql-tab-btn').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + name).style.display = 'block';
+  btn.classList.add('active');
+}
+</script>

@@ -1,0 +1,59 @@
+---
+layout: quant-lab-mini
+title: "Algo Trading Backtest"
+description: "Backtest SMA crossover and momentum strategies with equity curves and trade logs."
+date: 2026-08-27
+permalink: /quant-lab/algo-trading/
+tech: [Python, yfinance, Plotly, pandas]
+demo_url: "https://finbytes.streamlit.app/Algo_Trading"
+category: ml-quant
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Backtests two classic systematic strategies: SMA crossover (buy when fast MA crosses above slow MA) and momentum (buy when N-day return is positive). Compares equity curves, Sharpe ratios, max drawdowns, and trade logs against buy-and-hold.</p>
+
+  <h3>The math</h3>
+  <p>Strategy return = daily_return * signal(t-1). Equity curve = cumulative product of (1 + strategy_return). Max drawdown = largest peak-to-trough decline. Sharpe ratio = mean(daily_return) / std(daily_return) * sqrt(252). Signals are lagged by one day to avoid look-ahead bias.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this as a backtesting framework. Key pitfalls: transaction costs and slippage are not included, parameter optimization on the test set inflates results (use walk-forward validation), and survivorship bias skews stock selection. This is educational -- do not trade real money without proper infrastructure.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import pandas as pd
+import numpy as np
+
+
+def sma_crossover(prices: pd.Series, fast: int = 20, slow: int = 50) -> pd.DataFrame:
+    """Generate signals: 1 = long, 0 = flat."""
+    df = pd.DataFrame({"price": prices})
+    df["sma_fast"] = prices.rolling(fast).mean()
+    df["sma_slow"] = prices.rolling(slow).mean()
+    df["signal"] = 0
+    df.loc[df["sma_fast"] > df["sma_slow"], "signal"] = 1
+    return df
+
+
+def backtest(prices: pd.Series, signals: pd.Series) -> pd.DataFrame:
+    """Compute equity curve from price series and signal series."""
+    daily_returns = prices.pct_change().fillna(0)
+    strategy_returns = daily_returns * signals.shift(1).fillna(0)
+    result = pd.DataFrame({
+        "price": prices, "signal": signals,
+        "strategy_return": strategy_returns,
+    })
+    result["equity"] = (1 + result["strategy_return"]).cumprod()
+    result["buy_hold"] = prices / prices.iloc[0]
+    return result
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">sma_df = sma_crossover(df["price"], fast=20, slow=50)
+bt = backtest(df["price"], sma_df["signal"])
+total_return = bt["equity"].iloc[-1] - 1
+print(f"Strategy return: {total_return:.2%}")
+print(f"Buy & hold:      {(bt['buy_hold'].iloc[-1] - 1):.2%}")
+  </code></pre>
+</div>

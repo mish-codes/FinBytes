@@ -1,0 +1,64 @@
+---
+layout: quant-lab-mini
+title: "Time Series Decomposition"
+description: "Seasonal decomposition, stationarity testing (ADF), and ACF/PACF analysis."
+date: 2026-08-21
+permalink: /quant-lab/time-series/
+tech: [Python, statsmodels, Plotly]
+demo_url: "https://finbytes.streamlit.app/Time_Series"
+category: ml-quant
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Separates a financial time series into trend, seasonal, and residual components. Runs the Augmented Dickey-Fuller test for stationarity and computes ACF/PACF to guide model selection (AR, MA, or ARMA).</p>
+
+  <h3>The math</h3>
+  <p>Additive decomposition: <code>Y(t) = Trend + Seasonal + Residual</code>. The ADF test checks for a unit root -- p-value below 0.05 means the series is stationary. ACF that decays slowly with PACF cutting off after lag p suggests an AR(p) model.</p>
+
+  <h3>When to use it</h3>
+  <p>This is the starting point for any time series modeling task. Decompose to understand structure, difference to achieve stationarity, then use ACF/PACF to choose model order. For intraday data, set period to the number of observations per day.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Core function</h3>
+  <pre><code class="language-python">import pandas as pd
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.stattools import adfuller, acf, pacf
+
+
+def analyze_time_series(series: pd.Series, period: int = 12):
+    """Run decomposition, ADF test, and ACF/PACF analysis."""
+    decomp = seasonal_decompose(series, model="additive", period=period)
+
+    stat, p_value, *_ = adfuller(series.dropna())
+    adf_raw = {"adf_statistic": round(stat, 4), "p_value": round(p_value, 4),
+               "stationary": p_value < 0.05}
+
+    diff = series.diff().dropna()
+    stat_d, p_d, *_ = adfuller(diff)
+    adf_diff = {"adf_statistic": round(stat_d, 4), "p_value": round(p_d, 4),
+                "stationary": p_d < 0.05}
+
+    nlags = min(15, len(diff) // 2 - 1)
+    acf_vals = acf(diff, nlags=nlags, fft=True)
+    pacf_vals = pacf(diff, nlags=nlags)
+
+    return {"decomposition": decomp, "adf_raw": adf_raw,
+            "adf_diff": adf_diff, "acf": acf_vals, "pacf": pacf_vals}
+  </code></pre>
+
+  <h3>Quick usage</h3>
+  <pre><code class="language-python">import numpy as np
+
+np.random.seed(42)
+dates = pd.date_range("2023-01-01", periods=36, freq="MS")
+trend = np.linspace(100, 160, 36)
+seasonal = 8 * np.sin(2 * np.pi * np.arange(36) / 12)
+ts = pd.Series(trend + seasonal + np.random.normal(0, 3, 36), index=dates)
+
+results = analyze_time_series(ts, period=12)
+print(f"Raw stationary: {results['adf_raw']['stationary']}")
+print(f"Diff stationary: {results['adf_diff']['stationary']}")
+  </code></pre>
+</div>
