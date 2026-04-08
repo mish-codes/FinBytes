@@ -1,0 +1,189 @@
+---
+layout: post
+title: "Loan Default Prediction"
+date: 2026-08-24
+tags: [python, finance, ml, classification, logistic-regression, random-forest, sklearn, plotly]
+categories: [Finance Tools]
+section: tools
+permalink: "/tools/loan-default/"
+---
+
+<h2>The problem</h2>
+
+<p>A bank wants to predict which loan applicants will default. This is a binary classification task: given features like income, credit score, and loan amount, predict 0 (no default) or 1 (default). Getting this right reduces losses; getting it wrong either rejects good customers or approves bad ones.</p>
+
+<h2>Synthetic loan dataset</h2>
+
+<pre><code class="language-python">import numpy as np
+import pandas as pd
+
+np.random.seed(42)
+n = 1000
+
+income = np.random.lognormal(mean=10.8, sigma=0.5, size=n)
+credit_score = np.random.normal(680, 80, n).clip(300, 850)
+loan_amount = np.random.lognormal(mean=9.5, sigma=0.7, size=n)
+dti_ratio = loan_amount / (income / 12)  # debt-to-income
+employment_years = np.random.exponential(5, n).clip(0, 30)
+
+# Default probability depends on features
+log_odds = (
+    -3.0
+    + 0.5 * (dti_ratio - dti_ratio.mean()) / dti_ratio.std()
+    - 0.8 * (credit_score - credit_score.mean()) / credit_score.std()
+    - 0.3 * (employment_years - employment_years.mean()) / employment_years.std()
+    + np.random.normal(0, 0.5, n)
+)
+default_prob = 1 / (1 + np.exp(-log_odds))
+default = (np.random.rand(n) < default_prob).astype(int)
+
+df = pd.DataFrame({
+    "income": income.round(0),
+    "credit_score": credit_score.round(0),
+    "loan_amount": loan_amount.round(0),
+    "dti_ratio": dti_ratio.round(2),
+    "employment_years": employment_years.round(1),
+    "default": default,
+})
+
+print(f"Dataset shape: {df.shape}")
+print(f"Default rate:  {df['default'].mean():.1%}")
+print(df.describe().round(1))
+</code></pre>
+
+<h2>Train/test split and preprocessing</h2>
+
+<pre><code class="language-python">from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+
+features = ["income", "credit_score", "loan_amount", "dti_ratio", "employment_years"]
+X = df[features]
+y = df["default"]
+
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y, test_size=0.2, random_state=42, stratify=y
+)
+
+scaler = StandardScaler()
+X_train_scaled = scaler.fit_transform(X_train)
+X_test_scaled = scaler.transform(X_test)
+
+print(f"Train: {X_train.shape[0]}  Test: {X_test.shape[0]}")
+print(f"Train default rate: {y_train.mean():.1%}")
+print(f"Test default rate:  {y_test.mean():.1%}")
+</code></pre>
+
+<p><code>stratify=y</code> ensures the default rate is the same in both splits. <code>StandardScaler</code> centers and scales features to zero mean and unit variance. Logistic Regression needs this; Random Forest does not, but it does not hurt.</p>
+
+<h2>Logistic Regression</h2>
+
+<pre><code class="language-python">from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+lr = LogisticRegression(random_state=42, max_iter=1000)
+lr.fit(X_train_scaled, y_train)
+lr_pred = lr.predict(X_test_scaled)
+
+def print_metrics(name: str, y_true, y_pred):
+    print(f"\n{name}:")
+    print(f"  Accuracy:  {accuracy_score(y_true, y_pred):.3f}")
+    print(f"  Precision: {precision_score(y_true, y_pred):.3f}")
+    print(f"  Recall:    {recall_score(y_true, y_pred):.3f}")
+    print(f"  F1:        {f1_score(y_true, y_pred):.3f}")
+
+print_metrics("Logistic Regression", y_test, lr_pred)
+</code></pre>
+
+<h2>Random Forest</h2>
+
+<pre><code class="language-python">from sklearn.ensemble import RandomForestClassifier
+
+rf = RandomForestClassifier(n_estimators=200, random_state=42, max_depth=6)
+rf.fit(X_train_scaled, y_train)
+rf_pred = rf.predict(X_test_scaled)
+
+print_metrics("Random Forest", y_test, rf_pred)
+</code></pre>
+
+<h2>Confusion matrix</h2>
+
+<pre><code class="language-python">from sklearn.metrics import confusion_matrix
+import plotly.figure_factory as ff
+
+for name, preds in [("Logistic Regression", lr_pred), ("Random Forest", rf_pred)]:
+    cm = confusion_matrix(y_test, preds)
+    labels = ["No Default", "Default"]
+
+    fig = ff.create_annotated_heatmap(
+        z=cm, x=labels, y=labels,
+        colorscale="Blues", showscale=False,
+    )
+    fig.update_layout(
+        title=f"Confusion Matrix: {name}",
+        xaxis_title="Predicted", yaxis_title="Actual",
+        width=450, height=400, template="plotly_white",
+    )
+    fig.show()
+</code></pre>
+
+<p>In credit risk, <strong>recall</strong> (catching actual defaults) matters more than precision. A missed default costs the bank the full loan amount. A false positive only costs a rejected application. Adjust the classification threshold to trade precision for recall.</p>
+
+<h2>Feature importance</h2>
+
+<pre><code class="language-python">import plotly.graph_objects as go
+
+importances = pd.DataFrame({
+    "feature": features,
+    "lr_coef": np.abs(lr.coef_[0]),
+    "rf_importance": rf.feature_importances_,
+}).sort_values("rf_importance", ascending=True)
+
+fig = go.Figure()
+fig.add_trace(go.Bar(
+    y=importances["feature"], x=importances["rf_importance"],
+    orientation="h", marker_color="steelblue", name="Random Forest"
+))
+fig.add_trace(go.Bar(
+    y=importances["feature"], x=importances["lr_coef"],
+    orientation="h", marker_color="firebrick", opacity=0.6, name="Logistic Reg (|coef|)"
+))
+
+fig.update_layout(
+    title="Feature Importance Comparison",
+    xaxis_title="Importance", barmode="group",
+    height=400, width=700, template="plotly_white",
+)
+fig.show()
+</code></pre>
+
+<h2>Threshold tuning</h2>
+
+<pre><code class="language-python">from sklearn.metrics import precision_recall_curve
+
+rf_proba = rf.predict_proba(X_test_scaled)[:, 1]
+precisions, recalls, thresholds = precision_recall_curve(y_test, rf_proba)
+
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=thresholds, y=precisions[:-1], mode="lines",
+                         name="Precision", line=dict(color="steelblue")))
+fig.add_trace(go.Scatter(x=thresholds, y=recalls[:-1], mode="lines",
+                         name="Recall", line=dict(color="firebrick")))
+
+fig.update_layout(
+    title="Precision-Recall vs Threshold (Random Forest)",
+    xaxis_title="Classification Threshold", yaxis_title="Score",
+    height=400, width=700, template="plotly_white",
+)
+fig.show()
+</code></pre>
+
+<p>The default threshold of 0.5 is rarely optimal. Lowering it catches more defaults (higher recall) at the cost of more false positives (lower precision). The right threshold depends on the business cost of each error type.</p>
+
+<h2>Key takeaways</h2>
+
+<ul>
+  <li>Start with Logistic Regression as a baseline. It is interpretable and fast.</li>
+  <li>Random Forest often improves accuracy by capturing non-linear interactions.</li>
+  <li>In credit risk, optimize for recall, not accuracy. A model that predicts "no default" for everyone achieves high accuracy on imbalanced data but is useless.</li>
+  <li>Always check feature importance. If the model relies on a feature you cannot use in production (e.g., a leaky feature), remove it.</li>
+</ul>
