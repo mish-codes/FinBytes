@@ -23,7 +23,7 @@ permalink: /quant-lab/
 .ql-tech { display:block; font-size:0.72rem; color:var(--text-muted-color, #aaa); margin-top:0.2rem; }
 </style>
 
-<p style="color:var(--text-muted-color, #666); margin-bottom:2rem;">Quantitative finance projects — from full-stack capstones to focused mini projects with live interactive demos.</p>
+<p style="color:var(--text-muted-color, #666); margin-bottom:2rem;">A collection of finance and data science projects &mdash; from calculators and live dashboards to ML models and trading backtests. Each project has a concept breakdown, copy-pasteable code, and an interactive demo.</p>
 
 <ul class="ql-list">
   <li>
