@@ -20,6 +20,7 @@ layout: page
     <button class="ql-tab-btn active" onclick="showTab('concept', this)">Concept</button>
     <button class="ql-tab-btn" onclick="showTab('code', this)">Code</button>
     <button class="ql-tab-btn" onclick="showTab('demo', this)">Demo</button>
+    <button class="ql-tab-btn" onclick="showTab('stack', this)">Tech Stack</button>
   </div>
 
   {{ content }}
@@ -35,6 +36,38 @@ layout: page
     </div>
   </div>
   {% endif %}
+
+  <div id="tab-stack" class="ql-tab-content" style="display:none">
+    <h3>Technologies Used</h3>
+    <table class="stack-table">
+      <thead>
+        <tr><th>Technology</th><th>Role</th></tr>
+      </thead>
+      <tbody>
+        {% for item in page.tech_stack %}
+          <tr><td>{{ item.name }}</td><td>{{ item.role }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if page.category %}
+    <h3 style="margin-top:1.5rem;">Category</h3>
+    <p>
+      {% if page.category == "calculators" %}
+        <span class="cat-badge cat-calc">Calculator</span> &mdash; Input-driven computation with interactive charts. No external APIs.
+      {% elsif page.category == "dashboards" %}
+        <span class="cat-badge cat-dash">Dashboard</span> &mdash; Fetches live data from external APIs and displays interactive visualisations.
+      {% elsif page.category == "ml-quant" %}
+        <span class="cat-badge cat-ml">ML &amp; Quant</span> &mdash; Machine learning models or quantitative algorithms with interactive parameter tuning.
+      {% endif %}
+    </p>
+    {% endif %}
+
+    <h3 style="margin-top:1.5rem;">Source Code</h3>
+    <p>
+      <a href="https://github.com/MishCodesFinBytes/QuantLab" target="_blank">QuantLab repository</a> &mdash; <code>dashboard/pages/</code>
+    </p>
+  </div>
 
 </article>
 
@@ -62,51 +95,21 @@ layout: page
   border-bottom: 2px solid var(--link-color, #2a7ae2);
   font-weight: 600;
 }
-.ql-tab-content {
-  padding: 24px 0;
-}
-.mini-tech-badges {
-  display: flex;
-  gap: 0.4em;
-  flex-wrap: wrap;
-  margin: 0.6rem 0 0.2rem;
-}
-.mini-tech-badge {
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 3px;
-  background: var(--badge-bg, rgba(42,122,226,0.1));
-  color: var(--link-color, #2a7ae2);
-}
-.demo-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 16px;
-  font-size: 0.85rem;
-  color: var(--text-muted-color, #999);
-  border-bottom: 1px solid var(--border-color, #e8e8e8);
-}
-.demo-bar a {
-  color: var(--link-color, #2a7ae2);
-  text-decoration: none;
-  font-size: 0.85rem;
-}
-.demo-bar a:hover { text-decoration: underline; }
-.demo-frame {
-  position: relative;
-  width: 100%;
-  height: calc(100vh - 200px);
-  border: 1px solid var(--border-color, #e8e8e8);
-  border-radius: 0 0 8px 8px;
-  overflow: hidden;
-}
-.demo-frame iframe {
-  width: 100%;
-  height: 100%;
-  border: none;
-}
+.ql-tab-content { padding: 24px 0; }
+.mini-tech-badges { display:flex; gap:0.4em; flex-wrap:wrap; margin:0.6rem 0 0.2rem; }
+.mini-tech-badge { font-size:0.72rem; font-weight:600; padding:2px 8px; border-radius:3px; background:var(--badge-bg, rgba(42,122,226,0.1)); color:var(--link-color, #2a7ae2); }
+.demo-bar { display:flex; align-items:center; justify-content:space-between; padding:8px 16px; font-size:0.85rem; color:var(--text-muted-color, #999); border-bottom:1px solid var(--border-color, #e8e8e8); }
+.demo-bar a { color:var(--link-color, #2a7ae2); text-decoration:none; font-size:0.85rem; }
+.demo-bar a:hover { text-decoration:underline; }
+.demo-frame { position:relative; width:100%; height:calc(100vh - 200px); border:1px solid var(--border-color, #e8e8e8); border-radius:0 0 8px 8px; overflow:hidden; }
+.demo-frame iframe { width:100%; height:100%; border:none; }
+.stack-table { width:100%; border-collapse:collapse; margin:0.5rem 0; font-size:0.9rem; }
+.stack-table th, .stack-table td { padding:0.5rem; text-align:left; border-bottom:1px solid var(--border-color, #e8e8e8); }
+.stack-table th { font-weight:600; font-size:0.82rem; color:var(--text-muted-color, #999); text-transform:uppercase; letter-spacing:0.05em; }
+.cat-badge { font-size:0.75rem; font-weight:600; padding:2px 8px; border-radius:3px; }
+.cat-calc { background:rgba(46,160,67,0.15); color:#2ea043; }
+.cat-dash { background:rgba(42,122,226,0.15); color:#2a7ae2; }
+.cat-ml { background:rgba(163,113,247,0.15); color:#a371f7; }
 </style>
 
 <script>
