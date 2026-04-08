@@ -8,277 +8,181 @@ section: testing
 permalink: "/python/testing-side-effects/"
 ---
 
-<h2>The Principle: Mock at the Boundary</h2>
+<h2>Files</h2>
 
-<p>Unit tests must be fast, deterministic, and independent of external systems. If your code writes files, sends emails, calls APIs, or queries a database, those are <strong>side effects</strong>. In a unit test, you replace them with fakes. In an integration test, you use lightweight real substitutes (tmp directories, in-memory databases, local containers).</p>
+<h3>Real files with tmp_path</h3>
 
-<p>The boundary is the line between your logic and the outside world. Mock <em>at</em> that line, not deep inside your code.</p>
-
-<h2>Testing File I/O</h2>
-
-<h3>Approach 1: tmp_path (real files, auto-cleaned)</h3>
-
-<p>pytest's <code>tmp_path</code> fixture gives you a fresh <code>pathlib.Path</code> directory per test. Files written there are automatically cleaned up.</p>
-
-<pre><code class="language-python"># report_writer.py
-import csv
+<pre><code class="language-python">import csv
+import pytest
 from pathlib import Path
 
-def save_report(path: Path, rows: list[dict]) -> int:
-    """Write portfolio positions to CSV. Returns row count."""
-    if not rows:
-        raise ValueError("No data to write")
+def save_positions(path: Path, rows: list[dict]) -> int:
     fieldnames = rows[0].keys()
     with open(path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(rows)
     return len(rows)
-</code></pre>
 
-<pre><code class="language-python"># test_report_writer.py
-import csv
-import pytest
-from report_writer import save_report
-
-def test_save_report_writes_csv(tmp_path):
-    out_file = tmp_path / "positions.csv"
+def test_save_positions(tmp_path):
+    out = tmp_path / "positions.csv"
     rows = [
         {"ticker": "AAPL", "qty": 100, "price": 189.5},
         {"ticker": "MSFT", "qty": 50, "price": 420.1},
     ]
-    count = save_report(out_file, rows)
+    count = save_positions(out, rows)
 
     assert count == 2
-    assert out_file.exists()
-
-    # Read back and verify content
-    with open(out_file) as f:
+    assert out.exists()
+    with open(out) as f:
         reader = list(csv.DictReader(f))
-    assert len(reader) == 2
     assert reader[0]["ticker"] == "AAPL"
     assert reader[1]["price"] == "420.1"
-
-def test_save_report_empty_raises(tmp_path):
-    with pytest.raises(ValueError, match="No data"):
-        save_report(tmp_path / "empty.csv", [])
 </code></pre>
 
-<h3>Approach 2: mock_open (no files at all)</h3>
-
-<p>When you want to test logic that reads a file without creating a real one:</p>
+<h3>Fake files with mock_open</h3>
 
 <pre><code class="language-python">from unittest.mock import patch, mock_open
 import json
 
-def load_config(path: str) -> dict:
+def load_config(path):
     with open(path) as f:
         return json.load(f)
 
 def test_load_config():
-    fake_json = '{"db_host": "localhost", "db_port": 5432}'
-    with patch("builtins.open", mock_open(read_data=fake_json)):
+    fake = '{"db_host": "localhost", "db_port": 5432}'
+    with patch("builtins.open", mock_open(read_data=fake)):
         cfg = load_config("config.json")
     assert cfg["db_host"] == "localhost"
     assert cfg["db_port"] == 5432
 </code></pre>
 
-<p><strong>When to use which:</strong> use <code>tmp_path</code> when the file format itself is part of the contract (CSV columns, JSON schema). Use <code>mock_open</code> when you only care that your code reads/writes and handles the content correctly, not the filesystem behavior.</p>
+<h2>HTTP APIs</h2>
 
-<h2>Testing Email Sending</h2>
+<h3>Mock requests.get</h3>
 
-<p>Never send real emails from tests. Mock the SMTP client and verify the calls.</p>
+<pre><code class="language-python">import requests
+from unittest.mock import patch, MagicMock
 
-<pre><code class="language-python"># alert_service.py
-import smtplib
-from email.message import EmailMessage
-
-def send_alert(recipient: str, subject: str, body: str) -> None:
-    msg = EmailMessage()
-    msg["From"] = "alerts@finbytes.dev"
-    msg["To"] = recipient
-    msg["Subject"] = subject
-    msg.set_content(body)
-
-    with smtplib.SMTP("smtp.example.com", 587) as server:
-        server.starttls()
-        server.login("alerts@finbytes.dev", "secret")
-        server.send_message(msg)
-</code></pre>
-
-<pre><code class="language-python"># test_alert_service.py
-from unittest.mock import patch, MagicMock, call
-
-@patch("alert_service.smtplib.SMTP")
-def test_send_alert_correct_flow(MockSMTP):
-    mock_server = MockSMTP.return_value.__enter__.return_value
-
-    send_alert("risk@firm.com", "VaR Breach", "Portfolio p1 exceeded limit")
-
-    # Verify connection target
-    MockSMTP.assert_called_once_with("smtp.example.com", 587)
-
-    # Verify call order: starttls -> login -> send_message
-    method_names = [c[0] for c in mock_server.method_calls]
-    assert method_names == ["starttls", "login", "send_message"]
-
-    # Verify the message content
-    sent_msg = mock_server.send_message.call_args[0][0]
-    assert sent_msg["To"] == "risk@firm.com"
-    assert sent_msg["Subject"] == "VaR Breach"
-</code></pre>
-
-<pre><code class="language-python">@patch("alert_service.smtplib.SMTP")
-def test_send_alert_to_multiple_recipients(MockSMTP):
-    mock_server = MockSMTP.return_value.__enter__.return_value
-
-    recipients = ["risk@firm.com", "manager@firm.com", "cro@firm.com"]
-    for r in recipients:
-        send_alert(r, "VaR Breach", "Limit exceeded")
-
-    assert mock_server.send_message.call_count == 3
-</code></pre>
-
-<h2>Testing HTTP API Calls</h2>
-
-<h3>Mocking requests.get</h3>
-
-<pre><code class="language-python"># market_data.py
-import requests
-
-def fetch_prices(ticker: str, days: int = 5) -> list[float]:
-    """Fetch closing prices from market API."""
+def fetch_prices(ticker, days=5):
     resp = requests.get(
         f"https://api.example.com/prices/{ticker}",
-        params={"days": days},
-        timeout=10,
+        params={"days": days}, timeout=10,
     )
     resp.raise_for_status()
     return resp.json()["prices"]
+
+def _mock_response(status=200, json_data=None, error=None):
+    mock = MagicMock()
+    mock.status_code = status
+    mock.json.return_value = json_data or {}
+    if error:
+        mock.raise_for_status.side_effect = error
+    return mock
+
+@patch("__main__.requests.get")
+def test_fetch_success(mock_get):
+    mock_get.return_value = _mock_response(json_data={"prices": [189.5, 190.1]})
+    assert fetch_prices("AAPL", days=2) == [189.5, 190.1]
+    mock_get.assert_called_once()
 </code></pre>
 
-<pre><code class="language-python"># test_market_data.py
-from unittest.mock import patch, MagicMock
-import requests
-import pytest
+<h3>Mock error responses</h3>
 
-def _mock_response(status_code=200, json_data=None, raise_for_status=None):
-    """Helper: build a mock Response object."""
-    mock_resp = MagicMock()
-    mock_resp.status_code = status_code
-    mock_resp.json.return_value = json_data or {}
-    if raise_for_status:
-        mock_resp.raise_for_status.side_effect = raise_for_status
-    return mock_resp
+<pre><code class="language-python">import pytest
+from unittest.mock import patch
 
-@patch("market_data.requests.get")
-def test_fetch_prices_success(mock_get):
+@patch("__main__.requests.get")
+def test_404(mock_get):
     mock_get.return_value = _mock_response(
-        json_data={"prices": [189.5, 190.1, 188.3]}
-    )
-    result = fetch_prices("AAPL", days=3)
-    assert result == [189.5, 190.1, 188.3]
-    mock_get.assert_called_once_with(
-        "https://api.example.com/prices/AAPL",
-        params={"days": 3},
-        timeout=10,
-    )
-
-@patch("market_data.requests.get")
-def test_fetch_prices_404(mock_get):
-    mock_get.return_value = _mock_response(
-        status_code=404,
-        raise_for_status=requests.HTTPError("404 Not Found"),
+        status=404, error=requests.HTTPError("404")
     )
     with pytest.raises(requests.HTTPError):
         fetch_prices("INVALID")
 
-@patch("market_data.requests.get")
-def test_fetch_prices_timeout(mock_get):
-    mock_get.side_effect = requests.Timeout("Connection timed out")
+@patch("__main__.requests.get")
+def test_timeout(mock_get):
+    mock_get.side_effect = requests.Timeout("timed out")
     with pytest.raises(requests.Timeout):
         fetch_prices("AAPL")
 
-@patch("market_data.requests.get")
-def test_fetch_prices_connection_error(mock_get):
+@patch("__main__.requests.get")
+def test_connection_error(mock_get):
     mock_get.side_effect = requests.ConnectionError("DNS failure")
     with pytest.raises(requests.ConnectionError):
         fetch_prices("AAPL")
 </code></pre>
 
-<h3>monkeypatch approach (simpler when you don't need call tracking)</h3>
+<h2>Email / SMTP</h2>
 
-<pre><code class="language-python">def test_fetch_prices_monkeypatch(monkeypatch):
-    class FakeResponse:
-        status_code = 200
-        def json(self):
-            return {"prices": [189.5, 190.1]}
-        def raise_for_status(self):
-            pass
+<h3>Mock SMTP and verify calls</h3>
 
-    monkeypatch.setattr("market_data.requests.get", lambda *a, **kw: FakeResponse())
-    result = fetch_prices("AAPL")
-    assert result == [189.5, 190.1]
+<pre><code class="language-python">import smtplib
+from email.message import EmailMessage
+from unittest.mock import patch, MagicMock
+
+def send_alert(recipient, subject, body):
+    msg = EmailMessage()
+    msg["From"] = "alerts@finbytes.dev"
+    msg["To"] = recipient
+    msg["Subject"] = subject
+    msg.set_content(body)
+    with smtplib.SMTP("smtp.example.com", 587) as server:
+        server.starttls()
+        server.login("alerts@finbytes.dev", "secret")
+        server.send_message(msg)
+
+@patch("__main__.smtplib.SMTP")
+def test_send_alert(MockSMTP):
+    mock_server = MockSMTP.return_value.__enter__.return_value
+
+    send_alert("risk@firm.com", "VaR Breach", "Portfolio p1 exceeded limit")
+
+    MockSMTP.assert_called_once_with("smtp.example.com", 587)
+    method_names = [c[0] for c in mock_server.method_calls]
+    assert method_names == ["starttls", "login", "send_message"]
+    sent_msg = mock_server.send_message.call_args[0][0]
+    assert sent_msg["To"] == "risk@firm.com"
+    assert sent_msg["Subject"] == "VaR Breach"
 </code></pre>
 
-<h2>Testing Database Calls</h2>
+<h2>Databases</h2>
 
-<h3>SQLite in-memory (fast integration tests)</h3>
+<h3>SQLite in-memory</h3>
 
-<p>This is the pattern used throughout QuantLab exercises. Replace PostgreSQL with an in-memory SQLite database for tests:</p>
+<pre><code class="language-python">import pytest
+from sqlalchemy import create_engine, Column, Integer, String, Float
+from sqlalchemy.orm import sessionmaker, declarative_base
 
-<pre><code class="language-python"># conftest.py
-import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-from models import Base  # your SQLAlchemy declarative base
+Base = declarative_base()
+
+class Position(Base):
+    __tablename__ = "positions"
+    id = Column(Integer, primary_key=True)
+    ticker = Column(String)
+    quantity = Column(Integer)
+    price = Column(Float)
 
 @pytest.fixture
 def db_session():
-    """Provide a clean in-memory database for each test."""
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(engine)
-    Session = sessionmaker(bind=engine)
-    session = Session()
+    session = sessionmaker(bind=engine)()
     yield session
     session.close()
-</code></pre>
 
-<pre><code class="language-python"># test_positions.py
-from models import Position
-from services.position_service import get_total_exposure
-
-def test_total_exposure(db_session):
-    db_session.add_all([
-        Position(ticker="AAPL", quantity=100, price=189.5),
-        Position(ticker="MSFT", quantity=50, price=420.1),
-    ])
+def test_insert_and_query(db_session):
+    db_session.add(Position(ticker="AAPL", quantity=100, price=189.5))
     db_session.commit()
+    result = db_session.query(Position).filter_by(ticker="AAPL").first()
+    assert result.quantity == 100
+    assert result.price == 189.5
 
-    total = get_total_exposure(db_session)
-    assert total == pytest.approx(100 * 189.5 + 50 * 420.1)
-
-def test_empty_portfolio(db_session):
-    total = get_total_exposure(db_session)
-    assert total == 0.0
+def test_empty_table(db_session):
+    assert db_session.query(Position).count() == 0
 </code></pre>
 
-<h3>Mocking the session (pure unit test)</h3>
-
-<pre><code class="language-python">from unittest.mock import MagicMock
-
-def test_get_positions_unit():
-    mock_session = MagicMock()
-    mock_session.query.return_value.filter.return_value.all.return_value = [
-        Position(ticker="AAPL", quantity=100, price=189.5),
-    ]
-    result = get_positions(mock_session, portfolio_id="p1")
-    assert len(result) == 1
-</code></pre>
-
-<h3>moto for AWS services</h3>
-
-<p>The <code>moto</code> library spins up fake AWS services in-process. No network, no credentials, no cost. This pattern appears in QuantLab exercises 10, 15, and 16.</p>
+<h3>moto for AWS (S3, SQS, DynamoDB)</h3>
 
 <pre><code class="language-python">import boto3
 import pytest
@@ -286,37 +190,17 @@ from moto import mock_aws
 
 @pytest.fixture
 def s3_bucket():
-    """Create a fake S3 bucket for testing."""
     with mock_aws():
         s3 = boto3.client("s3", region_name="us-east-1")
         s3.create_bucket(Bucket="par-curves")
         yield s3
 
-def test_upload_par_curve(s3_bucket):
-    from ingestion import upload_curve
-    upload_curve(s3_bucket, "par-curves", "2026-07-20.json", '{"rates": [4.2]}')
-
+def test_s3_upload(s3_bucket):
+    s3_bucket.put_object(Bucket="par-curves", Key="2026-07-20.json",
+                         Body='{"rates": [4.2, 4.35]}')
     obj = s3_bucket.get_object(Bucket="par-curves", Key="2026-07-20.json")
-    body = obj["Body"].read().decode()
-    assert '"rates"' in body
+    assert b"4.2" in obj["Body"].read()
 
-@pytest.fixture
-def sns_topic():
-    """Create a fake SNS topic for alert testing."""
-    with mock_aws():
-        sns = boto3.client("sns", region_name="us-east-1")
-        resp = sns.create_topic(Name="risk-alerts")
-        topic_arn = resp["TopicArn"]
-        yield sns, topic_arn
-
-def test_publish_alert(sns_topic):
-    sns, topic_arn = sns_topic
-    from alerts import publish_risk_alert
-    publish_risk_alert(sns, topic_arn, "VaR breach: portfolio p1")
-    # moto tracks published messages internally
-</code></pre>
-
-<pre><code class="language-python"># DynamoDB example (QuantLab Ex 16 pattern)
 @pytest.fixture
 def ddb_table():
     with mock_aws():
@@ -329,41 +213,31 @@ def ddb_table():
         )
         yield table
 
-def test_store_spread(ddb_table):
+def test_dynamodb_put_get(ddb_table):
     ddb_table.put_item(Item={"ticker": "AAPL", "spread_bps": 45})
     resp = ddb_table.get_item(Key={"ticker": "AAPL"})
     assert resp["Item"]["spread_bps"] == 45
 </code></pre>
 
-<h3>fakeredis for Redis</h3>
-
-<p>From the QuantLab exercise 17 caching pattern:</p>
+<h3>fakeredis</h3>
 
 <pre><code class="language-python">import fakeredis
 import pytest
 
 @pytest.fixture
 def redis_client():
-    """In-memory Redis replacement. No server needed."""
     return fakeredis.FakeRedis(decode_responses=True)
 
-def test_cache_spot_rate(redis_client):
-    from cache_layer import cache_rate, get_cached_rate
+def test_cache_hit(redis_client):
+    redis_client.set("rate:DGS10", "4.25")
+    assert redis_client.get("rate:DGS10") == "4.25"
 
-    cache_rate(redis_client, "DGS10", 4.25)
-    result = get_cached_rate(redis_client, "DGS10")
-    assert result == 4.25
+def test_cache_miss(redis_client):
+    assert redis_client.get("rate:NONEXISTENT") is None
 
-def test_cache_miss_returns_none(redis_client):
-    from cache_layer import get_cached_rate
-
-    result = get_cached_rate(redis_client, "NONEXISTENT")
-    assert result is None
-
-def test_cache_ttl(redis_client):
+def test_ttl(redis_client):
     redis_client.setex("rate:DGS10", 300, "4.25")
-    ttl = redis_client.ttl("rate:DGS10")
-    assert 0 < ttl <= 300
+    assert 0 < redis_client.ttl("rate:DGS10") <= 300
 </code></pre>
 
 <h2>The Testing Pyramid</h2>
@@ -375,62 +249,26 @@ def test_cache_ttl(redis_client):
       <th style="text-align:left; padding:0.4rem;">Count</th>
       <th style="text-align:left; padding:0.4rem;">Speed</th>
       <th style="text-align:left; padding:0.4rem;">What's Real</th>
-      <th style="text-align:left; padding:0.4rem;">Example</th>
     </tr>
   </thead>
   <tbody>
     <tr style="border-bottom:1px solid var(--border-color, #333);">
       <td style="padding:0.4rem;"><strong>Unit</strong></td>
-      <td style="padding:0.4rem;">Many (70-80%)</td>
-      <td style="padding:0.4rem;">< 1ms each</td>
+      <td style="padding:0.4rem;">70-80%</td>
+      <td style="padding:0.4rem;">&lt; 1ms</td>
       <td style="padding:0.4rem;">Nothing external</td>
-      <td style="padding:0.4rem;">Mock fetch_prices, test scan logic</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-color, #333);">
       <td style="padding:0.4rem;"><strong>Integration</strong></td>
-      <td style="padding:0.4rem;">Some (15-25%)</td>
-      <td style="padding:0.4rem;">10-500ms each</td>
-      <td style="padding:0.4rem;">DB, files, fake AWS</td>
-      <td style="padding:0.4rem;">SQLite + moto + fakeredis</td>
+      <td style="padding:0.4rem;">15-25%</td>
+      <td style="padding:0.4rem;">10-500ms</td>
+      <td style="padding:0.4rem;">SQLite, moto, fakeredis</td>
     </tr>
     <tr style="border-bottom:1px solid var(--border-color, #333);">
       <td style="padding:0.4rem;"><strong>E2E</strong></td>
-      <td style="padding:0.4rem;">Few (5-10%)</td>
+      <td style="padding:0.4rem;">5-10%</td>
       <td style="padding:0.4rem;">Seconds</td>
       <td style="padding:0.4rem;">Everything</td>
-      <td style="padding:0.4rem;">Hit real API, real DB, verify output</td>
     </tr>
   </tbody>
 </table>
-
-<p>Tag slow tests so you can skip them during development:</p>
-
-<pre><code class="language-python">import pytest
-
-@pytest.mark.slow
-def test_full_pipeline_real_db():
-    """Integration test that spins up a real PostgreSQL container."""
-    ...
-
-@pytest.mark.integration
-def test_s3_upload_with_moto():
-    """Uses moto - faster than real AWS but slower than pure unit tests."""
-    ...
-</code></pre>
-
-<pre><code class="language-ini"># pyproject.toml
-[tool.pytest.ini_options]
-markers = [
-    "slow: marks tests that take > 5 seconds",
-    "integration: marks tests using fake external services",
-]
-</code></pre>
-
-<pre><code class="language-bash"># Run only fast unit tests
-pytest -m "not slow and not integration"
-
-# Run everything
-pytest
-</code></pre>
-
-<p>The goal is a test suite that runs in under 10 seconds for the common case (unit tests only), with the option to run the full suite in CI where speed matters less than coverage.</p>
