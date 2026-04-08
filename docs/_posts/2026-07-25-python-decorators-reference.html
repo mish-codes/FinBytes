@@ -1,0 +1,180 @@
+---
+layout: post
+title: "Python Decorators: Patterns You'll Actually Use"
+date: 2026-07-25
+tags: [python, decorators, patterns, reference]
+categories: [Python]
+section: python
+permalink: "/python/decorators/"
+---
+
+<h2>What a decorator does</h2>
+
+<p>A decorator wraps a function. <code>@decorator</code> above a function is syntactic sugar for <code>func = decorator(func)</code>.</p>
+
+<pre><code class="language-python">def log_call(func):
+    def wrapper(*args, **kwargs):
+        print(f"Calling {func.__name__}")
+        result = func(*args, **kwargs)
+        print(f"{func.__name__} returned {result}")
+        return result
+    return wrapper
+
+@log_call
+def get_price(ticker: str) -> float:
+    return 189.50
+
+get_price("AAPL")
+# Calling get_price
+# get_price returned 189.5
+</code></pre>
+
+<h2>Preserve the original function's identity</h2>
+
+<pre><code class="language-python">from functools import wraps
+
+def log_call(func):
+    @wraps(func)  # preserves __name__, __doc__, __module__
+    def wrapper(*args, **kwargs):
+        print(f"Calling {func.__name__}")
+        return func(*args, **kwargs)
+    return wrapper
+</code></pre>
+
+<p>Without <code>@wraps</code>, <code>get_price.__name__</code> returns <code>"wrapper"</code> and help/docs break.</p>
+
+<h2>Decorator with arguments</h2>
+
+<pre><code class="language-python">from functools import wraps
+
+def retry(max_attempts: int = 3):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    if attempt == max_attempts:
+                        raise
+                    print(f"Attempt {attempt} failed: {e}")
+        return wrapper
+    return decorator
+
+@retry(max_attempts=5)
+def fetch_price(ticker: str) -> float:
+    import random
+    if random.random() < 0.7:
+        raise ConnectionError("API timeout")
+    return 189.50
+</code></pre>
+
+<h2>Timer decorator</h2>
+
+<pre><code class="language-python">import time
+from functools import wraps
+
+def timer(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        result = func(*args, **kwargs)
+        elapsed = time.perf_counter() - start
+        print(f"{func.__name__} took {elapsed:.4f}s")
+        return result
+    return wrapper
+
+@timer
+def bootstrap_curve(par_yields: list[float]) -> list[float]:
+    time.sleep(0.1)  # simulate work
+    return [y + 0.02 for y in par_yields]
+</code></pre>
+
+<h2>Cache decorator</h2>
+
+<pre><code class="language-python">from functools import lru_cache
+
+@lru_cache(maxsize=128)
+def get_spot_rate(tenor: str) -> float:
+    """Expensive DB lookup — cached after first call."""
+    print(f"Fetching {tenor} from database...")
+    return {"1Y": 4.50, "5Y": 4.90, "10Y": 5.00}[tenor]
+
+get_spot_rate("5Y")  # Fetching 5Y from database...
+get_spot_rate("5Y")  # instant — cached
+</code></pre>
+
+<h2>Validation decorator</h2>
+
+<pre><code class="language-python">from functools import wraps
+
+def validate_ticker(func):
+    @wraps(func)
+    def wrapper(ticker: str, *args, **kwargs):
+        if not ticker.isalpha() or len(ticker) > 5:
+            raise ValueError(f"Invalid ticker: {ticker}")
+        return func(ticker.upper(), *args, **kwargs)
+    return wrapper
+
+@validate_ticker
+def get_price(ticker: str) -> float:
+    return 189.50
+
+get_price("aapl")  # works — converted to AAPL
+get_price("12345!")  # ValueError: Invalid ticker: 12345!
+</code></pre>
+
+<h2>Class-based decorator</h2>
+
+<pre><code class="language-python">class CountCalls:
+    def __init__(self, func):
+        self.func = func
+        self.count = 0
+
+    def __call__(self, *args, **kwargs):
+        self.count += 1
+        return self.func(*args, **kwargs)
+
+@CountCalls
+def price_bond(face: float, rate: float, years: int) -> float:
+    return face / (1 + rate) ** years
+
+price_bond(100, 0.05, 5)
+price_bond(100, 0.06, 10)
+print(price_bond.count)  # 2
+</code></pre>
+
+<h2>Stacking decorators</h2>
+
+<pre><code class="language-python">@timer
+@retry(max_attempts=3)
+@validate_ticker
+def fetch_and_price(ticker: str) -> float:
+    return get_price(ticker)
+
+# Execution order (bottom to top):
+# validate_ticker runs first → retry wraps that → timer wraps that
+</code></pre>
+
+<h2>Decorators you already use</h2>
+
+<table style="width:100%; border-collapse:collapse; margin:1rem 0;">
+  <thead>
+    <tr style="border-bottom:2px solid var(--border-color, #444);">
+      <th style="text-align:left; padding:0.4rem;">Decorator</th>
+      <th style="text-align:left; padding:0.4rem;">From</th>
+      <th style="text-align:left; padding:0.4rem;">What it does</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>@pytest.fixture</code></td><td style="padding:0.4rem;">pytest</td><td style="padding:0.4rem;">Marks a function as a test fixture</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>@app.get("/path")</code></td><td style="padding:0.4rem;">FastAPI</td><td style="padding:0.4rem;">Registers a route handler</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>@field_validator</code></td><td style="padding:0.4rem;">Pydantic</td><td style="padding:0.4rem;">Validates a model field</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>@patch("module.func")</code></td><td style="padding:0.4rem;">unittest.mock</td><td style="padding:0.4rem;">Replaces a function in tests</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>@lru_cache</code></td><td style="padding:0.4rem;">functools</td><td style="padding:0.4rem;">Caches return values</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>@wraps(func)</code></td><td style="padding:0.4rem;">functools</td><td style="padding:0.4rem;">Preserves wrapped function identity</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>@dataclass</code></td><td style="padding:0.4rem;">dataclasses</td><td style="padding:0.4rem;">Auto-generates __init__, __repr__, etc.</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>@abstractmethod</code></td><td style="padding:0.4rem;">abc</td><td style="padding:0.4rem;">Forces subclass to implement method</td></tr>
+    <tr style="border-bottom:1px solid var(--border-color, #333);"><td style="padding:0.4rem;"><code>@mock_aws</code></td><td style="padding:0.4rem;">moto</td><td style="padding:0.4rem;">Mocks all AWS calls in the block</td></tr>
+  </tbody>
+</table>
