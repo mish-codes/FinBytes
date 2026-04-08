@@ -98,7 +98,61 @@ permalink: /python/
 </div>
 
 <div class="py-section">
-  <div class="py-section-hdr">Explainers</div>
+  <div class="py-section-hdr">QuantLab Phase 2 — AWS &amp; Bond/Credit Risk (Ex 09–20)</div>
+  <ul class="py-list">
+    <li>
+      <a href="{{ "/2026/04/04/aws-fundamentals-treasury-data/" | relative_url }}">AWS Fundamentals &amp; Treasury Data</a>
+      <span class="py-desc">Exercise 09 &mdash; FRED API, IAM, S3 bucket, yield curve classification</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/05/s3-par-curve-ingestion/" | relative_url }}">S3 Par Curve Ingestion</a>
+      <span class="py-desc">Exercise 10 &mdash; boto3, moto mocks, versioned S3 storage</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/06/rds-postgresql-yield-schema/" | relative_url }}">RDS PostgreSQL &amp; Yield Schema</a>
+      <span class="py-desc">Exercise 11 &mdash; Alembic migrations, seed from S3, 6-table schema</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/07/lambda-spot-curve-bootstrapping/" | relative_url }}">Lambda &amp; Spot Curve Bootstrapping</a>
+      <span class="py-desc">Exercise 12 &mdash; Lambda handler, API Gateway REST, 14 tests</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/08/cicd-forward-rate-curve/" | relative_url }}">CI/CD &amp; Forward Rate Curve</a>
+      <span class="py-desc">Exercise 13 &mdash; GitHub Actions, OIDC, forward rates</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/09/terraform-nelson-siegel/" | relative_url }}">Terraform &amp; Nelson-Siegel</a>
+      <span class="py-desc">Exercise 14 &mdash; IaC, scipy on Lambda, deployment friction log</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/10/sqs-sns-credit-spreads/" | relative_url }}">SQS/SNS &amp; Credit Spreads</a>
+      <span class="py-desc">Exercise 15 &mdash; credit spreads, CDS, hazard rates, async messaging</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/11/websockets-realtime-spreads/" | relative_url }}">WebSockets &amp; Real-Time Spreads</a>
+      <span class="py-desc">Exercise 16 &mdash; API Gateway WS, DynamoDB connections, fan-out</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/12/elasticache-bond-caching/" | relative_url }}">ElastiCache &amp; Bond Caching</a>
+      <span class="py-desc">Exercise 17 &mdash; Redis cache-aside, TTL strategy, graceful degradation</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/13/terraform-advanced-default-probs/" | relative_url }}">Terraform Advanced &amp; Default Probabilities</a>
+      <span class="py-desc">Exercise 18 &mdash; piecewise hazard rates, survival curves, modules</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/14/cloudwatch-oas-zspreads/" | relative_url }}">CloudWatch &amp; OAS/Z-Spread</a>
+      <span class="py-desc">Exercise 19 &mdash; binomial trees, backward induction, callable bonds</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/15/integration-testing-credit-var/" | relative_url }}">Integration Testing &amp; Credit VaR</a>
+      <span class="py-desc">Exercise 20 &mdash; Monte Carlo, Cholesky, spread duration, portfolio risk</span>
+    </li>
+  </ul>
+</div>
+
+<div class="py-section">
+  <div class="py-section-hdr">Explainers &amp; Architecture</div>
   <ul class="py-list">
     <li>
       <a href="{{ "/2026/04/03/quantlab-phase1-explained/" | relative_url }}">Phase 1 Explained</a>
@@ -107,6 +161,10 @@ permalink: /python/
     <li>
       <a href="{{ "/2026/04/16/quantlab-phase2-explained/" | relative_url }}">Phase 2 Explained</a>
       <span class="py-desc">Every AWS service and finance formula from exercises 09&ndash;20</span>
+    </li>
+    <li>
+      <a href="{{ "/2026/04/03/stock-risk-scanner-architecture/" | relative_url }}">Stock Risk Scanner &mdash; Architecture Deep Dive</a>
+      <span class="py-desc">Request flow, module breakdown, deployment, async patterns</span>
     </li>
   </ul>
 </div>
