@@ -1,0 +1,469 @@
+---
+layout: post
+title: "Interest Rate Benchmarks: From LIBOR to Risk-Free Rates"
+date: 2026-05-04
+tags: [math,finance,libor,sonia,eonia,estr,sofr,benchmark-rates,interest-rates,rfr,overnight-rates,libor-transition,quant-lab]
+categories:
+- Math / Finance
+section: math-finance
+permalink: "/math-finance/benchmark-rates-libor-transition/"
+---
+
+<style>
+.br-tabs { display:flex; gap:4px; margin:24px 0 0 0; border-bottom:2px solid #e8e8e8; flex-wrap:wrap; }
+.br-tab-btn { padding:8px 18px; border:none; background:none; cursor:pointer; font-size:.92rem; color:#555; border-bottom:2px solid transparent; margin-bottom:-2px; font-family:inherit; }
+.br-tab-btn.active { color:#2a7ae2; border-bottom:2px solid #2a7ae2; font-weight:600; }
+.br-tab-content { display:none; padding:24px 0; }
+.br-tab-content.active { display:block; }
+</style>
+
+<div class="br-tabs">
+  <button class="br-tab-btn active" onclick="brTab('intro',this)">Intro</button>
+  <button class="br-tab-btn" onclick="brTab('sonia',this)">SONIA</button>
+  <button class="br-tab-btn" onclick="brTab('eonia',this)">EONIA / &euro;STR</button>
+  <button class="br-tab-btn" onclick="brTab('sofr',this)">SOFR</button>
+  <button class="br-tab-btn" onclick="brTab('transition',this)">Transition</button>
+  <button class="br-tab-btn" onclick="brTab('example',this)">Worked Example</button>
+</div>
+
+<script>
+function brTab(id,btn){
+  document.querySelectorAll('.br-tab-content').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('.br-tab-btn').forEach(e=>e.classList.remove('active'));
+  document.getElementById('br-'+id).classList.add('active');
+  btn.classList.add('active');
+}
+</script>
+
+<!-- ==================== TAB 1: INTRO ==================== -->
+<div id="br-intro" class="br-tab-content active">
+
+<h2>What Are Interest Rate Benchmarks?</h2>
+
+<p>An interest rate benchmark is a widely accepted reference rate used to price financial contracts. Trillions of dollars in loans, bonds, derivatives, and mortgages are tied to a handful of benchmark rates. When the benchmark moves, the cash flows on all those contracts move with it.</p>
+
+<p>Benchmarks sit at the centre of the financial system. Without a common reference rate, every counterparty would need to negotiate a unique rate for every transaction &mdash; an impossible coordination problem.</p>
+
+<hr>
+
+<h2>Who Uses Them?</h2>
+
+<ul>
+  <li><strong>Banks:</strong> Benchmark rates determine funding costs. A bank borrowing in the overnight market pays a rate anchored to the benchmark. Its lending rates (mortgages, corporate loans) are priced as benchmark + spread.</li>
+  <li><strong>Corporates:</strong> Floating-rate loans and revolving credit facilities reference a benchmark. A company paying "SOFR + 150bp" sees its interest expense rise and fall with the benchmark.</li>
+  <li><strong>Funds and dealers:</strong> Interest rate swaps, futures, and options are all priced relative to benchmarks. The swap rate is a fixed rate exchanged for a floating benchmark rate. Marking a swap book to market requires the current benchmark curve.</li>
+  <li><strong>Central banks:</strong> Policy rate decisions transmit through benchmarks to the real economy. When a central bank raises its policy rate, the overnight benchmark rises, pulling up borrowing costs across the yield curve.</li>
+</ul>
+
+<hr>
+
+<h2>The IBOR Family</h2>
+
+<p>For decades, the dominant benchmarks were the <strong>Interbank Offered Rates (IBORs)</strong>:</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Rate</th><th>Currency</th><th>Location</th></tr>
+  <tr><td>LIBOR</td><td>USD, GBP, EUR, JPY, CHF</td><td>London</td></tr>
+  <tr><td>EURIBOR</td><td>EUR</td><td>Brussels</td></tr>
+  <tr><td>TIBOR</td><td>JPY</td><td>Tokyo</td></tr>
+</table>
+
+<p>All IBORs shared the same methodology: a panel of banks submitted answers to the question <em>"At what rate could you borrow funds in the interbank market?"</em> The submissions were trimmed and averaged to produce the benchmark. This was an <strong>estimate</strong>, not a transaction-based rate &mdash; a critical weakness that would eventually bring LIBOR down.</p>
+
+<hr>
+
+<h2>Why a Reference Rate Matters</h2>
+
+<p>Benchmarks appear throughout the trade lifecycle:</p>
+
+<ul>
+  <li><strong>Pricing loans:</strong> A floating-rate loan pays benchmark + credit spread. The benchmark isolates the "pure" cost of money; the spread compensates for borrower-specific credit risk.</li>
+  <li><strong>Discounting cash flows:</strong> The benchmark curve is used to discount future cash flows to present value. Every bond price, swap valuation, and option premium depends on this curve.</li>
+  <li><strong>Marking positions to market:</strong> End-of-day P&amp;L requires repricing every position using the latest benchmark fixings and forward curves.</li>
+  <li><strong>Overnight P&amp;L:</strong> Funding costs on leveraged positions accrue at or near the overnight benchmark. A repo desk borrowing overnight pays close to SOFR; the carry on a leveraged bond position is bond yield minus overnight funding rate.</li>
+</ul>
+
+<p>LIBOR served all these roles for over 30 years &mdash; until it didn't. The transition to risk-free rates (RFRs) is covered in detail in the <strong>Transition</strong> tab.</p>
+
+<hr>
+
+<div style="background:#f0f7ff; border-left:4px solid #2a7ae2; padding:16px 20px; margin:20px 0; border-radius:4px;">
+  <strong>Interactive dashboard:</strong> Explore these rates interactively on the <a href="https://finbytes.streamlit.app/Benchmark_Rates">Benchmark Rates Dashboard</a>
+</div>
+
+</div>
+
+<!-- ==================== TAB 2: SONIA ==================== -->
+<div id="br-sonia" class="br-tab-content">
+
+<h2>SONIA &mdash; Sterling Overnight Index Average</h2>
+
+<p>SONIA is the benchmark overnight rate for sterling markets. It measures the rate at which banks and large financial institutions lend to each other on an unsecured basis, overnight, in the London money market.</p>
+
+<hr>
+
+<h3>History and Administration</h3>
+
+<p>SONIA was originally introduced in 1997 by the Wholesale Markets Brokers' Association (WMBA). In April 2016, the Bank of England took over as administrator and reformed the methodology to make it broader and more robust. The reformed SONIA captures a much wider set of transactions, including those negotiated bilaterally (not just brokered).</p>
+
+<hr>
+
+<h3>How SONIA Is Calculated</h3>
+
+<p>SONIA is based on <strong>actual unsecured overnight sterling deposit transactions</strong> reported to the Bank of England. The methodology applies the following steps:</p>
+
+<ol>
+  <li>Collect all eligible overnight unsecured deposit transactions (minimum &pound;25 million per transaction).</li>
+  <li>Sort transactions by rate from lowest to highest.</li>
+  <li>Trim the top 25% and bottom 25% by volume.</li>
+  <li>Compute the <strong>volume-weighted median</strong> of the remaining transactions.</li>
+</ol>
+
+<p>The trimmed volume-weighted median is robust to outliers and manipulation &mdash; a key improvement over the panel-survey approach used by LIBOR.</p>
+
+<hr>
+
+<h3>Publication</h3>
+
+<p>SONIA is published by <strong>9:00am London time</strong> on the next London business day. This means Monday's SONIA (reflecting Friday's overnight lending) is published on Tuesday morning. On Fridays, the rate covers three calendar days (Friday to Monday), which affects the day count in compounding calculations.</p>
+
+<hr>
+
+<h3>Key Facts</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td>Administrator</td><td>Bank of England</td></tr>
+  <tr><td>Based on</td><td>Actual unsecured overnight deposits</td></tr>
+  <tr><td>Methodology</td><td>Trimmed volume-weighted median</td></tr>
+  <tr><td>Publication</td><td>9am next London business day</td></tr>
+  <tr><td>Day count</td><td>ACT/365</td></tr>
+  <tr><td>Typical volume</td><td>&asymp;&pound;50bn/day</td></tr>
+</table>
+
+<hr>
+
+<h3>Compounding SONIA</h3>
+
+<p>Because SONIA is an overnight rate, longer-period interest (e.g., for a 3-month loan) is calculated by <strong>compounding daily fixings in arrears</strong>. The compounded rate over N business days is:</p>
+
+<pre><code>Compounded SONIA = &prod;(i=1 to N) [1 + (r<sub>i</sub> &times; n<sub>i</sub> / 365)] &minus; 1
+
+where:
+  r<sub>i</sub> = SONIA fixing on business day i
+  n<sub>i</sub> = calendar days from day i to the next business day
+        (typically 1, but 3 over weekends, more over holidays)
+</code></pre>
+
+<p>For example, if Friday's SONIA is 4.70% and the next business day is Monday, then n<sub>i</sub> = 3 and the accrual for that fixing covers three calendar days: 4.70% &times; 3 / 365.</p>
+
+<p>This "compounded in arrears" structure means the floating rate is only known at the <strong>end</strong> of the interest period &mdash; unlike LIBOR, which was set at the start. This is one of the biggest operational differences in the transition and is explored further in the <strong>Worked Example</strong> tab.</p>
+
+</div>
+
+<!-- ==================== TAB 3: EONIA / €STR ==================== -->
+<div id="br-eonia" class="br-tab-content">
+
+<h2>EONIA &mdash; Euro OverNight Index Average</h2>
+
+<p>EONIA was the euro area's overnight benchmark from 1999 to 2022. It was calculated as the <strong>weighted average</strong> of all unsecured overnight lending transactions in the eurozone interbank market, as reported by a panel of contributing banks.</p>
+
+<h3>How EONIA Worked</h3>
+
+<ul>
+  <li>A panel of major eurozone banks reported their overnight lending activity each day.</li>
+  <li>The rate was calculated as a volume-weighted average of all reported transactions.</li>
+  <li>Administered initially by the European Money Markets Institute (EMMI), then by the ECB from October 2019.</li>
+</ul>
+
+<h3>Why EONIA Had to Go</h3>
+
+<ul>
+  <li><strong>Shrinking panel:</strong> Banks withdrew from the panel over time, reducing representativeness.</li>
+  <li><strong>Low volume:</strong> Eligible interbank lending volumes declined to below &euro;5bn/day &mdash; too thin to be a reliable benchmark.</li>
+  <li><strong>Not fully transaction-based:</strong> The panel approach introduced the same vulnerability to manipulation seen in LIBOR.</li>
+  <li>EONIA failed to meet the EU Benchmarks Regulation (BMR) standards for robustness and representativeness.</li>
+</ul>
+
+<hr>
+
+<h2>&euro;STR &mdash; Euro Short-Term Rate</h2>
+
+<p>The ECB developed &euro;STR as EONIA's replacement. It has been published since <strong>2 October 2019</strong> and is now the primary overnight benchmark for euro markets.</p>
+
+<h3>How &euro;STR Is Calculated</h3>
+
+<p>&euro;STR is based on the ECB's <strong>Money Market Statistical Reporting (MMSR)</strong> framework. Under MMSR, the largest euro-area banks are legally required to report all their money market transactions daily. &euro;STR uses the overnight unsecured borrowing side of these reports:</p>
+
+<ol>
+  <li>Collect all eligible overnight unsecured borrowing transactions from MMSR reporting agents.</li>
+  <li>Sort by rate, trim the top and bottom 25% by volume.</li>
+  <li>Compute the volume-weighted mean of the remaining transactions.</li>
+</ol>
+
+<p>&euro;STR is published by <strong>8:00am CET</strong> on the next business day.</p>
+
+<h3>Key Facts</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td>Administrator</td><td>European Central Bank (ECB)</td></tr>
+  <tr><td>Based on</td><td>Actual transactions (MMSR)</td></tr>
+  <tr><td>Publication</td><td>8am CET next business day</td></tr>
+  <tr><td>Day count</td><td>ACT/360</td></tr>
+  <tr><td>Typical volume</td><td>&asymp;&euro;30bn/day</td></tr>
+</table>
+
+<hr>
+
+<h3>The Transition: EONIA to &euro;STR</h3>
+
+<p>During the transition period (October 2019 &ndash; January 2022), EONIA was <strong>recalculated</strong> as:</p>
+
+<pre><code>EONIA = &euro;STR + 8.5 basis points</code></pre>
+
+<p>The 8.5bp spread was a fixed value determined by the ECB, reflecting the historical difference between the two rates. EONIA was no longer an independent calculation &mdash; it simply tracked &euro;STR with a constant markup. EONIA ceased publication on <strong>3 January 2022</strong>.</p>
+
+<hr>
+
+<h3>Comparison: EONIA vs &euro;STR</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th></th><th>EONIA</th><th>&euro;STR</th></tr>
+  <tr><td><strong>Active</strong></td><td>1999 &ndash; 2022</td><td>2019 &ndash; present</td></tr>
+  <tr><td><strong>Based on</strong></td><td>Panel survey</td><td>Actual transactions (MMSR)</td></tr>
+  <tr><td><strong>Administrator</strong></td><td>EMMI &rarr; ECB</td><td>ECB</td></tr>
+  <tr><td><strong>Volume</strong></td><td>Declining (&lt;&euro;5bn)</td><td>&asymp;&euro;30bn/day</td></tr>
+  <tr><td><strong>Day count</strong></td><td>ACT/360</td><td>ACT/360</td></tr>
+  <tr><td><strong>Relationship</strong></td><td>&euro;STR + 8.5bp</td><td>N/A</td></tr>
+</table>
+
+</div>
+
+<!-- ==================== TAB 4: SOFR ==================== -->
+<div id="br-sofr" class="br-tab-content">
+
+<h2>SOFR &mdash; Secured Overnight Financing Rate</h2>
+
+<p>SOFR is the benchmark overnight rate for US dollar markets. It is administered by the <strong>Federal Reserve Bank of New York</strong> and has been published since April 2018.</p>
+
+<hr>
+
+<h3>What Makes SOFR Different</h3>
+
+<p>Unlike SONIA and &euro;STR, which are based on <strong>unsecured</strong> lending, SOFR is based on <strong>secured</strong> overnight lending &mdash; specifically, overnight <strong>Treasury repurchase agreement (repo)</strong> transactions. In a repo, one party sells US Treasury securities to another and agrees to buy them back the next day. The difference in price is the interest rate.</p>
+
+<p>Because the lending is collateralised by US Treasuries &mdash; the safest assets in the world &mdash; SOFR is considered <strong>nearly risk-free</strong>. There is essentially no credit risk: if the borrower defaults, the lender keeps the Treasuries.</p>
+
+<hr>
+
+<h3>Volume and Depth</h3>
+
+<p>The overnight Treasury repo market is the deepest, most liquid overnight funding market in the world, with typical daily volumes of approximately <strong>$1 trillion</strong>. This is orders of magnitude larger than the unsecured interbank markets that underpinned LIBOR. The depth of the underlying market makes SOFR extremely difficult to manipulate.</p>
+
+<hr>
+
+<h3>Publication</h3>
+
+<p>SOFR is published by <strong>8:00am ET</strong> on the next business day. It uses <strong>ACT/360</strong> day count convention.</p>
+
+<hr>
+
+<h3>Key Difference: LIBOR vs SOFR</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th></th><th>LIBOR (USD 3M)</th><th>SOFR</th></tr>
+  <tr><td><strong>Type</strong></td><td>Unsecured</td><td>Secured (repo)</td></tr>
+  <tr><td><strong>Tenor</strong></td><td>Forward-looking (3M, 6M)</td><td>Overnight (backward-looking)</td></tr>
+  <tr><td><strong>Based on</strong></td><td>Panel bank estimates</td><td>Actual transactions</td></tr>
+  <tr><td><strong>Credit risk</strong></td><td>Includes bank credit risk</td><td>Nearly risk-free</td></tr>
+  <tr><td><strong>Volume</strong></td><td>&asymp;$500M estimates</td><td>&asymp;$1tn actual trades</td></tr>
+</table>
+
+<hr>
+
+<h3>SOFR &lt; LIBOR: The Credit Spread</h3>
+
+<p>Because SOFR is nearly risk-free and LIBOR included bank credit risk, SOFR is systematically <strong>lower</strong> than LIBOR by a credit spread. This spread is not constant &mdash; it widens during stress (when bank credit risk increases) and narrows in calm markets.</p>
+
+<p>This difference is the foundation of the <strong>fallback spread adjustment</strong> used in the LIBOR transition. When legacy LIBOR contracts fell back to SOFR, a fixed spread was added to SOFR to approximate what LIBOR would have been. The details are in the <strong>Transition</strong> tab.</p>
+
+</div>
+
+<!-- ==================== TAB 5: TRANSITION ==================== -->
+<div id="br-transition" class="br-tab-content">
+
+<h2>The LIBOR Transition: Why and How</h2>
+
+<h3>Why LIBOR Died</h3>
+
+<p>LIBOR's demise was driven by a cascade of structural failures and scandals:</p>
+
+<ul>
+  <li><strong>2008 financial crisis:</strong> Banks stopped lending to each other in the interbank market. With little or no actual lending taking place, LIBOR submissions became increasingly fictional &mdash; banks were estimating rates for transactions that weren't happening.</li>
+  <li><strong>2012 rate-rigging scandal:</strong> Regulators discovered that traders at Barclays, UBS, Deutsche Bank, and other major banks had been systematically manipulating LIBOR submissions for years &mdash; nudging rates up or down to benefit their trading positions. Billions in fines followed.</li>
+  <li><strong>2012 Wheatley Review:</strong> The UK government commissioned a review of LIBOR governance. The Wheatley Review recommended reforms including transaction-based underpinning, regulated administration, and criminal sanctions for manipulation.</li>
+  <li><strong>2017 announcement:</strong> Andrew Bailey, then CEO of the Financial Conduct Authority (FCA), announced that the FCA would no longer compel banks to submit LIBOR rates after the end of 2021. Panel banks didn't want the legal and reputational risk of submitting rates based on thin or non-existent markets.</li>
+</ul>
+
+<p>The fundamental problem was clear: a benchmark underpinning hundreds of trillions of dollars in contracts was based on subjective estimates from a shrinking panel of banks in a market that had largely ceased to function.</p>
+
+<hr>
+
+<h3>Cessation Timeline</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Currency</th><th>Old Rate</th><th>New RFR</th><th>Cessation Date</th></tr>
+  <tr><td>GBP</td><td>GBP LIBOR</td><td>SONIA</td><td>31 Dec 2021</td></tr>
+  <tr><td>EUR</td><td>EUR LIBOR</td><td>&euro;STR</td><td>31 Dec 2021</td></tr>
+  <tr><td>USD</td><td>USD LIBOR</td><td>SOFR</td><td>30 Jun 2023</td></tr>
+  <tr><td>JPY</td><td>JPY LIBOR</td><td>TONA</td><td>31 Dec 2021</td></tr>
+  <tr><td>CHF</td><td>CHF LIBOR</td><td>SARON</td><td>31 Dec 2021</td></tr>
+</table>
+
+<p>Most LIBOR settings ceased on 31 December 2021. USD LIBOR received an extension to 30 June 2023 due to the enormous stock of legacy contracts referencing it.</p>
+
+<hr>
+
+<h3>ISDA Fallback Protocol</h3>
+
+<p>The International Swaps and Derivatives Association (ISDA) developed a standardised fallback mechanism for derivatives contracts referencing LIBOR:</p>
+
+<ul>
+  <li><strong>Methodology:</strong> LIBOR &rarr; compounded RFR in arrears + fixed spread adjustment.</li>
+  <li><strong>Spread calculation:</strong> The spread was set as the <strong>5-year historical median</strong> of the difference between LIBOR and the compounded RFR. This was calculated over a lookback period ending on the announcement date (5 March 2021).</li>
+</ul>
+
+<p><strong>ISDA fallback spread adjustments:</strong></p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Currency</th><th>RFR</th><th>Spread Adjustment</th></tr>
+  <tr><td>GBP</td><td>SONIA</td><td>+11.93bp</td></tr>
+  <tr><td>EUR</td><td>&euro;STR (via EONIA)</td><td>+8.5bp</td></tr>
+  <tr><td>USD</td><td>SOFR</td><td>+26.16bp</td></tr>
+</table>
+
+<p>The USD spread is the largest because SOFR is a secured rate (repo), so the gap between unsecured LIBOR and secured SOFR is wider than for the other currencies where the RFRs are also unsecured.</p>
+
+<hr>
+
+<h3>Tough Legacy Contracts</h3>
+
+<p>Some contracts could not be amended &mdash; either because they lacked fallback language, required unanimous consent that could not be obtained, or were governed by jurisdictions with no easy amendment mechanism. These were called <strong>"tough legacy"</strong> contracts.</p>
+
+<p>To address this, legislators in the UK, EU, and US enacted laws to impose a statutory fallback:</p>
+
+<ul>
+  <li><strong>UK:</strong> FCA designated "synthetic LIBOR" &mdash; a rate based on the RFR + spread, published under the LIBOR name for tough legacy contracts.</li>
+  <li><strong>US:</strong> The Adjustable Interest Rate (LIBOR) Act (2022) replaced USD LIBOR references in tough legacy contracts with SOFR + spread.</li>
+  <li><strong>EU:</strong> The European Commission designated a statutory replacement rate for contracts referencing EONIA and CHF LIBOR.</li>
+</ul>
+
+<p>Synthetic LIBOR is not intended as a permanent solution &mdash; it is a legislative bridge to give the market time to complete the transition.</p>
+
+</div>
+
+<!-- ==================== TAB 6: WORKED EXAMPLE ==================== -->
+<div id="br-example" class="br-tab-content">
+
+<h2>Worked Example: LIBOR vs SONIA vs SONIA + Spread</h2>
+
+<p>This example compares three methods of calculating floating-rate interest on the same position, illustrating the practical impact of the LIBOR transition.</p>
+
+<hr>
+
+<h3>Position</h3>
+
+<p><strong>Notional:</strong> &pound;10,000,000<br>
+<strong>Fixed leg:</strong> Pay 4.50% (ACT/365)<br>
+<strong>Floating leg:</strong> Receive floating rate<br>
+<strong>Period:</strong> 5 business days (Mon 6 Jan &ndash; Fri 10 Jan)</p>
+
+<hr>
+
+<h3>Scenario A: Under LIBOR 3M</h3>
+
+<p>Under LIBOR, the floating rate is set <strong>at the start</strong> of the interest period. Assume the 3-month GBP LIBOR fixing is <strong>4.75%</strong>.</p>
+
+<pre><code>Daily accrual = &pound;10,000,000 &times; 4.75% / 365
+             = &pound;10,000,000 &times; 0.0475 / 365
+             = <strong>&pound;1,301.37 per day</strong>
+
+Total floating interest (5 days) = 5 &times; &pound;1,301.37
+                                 = <strong>&pound;6,506.85</strong>
+
+Fixed leg (5 days) = 5 &times; &pound;10,000,000 &times; 4.50% / 365
+                   = 5 &times; &pound;1,232.88
+                   = <strong>&pound;6,164.38</strong>
+
+Net P&amp;L = &pound;6,506.85 &minus; &pound;6,164.38 = <strong>+&pound;342.47</strong></code></pre>
+
+<hr>
+
+<h3>Scenario B: Under SONIA Compounded in Arrears</h3>
+
+<p>Under SONIA, each day's floating accrual uses that day's SONIA fixing. The rate is only known at the <strong>end</strong> of the period.</p>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Day</th><th>Date</th><th>SONIA (%)</th><th>Accrual (&pound;)</th><th>Cumulative (&pound;)</th></tr>
+  <tr><td>1</td><td>Mon 6 Jan</td><td>4.700</td><td>1,287.67</td><td>1,287.67</td></tr>
+  <tr><td>2</td><td>Tue 7 Jan</td><td>4.700</td><td>1,287.67</td><td>2,575.34</td></tr>
+  <tr><td>3</td><td>Wed 8 Jan</td><td>4.695</td><td>1,286.30</td><td>3,861.64</td></tr>
+  <tr><td>4</td><td>Thu 9 Jan</td><td>4.695</td><td>1,286.30</td><td>5,147.95</td></tr>
+  <tr><td>5</td><td>Fri 10 Jan</td><td>4.695</td><td>1,286.30</td><td>6,434.25</td></tr>
+</table>
+
+<p>Each daily accrual is calculated as: &pound;10,000,000 &times; SONIA / 365. For example, Day 1:</p>
+
+<pre><code>&pound;10,000,000 &times; 4.700% / 365 = &pound;10,000,000 &times; 0.0470 / 365 = <strong>&pound;1,287.67</strong></code></pre>
+
+<p><strong>Total floating interest:</strong> &pound;6,434.25</p>
+
+<pre><code>Fixed leg = 5 &times; &pound;10,000,000 &times; 4.50% / 365 = <strong>&pound;6,164.38</strong>
+
+Net P&amp;L = &pound;6,434.25 &minus; &pound;6,164.38 = <strong>+&pound;269.86</strong></code></pre>
+
+<hr>
+
+<h3>Scenario C: SONIA + Fallback Spread (11.93bp)</h3>
+
+<p>For legacy LIBOR contracts that fell back to SONIA, the ISDA spread adjustment of <strong>+11.93bp</strong> is added to each daily SONIA fixing. This compensates for the fact that LIBOR included bank credit risk while SONIA does not.</p>
+
+<pre><code>Day 1&ndash;2: Effective rate = 4.700% + 0.1193% = 4.8193%
+  Daily accrual = &pound;10,000,000 &times; 4.8193% / 365 = <strong>&pound;1,320.36</strong>
+
+Day 3&ndash;5: Effective rate = 4.695% + 0.1193% = 4.8143%
+  Daily accrual = &pound;10,000,000 &times; 4.8143% / 365 = <strong>&pound;1,318.99</strong>
+
+Total floating interest = (2 &times; &pound;1,320.36) + (3 &times; &pound;1,318.99)
+                        = &pound;2,640.72 + &pound;3,956.97
+                        = <strong>&pound;6,597.69</strong>
+
+Net P&amp;L = &pound;6,597.69 &minus; &pound;6,164.38 = <strong>+&pound;433.31</strong></code></pre>
+
+<hr>
+
+<h3>Summary Comparison</h3>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-left:2em;">
+  <tr><th>Method</th><th>Float Interest</th><th>Fixed Interest</th><th>Net P&amp;L</th></tr>
+  <tr><td>LIBOR 3M (4.75%)</td><td>&pound;6,506.85</td><td>&pound;6,164.38</td><td>+&pound;342.47</td></tr>
+  <tr><td>SONIA compounded</td><td>&pound;6,434.25</td><td>&pound;6,164.38</td><td>+&pound;269.86</td></tr>
+  <tr><td>SONIA + spread (11.93bp)</td><td>&pound;6,597.69</td><td>&pound;6,164.38</td><td>+&pound;433.31</td></tr>
+</table>
+
+<h3>Key Takeaways</h3>
+
+<ul>
+  <li><strong>SONIA &lt; LIBOR:</strong> Without the spread adjustment, SONIA produces lower floating interest than LIBOR. The receiver of floating (and payer of fixed) earns less.</li>
+  <li><strong>The spread adjustment compensates:</strong> Adding the 11.93bp ISDA spread brings the SONIA-based payment closer to what LIBOR would have produced. It does not match exactly because the spread is a fixed historical median, not a live credit spread.</li>
+  <li><strong>Backward-looking vs forward-looking:</strong> Under LIBOR, both parties knew the floating rate at the start of the period. Under SONIA compounded in arrears, the rate is only known at the end. This changes cash-flow forecasting and risk management.</li>
+</ul>
+
+<hr>
+
+<div style="background:#f0f7ff; border-left:4px solid #2a7ae2; padding:16px 20px; margin:20px 0; border-radius:4px;">
+  <strong>Try it yourself:</strong> Explore these rates and calculations interactively on the <a href="https://finbytes.streamlit.app/Benchmark_Rates">Benchmark Rates Dashboard</a>
+</div>
+
+</div>
