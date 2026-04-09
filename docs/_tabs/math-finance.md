@@ -41,6 +41,10 @@ permalink: /math-finance/
       <a href="{{ "/math-finance/yield-curve-inversions/" | relative_url }}">Yield Curve Inversions: What They Signal and Why They Matter</a>
       <span class="mf-desc">2s10s spread, historical recession track record, the un-inversion signal, term premium</span>
     </li>
+    <li>
+      <a href="{{ "/math-finance/benchmark-rates-libor-transition/" | relative_url }}">Interest Rate Benchmarks: From LIBOR to Risk-Free Rates</a>
+      <span class="mf-desc">SONIA, EONIA / &euro;STR, SOFR &mdash; what they are, the LIBOR transition, fallback spreads, worked PnL example &middot; <a href="https://finbytes.streamlit.app/Benchmark_Rates" style="color:var(--link-color,#2a7ae2)">live demo</a></span>
+    </li>
   </ul>
 </div>
 
