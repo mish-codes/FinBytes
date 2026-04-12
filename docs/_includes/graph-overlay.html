@@ -148,7 +148,9 @@
     var all = [center].concat(children).concat(others);
     var links = []; children.forEach(function(c) { links.push({ source: secId, target: c.id, weight: 1 }); });
     for (var i = 0; i < children.length; i++) for (var j = i + 1; j < children.length; j++) { var sh = children[i].tags.filter(function(t) { return children[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: children[i].id, target: children[j].id, weight: sh.length }); }
-    ovRender(all, links, { linkDist: Math.max(100, ovW * 0.12), charge: Math.min(-200, -ovW * 0.25), showLabels: true });
+    var ld = Math.max(120, Math.min(ovW, ovH) * 0.25);
+    var ch = -Math.max(300, Math.min(ovW, ovH) * 0.5);
+    ovRender(all, links, { linkDist: ld, charge: ch, showLabels: true });
   }
 
   function ovExpandPost(post) {
@@ -162,7 +164,9 @@
     var all = [center].concat(rNodes);
     var links = related.map(function(r) { return { source: post.id, target: r.post.id, weight: r.weight }; });
     for (var i = 0; i < rNodes.length; i++) for (var j = i + 1; j < rNodes.length; j++) { var sh = rNodes[i].tags.filter(function(t) { return rNodes[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: rNodes[i].id, target: rNodes[j].id, weight: sh.length }); }
-    ovRender(all, links, { linkDist: Math.max(100, ovW * 0.12), charge: Math.min(-250, -ovW * 0.3), showLabels: true });
+    var ld2 = Math.max(120, Math.min(ovW, ovH) * 0.25);
+    var ch2 = -Math.max(300, Math.min(ovW, ovH) * 0.5);
+    ovRender(all, links, { linkDist: ld2, charge: ch2, showLabels: true });
   }
 
   window._graphOverlayInit = function() {
