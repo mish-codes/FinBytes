@@ -1,0 +1,160 @@
+---
+layout: post
+title: "Plotting Libraries Compared — Plotly, Matplotlib, Altair, Bokeh"
+date: 2026-04-12
+tags: [python, visualization, plotly, matplotlib, altair, bokeh, tech-stack]
+section: infrastructure
+permalink: "/tech-stack/plotting-libraries/"
+---
+
+<h2>Why Know More Than One Charting Library</h2>
+
+<p>If you build finance dashboards in Python, you will reach for Plotly by default &mdash; it is interactive, declarative, and works natively in Streamlit. But every library makes different trade-offs. Matplotlib gives pixel-level control for publication figures. Altair compresses complex charts into a few lines of grammar-of-graphics. Bokeh offers server-side interactivity without JavaScript. Knowing when to use each one is a practical skill.</p>
+
+<p>This post compares all four using the same OHLCV dataset, then digs into how each handles <strong>outlier values</strong> &mdash; the most common visual problem in financial data.</p>
+
+<h2>The Four Libraries</h2>
+
+<table>
+  <thead>
+    <tr><th>Library</th><th>API Style</th><th>Interactivity</th><th>Streamlit Support</th><th>Best For</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><strong>Plotly</strong></td><td>Declarative (graph_objects) or Express</td><td>Built-in zoom, hover, pan</td><td><code>st.plotly_chart</code></td><td>Dashboards, finance charts, candlesticks</td></tr>
+    <tr><td><strong>Matplotlib</strong></td><td>Imperative (axes-based)</td><td>Static by default</td><td><code>st.pyplot</code></td><td>Publication figures, full pixel control</td></tr>
+    <tr><td><strong>Altair</strong></td><td>Grammar of Graphics (Vega-Lite)</td><td>Selections, tooltips</td><td><code>st.altair_chart</code></td><td>Exploratory analysis, concise code</td></tr>
+    <tr><td><strong>Bokeh</strong></td><td>Glyph-based, server widgets</td><td>Built-in tools, server callbacks</td><td><code>components.html</code></td><td>Server-side apps, custom interactions</td></tr>
+  </tbody>
+</table>
+
+<h3>Plotly</h3>
+
+<p>Plotly is the default choice for Streamlit finance dashboards. It has native <code>Candlestick</code> and <code>OHLC</code> chart types, interactive zoom/hover out of the box, and a high-level Express API for quick plots. The trade-off: figure objects are heavy (JSON-serialised) and customisation beyond the built-in options requires verbose <code>update_layout</code> calls.</p>
+
+<pre><code class="language-python">import plotly.graph_objects as go
+
+fig = go.Figure(data=[go.Candlestick(
+    x=df.index,
+    open=df["Open"], high=df["High"],
+    low=df["Low"], close=df["Close"],
+)])
+st.plotly_chart(fig, use_container_width=True)
+</code></pre>
+
+<h3>Matplotlib</h3>
+
+<p>The foundation of Python visualisation. Every other library either wraps it (Seaborn) or was built as a reaction to it (Altair, Plotly). Matplotlib gives you axes, artists, and transforms &mdash; full control over every pixel. Candlesticks require manual <code>bar</code> + <code>vlines</code> construction since there is no built-in financial chart type (without the mplfinance extension).</p>
+
+<pre><code class="language-python">import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+
+fig, ax = plt.subplots()
+up = df[df["Close"] >= df["Open"]]
+ax.bar(mdates.date2num(up.index), (up["Close"] - up["Open"]),
+       bottom=up["Open"], color="#2ea043", width=0.6)
+ax.vlines(mdates.date2num(up.index), up["Low"], up["High"], color="#2ea043")
+st.pyplot(fig)
+</code></pre>
+
+<h3>Altair</h3>
+
+<p>Altair implements the grammar of graphics via Vega-Lite. You describe <em>what</em> to plot (encodings, marks, transforms) rather than <em>how</em> to draw it. A candlestick is a layered <code>mark_rule</code> (wicks) + <code>mark_bar</code> (bodies) with a colour encoding on the sign of close minus open. The learning curve is the grammar itself, but once internalised, charts are remarkably concise.</p>
+
+<pre><code class="language-python">import altair as alt
+
+rule = alt.Chart(df).mark_rule().encode(
+    x="Date:T", y="Low:Q", y2="High:Q",
+    color=alt.Color("color:N", scale=None),
+)
+bar = alt.Chart(df).mark_bar(size=6).encode(
+    x="Date:T", y="Open:Q", y2="Close:Q",
+    color=alt.Color("color:N", scale=None),
+)
+st.altair_chart(rule + bar, use_container_width=True)
+</code></pre>
+
+<h3>Bokeh</h3>
+
+<p>Bokeh renders to HTML Canvas and provides its own toolbar (pan, zoom, reset, save). Unlike Plotly, Bokeh supports server-side callbacks and custom widgets without JavaScript. In Streamlit, <code>st.bokeh_chart</code> only supports Bokeh 2.4.x, so for newer versions we render via <code>components.html</code> using Bokeh&rsquo;s <code>file_html</code> function. Candlesticks use <code>segment</code> (wicks) + <code>vbar</code> (bodies).</p>
+
+<pre><code class="language-python">from bokeh.plotting import figure
+from bokeh.embed import file_html
+from bokeh.resources import CDN
+import streamlit.components.v1 as components
+
+p = figure(x_axis_type="datetime", width=800, height=350)
+p.segment(df.index, df["High"], df.index, df["Low"], color="black")
+p.vbar(up.index, w, up["Open"], up["Close"], fill_color="#2ea043")
+
+components.html(file_html(p, CDN), height=400)
+</code></pre>
+
+<h2>Handling Outliers in Financial Charts</h2>
+
+<p>Financial data regularly contains extreme values &mdash; a flash crash, a stock split that was not adjusted, a fat-finger trade. A single outlier can compress the y-axis so severely that 99% of the data becomes an unreadable flat line. Every charting library has tools to handle this, but the approaches differ.</p>
+
+<h3>The Problem</h3>
+
+<p>Imagine a 6-month AAPL price history where one closing price was accidentally entered as 10x the real value. The chart auto-scales to fit the spike, and every other data point is crushed to the bottom. The distribution histogram grows a long tail with one bar far from the rest. This is not a rare edge case &mdash; it is what happens when you display raw market data without validation.</p>
+
+<h3>Detection: 3-Sigma Flagging</h3>
+
+<p>A simple first pass: for each numeric column, compute the z-score. Any value more than 3 standard deviations from the column mean is flagged. This catches extreme values without being sensitive to minor fluctuations.</p>
+
+<pre><code class="language-python">z_scores = (df - df.mean()).abs() / df.std()
+outliers = z_scores > 3.0
+</code></pre>
+
+<h3>Display Approaches by Library</h3>
+
+<h4>Plotly &mdash; Annotations</h4>
+
+<p>Plotly&rsquo;s <code>add_annotation</code> places a text label with an arrow pointing at the outlier. Combined with a separate scatter trace using red <code>x</code> markers, outliers are visually distinct without distorting the chart. For the histogram, adjusting <code>nbinsx</code> or switching to a log y-axis prevents the spike bin from dominating.</p>
+
+<pre><code class="language-python">fig.add_trace(go.Scatter(
+    x=outlier_dates, y=outlier_values,
+    mode="markers", marker=dict(color="red", size=10, symbol="x"),
+))
+</code></pre>
+
+<h4>Matplotlib &mdash; Annotate with Arrows</h4>
+
+<p><code>ax.annotate</code> with <code>arrowprops</code> draws a labelled arrow to the outlier point. For axis management, <code>ax.set_ylim</code> can clip the y-axis to a sane range, pushing the outlier off-screen but keeping the rest readable. Alternatively, <code>ax.set_yscale("log")</code> compresses the dynamic range.</p>
+
+<pre><code class="language-python">ax.annotate("outlier", xy=(date, value),
+            xytext=(0, 15), textcoords="offset points",
+            arrowprops=dict(arrowstyle="->", color="red"))
+</code></pre>
+
+<h4>Altair &mdash; Conditional Colour Encoding</h4>
+
+<p>Altair&rsquo;s declarative model handles this elegantly: add a boolean <code>is_outlier</code> column and use a separate <code>mark_point</code> layer to colour outlier points differently. No manual loop required. For histograms, the <code>bin</code> transform with <code>maxbins</code> can be tuned, and Altair supports log-scale axes via <code>alt.Scale(type="log")</code>.</p>
+
+<pre><code class="language-python">points = alt.Chart(df[df["is_outlier"]]).mark_point(
+    color="red", size=100, shape="cross",
+).encode(x="Date:T", y="Close:Q")
+</code></pre>
+
+<h4>Bokeh &mdash; Glyph Overlay</h4>
+
+<p>Bokeh lets you overlay a separate glyph renderer. Add <code>p.cross</code> or <code>p.circle</code> for outlier points with a distinct colour. For axis control, set <code>p.y_range = Range1d(start, end)</code> to clip, or use <code>p.y_range.bounds = (min, max)</code> to constrain interactive zooming.</p>
+
+<pre><code class="language-python">p.cross(outlier_dates, outlier_values,
+        color="red", size=12, line_width=2)
+</code></pre>
+
+<h2>When to Use What</h2>
+
+<p><strong>Plotly</strong> &mdash; your default for Streamlit dashboards and anything interactive. Native finance chart types, minimal code, good hover tooltips. Use it unless you have a reason not to.</p>
+
+<p><strong>Matplotlib</strong> &mdash; when you need pixel-perfect control, publication-quality static figures, or when you are working in Jupyter notebooks and want inline plots. Also the only option when mplfinance-style charts are required.</p>
+
+<p><strong>Altair</strong> &mdash; when you want concise, declarative charts and your data fits the grammar-of-graphics mental model. Excellent for exploratory data analysis where you are layering encodings and transforms.</p>
+
+<p><strong>Bokeh</strong> &mdash; when you need server-side interactivity, custom widget callbacks, or are building a standalone web app outside Streamlit. Overkill for simple dashboard charts but powerful for bespoke tools.</p>
+
+<p><strong>Honourable mentions:</strong> <em>Seaborn</em> wraps Matplotlib with better defaults and statistical plotting (violin, swarm, pair plots) &mdash; great for EDA but not distinct enough to warrant its own tab here. <em>mplfinance</em> provides one-liner candlestick charts on top of Matplotlib &mdash; useful if you only need financial charts and do not want to build them manually.</p>
+
+<h2>Try It Yourself</h2>
+
+<p>The <a href="https://finbytes.streamlit.app/Plotting_Libraries">Plotting Libraries</a> mini project on FinBytes QuantLabs lets you load any ticker, edit the data table to inject outliers, and see all four libraries render the same charts side by side.</p>
