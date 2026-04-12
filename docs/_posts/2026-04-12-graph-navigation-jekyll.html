@@ -132,7 +132,27 @@ var sectionNodes = Object.keys(postsBySection).map(function(sec) {
 }
 </code></pre>
 
-<p>Keep the links parent-to-child only &mdash; no sibling cross-links. This gives a clean star layout that is easy to read.</p>
+<p>This gives a clean star layout &mdash; parent-to-child spokes only. If you want to show connections between siblings (posts that share tags), add sibling links with a threshold to avoid a dense web:</p>
+
+<pre><code class="language-javascript">var TAG_THRESHOLD = 3;
+
+for (var i = 0; i &lt; children.length; i++) {
+  for (var j = i + 1; j &lt; children.length; j++) {
+    var shared = children[i].tags.filter(function(t) {
+      return children[j].tags.indexOf(t) &gt;= 0;
+    });
+    if (shared.length &gt;= TAG_THRESHOLD) {
+      links.push({
+        source: children[i].id,
+        target: children[j].id,
+        weight: shared.length
+      });
+    }
+  }
+}
+</code></pre>
+
+<p>A threshold of 3+ shared tags keeps the graph readable. At 2+ you get a web of lines because generic tags like &ldquo;python&rdquo; connect almost everything. At 3+ only genuinely related posts link up. Set the threshold based on how specific your tags are &mdash; if you use broad tags, go higher; if your tags are precise, 2 may be fine.</p>
 
 <h2>Step 6: Navigate on Click</h2>
 
