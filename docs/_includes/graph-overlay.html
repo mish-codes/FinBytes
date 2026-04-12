@@ -1,0 +1,191 @@
+{% unless page.permalink == "/" %}
+<button id="graph-fab" type="button" aria-label="Open Sitemap Graph"
+  style="position:fixed;bottom:80px;right:24px;z-index:1000;width:48px;height:48px;border-radius:50%;border:1px solid var(--border-color,#ddd);background:var(--card-bg,#fff);color:var(--text-color,#333);box-shadow:0 2px 10px rgba(0,0,0,0.15);cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:1.2rem;"
+  onclick="document.getElementById('graph-overlay').style.display='flex';window._graphOverlayInit&&window._graphOverlayInit();">
+  <i class="fas fa-project-diagram"></i>
+</button>
+
+<div id="graph-overlay"
+  style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:9999;background:var(--main-bg,#fff);flex-direction:column;align-items:center;">
+
+  <div style="width:100%;max-width:1200px;padding:12px 20px 0;display:flex;align-items:center;justify-content:space-between;">
+    <span style="font-size:.85rem;color:var(--text-muted-color,#888);">Click section to expand, click post to explore, double-click to open</span>
+    <button onclick="document.getElementById('graph-overlay').style.display='none';"
+      style="border:none;background:none;font-size:1.4rem;cursor:pointer;color:var(--text-color,#333);padding:4px 8px;">&times;</button>
+  </div>
+
+  <div style="display:flex;flex-wrap:wrap;gap:.8rem;padding:4px 20px;font-size:.72rem;color:var(--text-muted-color,#888);">
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#4a90d9;"></span> Python</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#2ea043;"></span> Tech Stack</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e8893c;"></span> Math / Finance</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#a371f7;"></span> Comparisons</span>
+    <span><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:#e24a4a;"></span> Quant Lab</span>
+    <button id="overlay-reset" onclick="window._graphOverlayReset&&window._graphOverlayReset();"
+      style="font-size:.72rem;padding:2px 8px;border:1px solid var(--border-color,#ddd);border-radius:3px;background:var(--card-bg,#fff);color:var(--text-color,#333);cursor:pointer;display:none;">Reset</button>
+  </div>
+
+  <div id="graph-overlay-container" style="flex:1;width:100%;overflow:hidden;"></div>
+</div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+(function() {
+  var overlayPosts = [
+    {% for post in site.posts %}
+    { id: "post-{{ forloop.index }}", title: {{ post.title | jsonify }}, url: "{{ post.url | relative_url }}", tags: {{ post.tags | jsonify }}, section: {{ post.section | default: "" | jsonify }}, permalink: {{ post.permalink | default: post.url | jsonify }} }{% unless forloop.last %},{% endunless %}
+    {% endfor %}
+  ];
+  var overlayProjects = [
+    {% for p in site.quant_lab %}
+    { id: "ql-{{ forloop.index }}", title: {{ p.title | jsonify }}, url: "{{ p.url | relative_url }}", tags: [{% for t in p.tech %}"{{ t | downcase }}"{% unless forloop.last %},{% endunless %}{% endfor %}], section: "quant-lab", permalink: {{ p.permalink | default: p.url | jsonify }} }{% unless forloop.last %},{% endunless %}
+    {% endfor %}
+  ];
+
+  var colorMap = { "python": "#4a90d9", "tech-stack": "#2ea043", "math-finance": "#e8893c", "comparisons": "#a371f7", "quant-lab": "#e24a4a" };
+  var sectionLabels = { "python": "Python", "tech-stack": "Tech Stack", "math-finance": "Math / Finance", "comparisons": "Comparisons", "quant-lab": "Quant Lab" };
+
+  function getSection(p) {
+    if (p.section === "math-finance" || p.permalink.indexOf("/math-finance") === 0) return "math-finance";
+    if (p.section === "comparisons" || p.permalink.indexOf("/comparisons") === 0) return "comparisons";
+    if (p.permalink.indexOf("/quant-lab") === 0) return "quant-lab";
+    if (p.permalink.indexOf("/tech-stack") === 0) return "tech-stack";
+    if (p.permalink.indexOf("/python") === 0) return "python";
+    if (p.section === "infrastructure") return "tech-stack";
+    if (p.section === "testing" || p.section === "python") return "python";
+    return "python";
+  }
+
+  var allPosts = overlayPosts.concat(overlayProjects).map(function(p) {
+    var sec = getSection(p);
+    return { id: p.id, title: p.title, url: p.url, section: sec, tags: (p.tags || []).map(function(t) { return t.toLowerCase(); }), color: colorMap[sec] || "#999" };
+  });
+
+  var postsBySection = {};
+  allPosts.forEach(function(p) { if (!postsBySection[p.section]) postsBySection[p.section] = []; postsBySection[p.section].push(p); });
+
+  var initialized = false;
+  var ovSvg, ovG, ovSim, ovW, ovH;
+  var ovExpandedSection = null, ovExpandedPost = null, ovClickTimer = null;
+  var ovContainer = null, ovResetBtn = null;
+
+  function findRelated(post) {
+    var related = [];
+    allPosts.forEach(function(p) { if (p.id === post.id) return; var sh = post.tags.filter(function(t) { return p.tags.indexOf(t) >= 0; }); if (sh.length >= 2) related.push({ post: p, weight: sh.length }); });
+    related.sort(function(a, b) { return b.weight - a.weight; });
+    return related.slice(0, 12);
+  }
+
+  function ovRender(visNodes, visLinks, opts) {
+    ovG.selectAll("*").remove();
+    if (ovSim) ovSim.stop();
+    var sn = visNodes.map(function(n) { return Object.assign({}, n); });
+    var sl = visLinks.map(function(l) { return { source: l.source, target: l.target, weight: l.weight || 1 }; });
+    ovSim = d3.forceSimulation(sn)
+      .force("link", d3.forceLink(sl).id(function(d) { return d.id; }).distance(opts.linkDist || 80).strength(0.4))
+      .force("charge", d3.forceManyBody().strength(opts.charge || -200))
+      .force("center", d3.forceCenter(ovW / 2, ovH / 2))
+      .force("collision", d3.forceCollide().radius(function(d) { return d.radius + 4; }));
+    var link = ovG.append("g").selectAll("line").data(sl).join("line")
+      .attr("stroke", "var(--border-color, #ddd)").attr("stroke-opacity", 0.4)
+      .attr("stroke-width", function(d) { return Math.min((d.weight || 1) * 0.5, 2); });
+    var node = ovG.append("g").selectAll("g").data(sn).join("g").style("cursor", "pointer")
+      .call(d3.drag()
+        .on("start", function(ev, d) { if (!ev.active) ovSim.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on("drag", function(ev, d) { d.fx = ev.x; d.fy = ev.y; })
+        .on("end", function(ev, d) { if (!ev.active) ovSim.alphaTarget(0); d.fx = null; d.fy = null; }));
+    node.append("circle").attr("r", function(d) { return d.radius; }).attr("fill", function(d) { return d.color; })
+      .attr("stroke", "var(--main-bg, #fff)").attr("stroke-width", function(d) { return d.expanded ? 3 : 1.5; });
+    if (opts.showLabels) {
+      node.append("text").text(function(d) { return d.label || d.title; })
+        .attr("dx", function(d) { return d.radius + 5; }).attr("dy", ".35em")
+        .attr("font-size", function(d) { return Math.max(d.isSection ? 14 : 10, ovW * (d.isSection ? 0.012 : 0.008)) + "px"; })
+        .attr("font-weight", function(d) { return d.isSection ? "700" : "400"; })
+        .attr("fill", "var(--text-color, #333)");
+    }
+    var tooltip = document.getElementById("graph-overlay").querySelector(".graph-tooltip") || document.createElement("div");
+    node.on("mouseover", function(ev, d) {
+      d3.select(this).select("circle").attr("r", d.radius + 3).attr("stroke-width", 2.5);
+    }).on("mouseout", function(ev, d) {
+      d3.select(this).select("circle").attr("r", d.radius).attr("stroke-width", d.expanded ? 3 : 1.5);
+    }).on("click", function(ev, d) {
+      if (ovClickTimer) { clearTimeout(ovClickTimer); ovClickTimer = null; return; }
+      ovClickTimer = setTimeout(function() { ovClickTimer = null;
+        if (d.isSection) { ovExpandSection(d.id); }
+        else if (ovExpandedPost) { window.location.href = d.url; }
+        else { ovExpandPost(d); }
+      }, 250);
+    }).on("dblclick", function(ev, d) {
+      if (ovClickTimer) { clearTimeout(ovClickTimer); ovClickTimer = null; }
+      if (!d.isSection) window.location.href = d.url;
+    });
+    ovSim.on("tick", function() {
+      link.attr("x1", function(d) { return d.source.x; }).attr("y1", function(d) { return d.source.y; })
+          .attr("x2", function(d) { return d.target.x; }).attr("y2", function(d) { return d.target.y; });
+      node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+    });
+  }
+
+  function ovShowTop() {
+    ovExpandedSection = null; ovExpandedPost = null;
+    if (ovResetBtn) ovResetBtn.style.display = "none";
+    var secR = Math.max(35, Math.min(55, ovW * 0.04));
+    var sn = Object.keys(postsBySection).map(function(sec) { return { id: sec, title: sectionLabels[sec], label: sectionLabels[sec], color: colorMap[sec], radius: secR, isSection: true }; });
+    var sl = []; var sk = Object.keys(postsBySection);
+    for (var i = 0; i < sk.length; i++) for (var j = i + 1; j < sk.length; j++) sl.push({ source: sk[i], target: sk[j], weight: 1 });
+    ovRender(sn, sl, { linkDist: Math.max(150, ovW * 0.15), charge: Math.min(-400, -ovW * 0.4), showLabels: true });
+  }
+
+  function ovExpandSection(secId) {
+    ovExpandedSection = secId; ovExpandedPost = null;
+    if (ovResetBtn) ovResetBtn.style.display = "inline-block";
+    var cR = Math.max(25, Math.min(40, ovW * 0.025));
+    var pR = Math.max(8, Math.min(14, ovW * 0.01));
+    var oR = Math.max(16, Math.min(28, ovW * 0.018));
+    var center = { id: secId, title: sectionLabels[secId], label: sectionLabels[secId], color: colorMap[secId], radius: cR, isSection: true, expanded: true };
+    var children = (postsBySection[secId] || []).map(function(p) { return { id: p.id, title: p.title, url: p.url, section: p.section, tags: p.tags, color: p.color, radius: pR }; });
+    var others = Object.keys(postsBySection).filter(function(s) { return s !== secId; }).map(function(sec) { return { id: sec, title: sectionLabels[sec], label: sectionLabels[sec], color: colorMap[sec], radius: oR, isSection: true }; });
+    var all = [center].concat(children).concat(others);
+    var links = []; children.forEach(function(c) { links.push({ source: secId, target: c.id, weight: 1 }); });
+    for (var i = 0; i < children.length; i++) for (var j = i + 1; j < children.length; j++) { var sh = children[i].tags.filter(function(t) { return children[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: children[i].id, target: children[j].id, weight: sh.length }); }
+    ovRender(all, links, { linkDist: Math.max(60, ovW * 0.06), charge: Math.min(-100, -ovW * 0.1), showLabels: true });
+  }
+
+  function ovExpandPost(post) {
+    ovExpandedPost = post;
+    if (ovResetBtn) ovResetBtn.style.display = "inline-block";
+    var cR = Math.max(16, Math.min(24, ovW * 0.016));
+    var rR = Math.max(8, Math.min(14, ovW * 0.01));
+    var center = { id: post.id, title: post.title, url: post.url, section: post.section, tags: post.tags, color: post.color, radius: cR, expanded: true };
+    var related = findRelated(post);
+    var rNodes = related.map(function(r) { return { id: r.post.id, title: r.post.title, url: r.post.url, section: r.post.section, tags: r.post.tags, color: r.post.color, radius: rR }; });
+    var all = [center].concat(rNodes);
+    var links = related.map(function(r) { return { source: post.id, target: r.post.id, weight: r.weight }; });
+    for (var i = 0; i < rNodes.length; i++) for (var j = i + 1; j < rNodes.length; j++) { var sh = rNodes[i].tags.filter(function(t) { return rNodes[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: rNodes[i].id, target: rNodes[j].id, weight: sh.length }); }
+    ovRender(all, links, { linkDist: Math.max(70, ovW * 0.07), charge: Math.min(-150, -ovW * 0.15), showLabels: true });
+  }
+
+  window._graphOverlayInit = function() {
+    ovContainer = document.getElementById("graph-overlay-container");
+    ovResetBtn = document.getElementById("overlay-reset");
+    if (!ovContainer) return;
+    if (initialized) { return; }
+    initialized = true;
+    ovW = ovContainer.clientWidth || 800;
+    ovH = ovContainer.clientHeight || 600;
+    ovSvg = d3.select("#graph-overlay-container").append("svg").attr("viewBox", [0, 0, ovW, ovH]);
+    ovG = ovSvg.append("g");
+    ovSvg.call(d3.zoom().scaleExtent([0.3, 4]).on("zoom", function(ev) { ovG.attr("transform", ev.transform); }));
+    ovShowTop();
+  };
+
+  window._graphOverlayReset = function() {
+    if (ovExpandedPost && ovExpandedSection) { ovExpandSection(ovExpandedSection); }
+    else { ovShowTop(); }
+  };
+
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "Escape") { var ov = document.getElementById("graph-overlay"); if (ov) ov.style.display = "none"; }
+  });
+})();
+</script>
+{% endunless %}

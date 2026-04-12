@@ -9,19 +9,36 @@ permalink: /
 <style>
 #panel-wrapper { display: none !important; }
 #main-wrapper > .row > .col-xl-9 { max-width: 100% !important; flex: 0 0 100% !important; }
+#main-wrapper { margin-top: 0 !important; padding-top: 0 !important; }
+.content { max-width: 100% !important; padding: 0 !important; }
+.px-1 { padding: 0 !important; }
+.dynamic-title { display: none !important; }
 .graph-lede {
   color: var(--text-muted-color, #666);
   font-size: .95rem;
-  margin-bottom: 1rem;
+  margin-bottom: .5rem;
   max-width: 580px;
   line-height: 1.7;
 }
+.graph-links {
+  display: flex;
+  gap: 1.2rem;
+  margin-bottom: .75rem;
+  font-size: .8rem;
+}
+.graph-links a {
+  color: var(--text-muted-color, #888);
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+}
+.graph-links a:hover { color: var(--link-color, #2a7ae2); }
 .graph-container {
   width: 100%;
-  height: 75vh;
-  min-height: 450px;
-  border: 1px solid var(--border-color, #e8e8e8);
-  border-radius: 8px;
+  height: calc(100vh - 140px);
+  min-height: 500px;
+  border: none;
   overflow: hidden;
   background: var(--main-bg, #fff);
   position: relative;
@@ -45,7 +62,7 @@ permalink: /
   display: flex;
   align-items: center;
   gap: 1rem;
-  margin-bottom: .75rem;
+  margin-bottom: .5rem;
 }
 .graph-reset {
   font-size: .78rem;
@@ -66,7 +83,7 @@ permalink: /
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
-  margin-top: 1rem;
+  margin-top: .5rem;
   font-size: .78rem;
   color: var(--text-muted-color, #888);
 }
@@ -76,12 +93,18 @@ permalink: /
 
 <p class="graph-lede">Explore FinBytes &mdash; click a section to expand, click a post to see related, double-click to open.</p>
 
+<div class="graph-links">
+  <a href="https://github.com/MishCodesFinBytes" target="_blank"><i class="fab fa-github"></i> GitHub</a>
+  <a href="https://finbytes.streamlit.app" target="_blank"><i class="fas fa-play-circle"></i> Demo</a>
+  <a href="{{ "/about/" | relative_url }}"><i class="fas fa-info-circle"></i> About</a>
+</div>
+
 <div class="graph-controls">
   <button class="graph-reset" id="resetBtn" onclick="window._graphReset()">Reset</button>
   <span class="graph-breadcrumb" id="breadcrumb"></span>
 </div>
 
-<div class="graph-container" id="graph" style="width:100%;height:75vh;min-height:450px;"></div>
+<div class="graph-container" id="graph" style="width:100%;height:calc(100vh - 140px);min-height:500px;"></div>
 <div class="graph-tooltip" id="tooltip"></div>
 
 <div class="graph-legend">
@@ -97,29 +120,17 @@ permalink: /
 (function() {
   var rawPosts = [
     {% for post in site.posts %}
-    {
-      id: "post-{{ forloop.index }}",
-      title: {{ post.title | jsonify }},
-      url: "{{ post.url | relative_url }}",
-      tags: {{ post.tags | jsonify }},
-      section: {{ post.section | default: "" | jsonify }},
-      permalink: {{ post.permalink | default: post.url | jsonify }}
-    }{% unless forloop.last %},{% endunless %}
+    { id: "post-{{ forloop.index }}", title: {{ post.title | jsonify }}, url: "{{ post.url | relative_url }}", tags: {{ post.tags | jsonify }}, section: {{ post.section | default: "" | jsonify }}, permalink: {{ post.permalink | default: post.url | jsonify }} }{% unless forloop.last %},{% endunless %}
+    {% endfor %}
+  ];
+  var rawProjects = [
+    {% for p in site.quant_lab %}
+    { id: "ql-{{ forloop.index }}", title: {{ p.title | jsonify }}, url: "{{ p.url | relative_url }}", tags: [{% for t in p.tech %}"{{ t | downcase }}"{% unless forloop.last %},{% endunless %}{% endfor %}], section: "quant-lab", permalink: {{ p.permalink | default: p.url | jsonify }} }{% unless forloop.last %},{% endunless %}
     {% endfor %}
   ];
 
-  var rawProjects = [
-    {% for p in site.quant_lab %}
-    {
-      id: "ql-{{ forloop.index }}",
-      title: {{ p.title | jsonify }},
-      url: "{{ p.url | relative_url }}",
-      tags: [{% for t in p.tech %}"{{ t | downcase }}"{% unless forloop.last %},{% endunless %}{% endfor %}],
-      section: "quant-lab",
-      permalink: {{ p.permalink | default: p.url | jsonify }}
-    }{% unless forloop.last %},{% endunless %}
-    {% endfor %}
-  ];
+  var colorMap = { "python": "#4a90d9", "tech-stack": "#2ea043", "math-finance": "#e8893c", "comparisons": "#a371f7", "quant-lab": "#e24a4a" };
+  var sectionLabels = { "python": "Python", "tech-stack": "Tech Stack", "math-finance": "Math / Finance", "comparisons": "Comparisons", "quant-lab": "Quant Lab" };
 
   function getSection(p) {
     if (p.section === "math-finance" || p.permalink.indexOf("/math-finance") === 0) return "math-finance";
@@ -132,65 +143,30 @@ permalink: /
     return "python";
   }
 
-  var colorMap = {
-    "python": "#4a90d9",
-    "tech-stack": "#2ea043",
-    "math-finance": "#e8893c",
-    "comparisons": "#a371f7",
-    "quant-lab": "#e24a4a"
-  };
-
-  var sectionLabels = {
-    "python": "Python",
-    "tech-stack": "Tech Stack",
-    "math-finance": "Math / Finance",
-    "comparisons": "Comparisons",
-    "quant-lab": "Quant Lab"
-  };
-
   var allPosts = rawPosts.concat(rawProjects).map(function(p) {
     var sec = getSection(p);
-    return {
-      id: p.id,
-      title: p.title,
-      url: p.url,
-      section: sec,
-      tags: (p.tags || []).map(function(t) { return t.toLowerCase(); }),
-      color: colorMap[sec] || "#999"
-    };
+    return { id: p.id, title: p.title, url: p.url, section: sec, tags: (p.tags || []).map(function(t) { return t.toLowerCase(); }), color: colorMap[sec] || "#999" };
   });
 
   var postsBySection = {};
-  allPosts.forEach(function(p) {
-    if (!postsBySection[p.section]) postsBySection[p.section] = [];
-    postsBySection[p.section].push(p);
-  });
+  allPosts.forEach(function(p) { if (!postsBySection[p.section]) postsBySection[p.section] = []; postsBySection[p.section].push(p); });
 
   var container = document.getElementById("graph");
   var tooltip = document.getElementById("tooltip");
   var resetBtn = document.getElementById("resetBtn");
   var breadcrumb = document.getElementById("breadcrumb");
   var svg, g, simulation, width, height;
-  var expandedSection = null;
-  var expandedPost = null;
-  var clickTimer = null;
+  var expandedSection = null, expandedPost = null, clickTimer = null;
 
   function showTooltip(event, text) {
-    tooltip.style.opacity = 1;
-    tooltip.textContent = text;
-    tooltip.style.left = (event.pageX + 12) + "px";
-    tooltip.style.top = (event.pageY - 10) + "px";
+    tooltip.style.opacity = 1; tooltip.textContent = text;
+    tooltip.style.left = (event.pageX + 12) + "px"; tooltip.style.top = (event.pageY - 10) + "px";
   }
-
   function hideTooltip() { tooltip.style.opacity = 0; }
 
   function findRelated(post) {
     var related = [];
-    allPosts.forEach(function(p) {
-      if (p.id === post.id) return;
-      var shared = post.tags.filter(function(t) { return p.tags.indexOf(t) >= 0; });
-      if (shared.length >= 2) related.push({ post: p, weight: shared.length });
-    });
+    allPosts.forEach(function(p) { if (p.id === post.id) return; var sh = post.tags.filter(function(t) { return p.tags.indexOf(t) >= 0; }); if (sh.length >= 2) related.push({ post: p, weight: sh.length }); });
     related.sort(function(a, b) { return b.weight - a.weight; });
     return related.slice(0, 12);
   }
@@ -198,7 +174,6 @@ permalink: /
   function renderGraph(visibleNodes, visibleLinks, opts) {
     g.selectAll("*").remove();
     if (simulation) simulation.stop();
-
     var simNodes = visibleNodes.map(function(n) { return Object.assign({}, n); });
     var simLinks = visibleLinks.map(function(l) { return { source: l.source, target: l.target, weight: l.weight || 1 }; });
 
@@ -209,55 +184,43 @@ permalink: /
       .force("collision", d3.forceCollide().radius(function(d) { return d.radius + 4; }));
 
     var link = g.append("g").selectAll("line").data(simLinks).join("line")
-      .attr("stroke", "var(--border-color, #ddd)")
-      .attr("stroke-opacity", 0.4)
+      .attr("stroke", "var(--border-color, #ddd)").attr("stroke-opacity", 0.4)
       .attr("stroke-width", function(d) { return Math.min((d.weight || 1) * 0.5, 2); });
 
-    var node = g.append("g").selectAll("g").data(simNodes).join("g")
-      .style("cursor", "pointer")
+    var node = g.append("g").selectAll("g").data(simNodes).join("g").style("cursor", "pointer")
       .call(d3.drag()
-        .on("start", function(event, d) { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
-        .on("drag", function(event, d) { d.fx = event.x; d.fy = event.y; })
-        .on("end", function(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+        .on("start", function(ev, d) { if (!ev.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+        .on("drag", function(ev, d) { d.fx = ev.x; d.fy = ev.y; })
+        .on("end", function(ev, d) { if (!ev.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
 
-    node.append("circle")
-      .attr("r", function(d) { return d.radius; })
-      .attr("fill", function(d) { return d.color; })
-      .attr("stroke", "var(--main-bg, #fff)")
-      .attr("stroke-width", function(d) { return d.expanded ? 3 : 1.5; });
+    node.append("circle").attr("r", function(d) { return d.radius; }).attr("fill", function(d) { return d.color; })
+      .attr("stroke", "var(--main-bg, #fff)").attr("stroke-width", function(d) { return d.expanded ? 3 : 1.5; });
 
     if (opts.showLabels) {
-      node.append("text")
-        .text(function(d) { return d.label || d.title; })
-        .attr("dx", function(d) { return d.radius + 5; })
-        .attr("dy", ".35em")
-        .attr("font-size", function(d) { return d.isSection ? "13px" : "10px"; })
+      node.append("text").text(function(d) { return d.label || d.title; })
+        .attr("dx", function(d) { return d.radius + 5; }).attr("dy", ".35em")
+        .attr("font-size", function(d) { return Math.max(d.isSection ? 14 : 10, width * (d.isSection ? 0.012 : 0.008)) + "px"; })
         .attr("font-weight", function(d) { return d.isSection ? "700" : "400"; })
         .attr("fill", "var(--text-color, #333)");
     }
 
-    node.on("mouseover", function(event, d) {
-      var hint = d.isSection ? d.label + " (" + (postsBySection[d.id] || []).length + " posts) \u2014 click to expand" : d.title + " \u2014 click to explore, double-click to open";
-      showTooltip(event, hint);
+    node.on("mouseover", function(ev, d) {
+      var hint = d.isSection ? d.label + " (" + (postsBySection[d.id] || []).length + " posts)" : d.title;
+      showTooltip(ev, hint);
       d3.select(this).select("circle").attr("r", d.radius + 3).attr("stroke-width", 2.5);
-    })
-    .on("mousemove", function(event) {
-      tooltip.style.left = (event.pageX + 12) + "px";
-      tooltip.style.top = (event.pageY - 10) + "px";
-    })
-    .on("mouseout", function(event, d) {
+    }).on("mousemove", function(ev) {
+      tooltip.style.left = (ev.pageX + 12) + "px"; tooltip.style.top = (ev.pageY - 10) + "px";
+    }).on("mouseout", function(ev, d) {
       hideTooltip();
       d3.select(this).select("circle").attr("r", d.radius).attr("stroke-width", d.expanded ? 3 : 1.5);
-    })
-    .on("click", function(event, d) {
+    }).on("click", function(ev, d) {
       if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; }
-      clickTimer = setTimeout(function() {
-        clickTimer = null;
+      clickTimer = setTimeout(function() { clickTimer = null;
         if (d.isSection) { expandSection(d.id); }
+        else if (expandedPost) { window.location.href = d.url; }
         else { expandPost(d); }
       }, 250);
-    })
-    .on("dblclick", function(event, d) {
+    }).on("dblclick", function(ev, d) {
       if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
       if (!d.isSection) window.location.href = d.url;
     });
@@ -270,74 +233,30 @@ permalink: /
   }
 
   function showTopLevel() {
-    expandedSection = null;
-    expandedPost = null;
-    resetBtn.style.display = "none";
-    breadcrumb.textContent = "";
-
-    var sectionNodes = Object.keys(postsBySection).map(function(sec) {
-      return {
-        id: sec,
-        title: sectionLabels[sec],
-        label: sectionLabels[sec],
-        color: colorMap[sec],
-        radius: 28,
-        isSection: true
-      };
+    expandedSection = null; expandedPost = null;
+    resetBtn.style.display = "none"; breadcrumb.textContent = "";
+    var secR = Math.max(35, Math.min(55, width * 0.04));
+    var sn = Object.keys(postsBySection).map(function(sec) {
+      return { id: sec, title: sectionLabels[sec], label: sectionLabels[sec], color: colorMap[sec], radius: secR, isSection: true };
     });
-
-    var sectionLinks = [];
-    var sectionKeys = Object.keys(postsBySection);
-    for (var i = 0; i < sectionKeys.length; i++) {
-      for (var j = i + 1; j < sectionKeys.length; j++) {
-        sectionLinks.push({ source: sectionKeys[i], target: sectionKeys[j], weight: 1 });
-      }
-    }
-
-    renderGraph(sectionNodes, sectionLinks, { linkDist: 150, charge: -400, showLabels: true });
+    var sl = []; var sk = Object.keys(postsBySection);
+    for (var i = 0; i < sk.length; i++) for (var j = i + 1; j < sk.length; j++) sl.push({ source: sk[i], target: sk[j], weight: 1 });
+    renderGraph(sn, sl, { linkDist: Math.max(150, width * 0.15), charge: Math.min(-400, -width * 0.4), showLabels: true });
   }
 
   function expandSection(sectionId) {
-    expandedSection = sectionId;
-    expandedPost = null;
-    resetBtn.style.display = "inline-block";
-    breadcrumb.textContent = sectionLabels[sectionId];
-
-    var centerNode = {
-      id: sectionId,
-      title: sectionLabels[sectionId],
-      label: sectionLabels[sectionId],
-      color: colorMap[sectionId],
-      radius: 22,
-      isSection: true,
-      expanded: true
-    };
-
-    var childNodes = (postsBySection[sectionId] || []).map(function(p) {
-      return { id: p.id, title: p.title, url: p.url, section: p.section, tags: p.tags, color: p.color, radius: 7 };
-    });
-
-    var otherSections = Object.keys(postsBySection).filter(function(s) { return s !== sectionId; }).map(function(sec) {
-      return { id: sec, title: sectionLabels[sec], label: sectionLabels[sec], color: colorMap[sec], radius: 16, isSection: true, dimmed: true };
-    });
-
-    var allVisible = [centerNode].concat(childNodes).concat(otherSections);
-
-    var visibleLinks = [];
-    childNodes.forEach(function(c) {
-      visibleLinks.push({ source: sectionId, target: c.id, weight: 1 });
-    });
-
-    for (var i = 0; i < childNodes.length; i++) {
-      for (var j = i + 1; j < childNodes.length; j++) {
-        var shared = childNodes[i].tags.filter(function(t) { return childNodes[j].tags.indexOf(t) >= 0; });
-        if (shared.length >= 2) {
-          visibleLinks.push({ source: childNodes[i].id, target: childNodes[j].id, weight: shared.length });
-        }
-      }
-    }
-
-    renderGraph(allVisible, visibleLinks, { linkDist: 60, charge: -100, showLabels: true });
+    expandedSection = sectionId; expandedPost = null;
+    resetBtn.style.display = "inline-block"; breadcrumb.textContent = sectionLabels[sectionId];
+    var cR = Math.max(25, Math.min(40, width * 0.025));
+    var pR = Math.max(8, Math.min(14, width * 0.01));
+    var oR = Math.max(16, Math.min(28, width * 0.018));
+    var center = { id: sectionId, title: sectionLabels[sectionId], label: sectionLabels[sectionId], color: colorMap[sectionId], radius: cR, isSection: true, expanded: true };
+    var children = (postsBySection[sectionId] || []).map(function(p) { return { id: p.id, title: p.title, url: p.url, section: p.section, tags: p.tags, color: p.color, radius: pR }; });
+    var others = Object.keys(postsBySection).filter(function(s) { return s !== sectionId; }).map(function(sec) { return { id: sec, title: sectionLabels[sec], label: sectionLabels[sec], color: colorMap[sec], radius: oR, isSection: true }; });
+    var all = [center].concat(children).concat(others);
+    var links = []; children.forEach(function(c) { links.push({ source: sectionId, target: c.id, weight: 1 }); });
+    for (var i = 0; i < children.length; i++) for (var j = i + 1; j < children.length; j++) { var sh = children[i].tags.filter(function(t) { return children[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: children[i].id, target: children[j].id, weight: sh.length }); }
+    renderGraph(all, links, { linkDist: Math.max(60, width * 0.06), charge: Math.min(-100, -width * 0.1), showLabels: true });
   }
 
   function expandPost(post) {
@@ -345,48 +264,28 @@ permalink: /
     resetBtn.style.display = "inline-block";
     var secLabel = sectionLabels[expandedSection] || sectionLabels[post.section];
     breadcrumb.textContent = secLabel + " \u203a " + post.title;
-
-    var centerNode = { id: post.id, title: post.title, url: post.url, section: post.section, tags: post.tags, color: post.color, radius: 14, expanded: true };
-
+    var cR = Math.max(16, Math.min(24, width * 0.016));
+    var rR = Math.max(8, Math.min(14, width * 0.01));
+    var center = { id: post.id, title: post.title, url: post.url, section: post.section, tags: post.tags, color: post.color, radius: cR, expanded: true };
     var related = findRelated(post);
-    var relatedNodes = related.map(function(r) {
-      return { id: r.post.id, title: r.post.title, url: r.post.url, section: r.post.section, tags: r.post.tags, color: r.post.color, radius: 7 };
-    });
-
-    var allVisible = [centerNode].concat(relatedNodes);
-    var visibleLinks = related.map(function(r) {
-      return { source: post.id, target: r.post.id, weight: r.weight };
-    });
-
-    for (var i = 0; i < relatedNodes.length; i++) {
-      for (var j = i + 1; j < relatedNodes.length; j++) {
-        var shared = relatedNodes[i].tags.filter(function(t) { return relatedNodes[j].tags.indexOf(t) >= 0; });
-        if (shared.length >= 2) {
-          visibleLinks.push({ source: relatedNodes[i].id, target: relatedNodes[j].id, weight: shared.length });
-        }
-      }
-    }
-
-    renderGraph(allVisible, visibleLinks, { linkDist: 70, charge: -150, showLabels: true });
+    var rNodes = related.map(function(r) { return { id: r.post.id, title: r.post.title, url: r.post.url, section: r.post.section, tags: r.post.tags, color: r.post.color, radius: rR }; });
+    var all = [center].concat(rNodes);
+    var links = related.map(function(r) { return { source: post.id, target: r.post.id, weight: r.weight }; });
+    for (var i = 0; i < rNodes.length; i++) for (var j = i + 1; j < rNodes.length; j++) { var sh = rNodes[i].tags.filter(function(t) { return rNodes[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: rNodes[i].id, target: rNodes[j].id, weight: sh.length }); }
+    renderGraph(all, links, { linkDist: Math.max(70, width * 0.07), charge: Math.min(-150, -width * 0.15), showLabels: true });
   }
 
   window._graphReset = function() {
-    if (expandedPost && expandedSection) {
-      expandSection(expandedSection);
-    } else {
-      showTopLevel();
-    }
+    if (expandedPost && expandedSection) { expandSection(expandedSection); }
+    else { showTopLevel(); }
   };
 
   function initGraph() {
     width = container.clientWidth || 800;
     height = container.clientHeight || 500;
-
     svg = d3.select("#graph").append("svg").attr("viewBox", [0, 0, width, height]);
     g = svg.append("g");
-
-    svg.call(d3.zoom().scaleExtent([0.3, 4]).on("zoom", function(event) { g.attr("transform", event.transform); }));
-
+    svg.call(d3.zoom().scaleExtent([0.3, 4]).on("zoom", function(ev) { g.attr("transform", ev.transform); }));
     showTopLevel();
   }
 
