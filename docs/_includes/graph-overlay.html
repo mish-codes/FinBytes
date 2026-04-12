@@ -109,10 +109,10 @@
     }).on("mouseout", function(ev, d) {
       d3.select(this).select("circle").attr("r", d.radius).attr("stroke-width", d.expanded ? 3 : 1.5);
     }).on("click", function(ev, d) {
+      if (ovExpandedPost && !d.isSection) { window.location.href = d.url; return; }
       if (ovClickTimer) { clearTimeout(ovClickTimer); ovClickTimer = null; return; }
       ovClickTimer = setTimeout(function() { ovClickTimer = null;
         if (d.isSection) { ovExpandSection(d.id); }
-        else if (ovExpandedPost) { window.location.href = d.url; }
         else { ovExpandPost(d); }
       }, 250);
     }).on("dblclick", function(ev, d) {

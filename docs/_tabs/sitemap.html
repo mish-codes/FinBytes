@@ -215,10 +215,10 @@ permalink: /
       hideTooltip();
       d3.select(this).select("circle").attr("r", d.radius).attr("stroke-width", d.expanded ? 3 : 1.5);
     }).on("click", function(ev, d) {
+      if (expandedPost && !d.isSection) { window.location.href = d.url; return; }
       if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; }
       clickTimer = setTimeout(function() { clickTimer = null;
         if (d.isSection) { expandSection(d.id); }
-        else if (expandedPost) { window.location.href = d.url; }
         else { expandPost(d); }
       }, 250);
     }).on("dblclick", function(ev, d) {
