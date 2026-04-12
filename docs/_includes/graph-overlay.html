@@ -70,7 +70,7 @@
 
   function findRelated(post) {
     var related = [];
-    allPosts.forEach(function(p) { if (p.id === post.id) return; var sh = post.tags.filter(function(t) { return p.tags.indexOf(t) >= 0; }); if (sh.length >= 2) related.push({ post: p, weight: sh.length }); });
+    allPosts.forEach(function(p) { if (p.id === post.id) return; var sh = post.tags.filter(function(t) { return p.tags.indexOf(t) >= 0; }); if (sh.length >= 3) related.push({ post: p, weight: sh.length }); });
     related.sort(function(a, b) { return b.weight - a.weight; });
     return related.slice(0, 12);
   }
@@ -152,7 +152,7 @@
     var others = Object.keys(postsBySection).filter(function(s) { return s !== secId; }).map(function(sec) { return { id: sec, title: sectionLabels[sec], label: sectionLabels[sec], color: colorMap[sec], radius: oR, isSection: true }; });
     var all = [center].concat(children).concat(others);
     var links = []; children.forEach(function(c) { links.push({ source: secId, target: c.id, weight: 1 }); });
-    for (var i = 0; i < children.length; i++) for (var j = i + 1; j < children.length; j++) { var sh = children[i].tags.filter(function(t) { return children[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: children[i].id, target: children[j].id, weight: sh.length }); }
+    for (var i = 0; i < children.length; i++) for (var j = i + 1; j < children.length; j++) { var sh = children[i].tags.filter(function(t) { return children[j].tags.indexOf(t) >= 0; }); if (sh.length >= 3) links.push({ source: children[i].id, target: children[j].id, weight: sh.length }); }
     var diag2 = Math.sqrt(ovW * ovW + ovH * ovH);
     var scale2 = Math.max(1, children.length / 10);
     ovRender(all, links, { linkDist: diag2 * 0.12 * scale2, charge: -diag2 * 0.5 * scale2, showLabels: true });
@@ -168,7 +168,7 @@
     var rNodes = related.map(function(r) { return { id: r.post.id, title: r.post.title, url: r.post.url, section: r.post.section, tags: r.post.tags, color: r.post.color, radius: rR }; });
     var all = [center].concat(rNodes);
     var links = related.map(function(r) { return { source: post.id, target: r.post.id, weight: r.weight }; });
-    for (var i = 0; i < rNodes.length; i++) for (var j = i + 1; j < rNodes.length; j++) { var sh = rNodes[i].tags.filter(function(t) { return rNodes[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: rNodes[i].id, target: rNodes[j].id, weight: sh.length }); }
+    for (var i = 0; i < rNodes.length; i++) for (var j = i + 1; j < rNodes.length; j++) { var sh = rNodes[i].tags.filter(function(t) { return rNodes[j].tags.indexOf(t) >= 0; }); if (sh.length >= 3) links.push({ source: rNodes[i].id, target: rNodes[j].id, weight: sh.length }); }
     var diag3 = Math.sqrt(ovW * ovW + ovH * ovH);
     var scale3 = Math.max(1, rNodes.length / 8);
     ovRender(all, links, { linkDist: diag3 * 0.12 * scale3, charge: -diag3 * 0.5 * scale3, showLabels: true });
