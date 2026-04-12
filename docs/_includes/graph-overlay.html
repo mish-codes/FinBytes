@@ -110,6 +110,7 @@
     var tooltip = document.getElementById("graph-overlay").querySelector(".graph-tooltip") || document.createElement("div");
     node.on("mouseover", function(ev, d) {
       d3.select(this).select("circle").attr("r", d.radius * 1.8).attr("stroke-width", 2.5);
+      if (ovRotateTimer) { ovRotateTimer.stop(); ovRotateTimer = null; }
     }).on("mouseout", function(ev, d) {
       d3.select(this).select("circle").attr("r", d.radius).attr("stroke-width", d.expanded ? 3 : 1.5);
     }).on("click", function(ev, d) {
