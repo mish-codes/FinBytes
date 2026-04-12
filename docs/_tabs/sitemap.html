@@ -225,6 +225,7 @@ main.col-12 { padding: 0 !important; }
     }).on("mouseout", function(ev, d) {
       hideTooltip();
       d3.select(this).select("circle").attr("r", d.radius).attr("stroke-width", d.expanded ? 3 : 1.5);
+      if (!rotateTimer) { rotateTimer = d3.timer(function() { rotateAngle += 0.05; g.attr("transform", "rotate(" + rotateAngle + "," + (width / 2) + "," + (height / 2) + ")"); node.selectAll("text").attr("transform", "rotate(" + (-rotateAngle) + ")"); }); }
     }).on("click", function(ev, d) {
       if (d.isBack) { window._graphReset(); return; }
       if (expandedPost && !d.isSection) { window.location.href = d.url; return; }
