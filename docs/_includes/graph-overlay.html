@@ -84,7 +84,7 @@
       .force("link", d3.forceLink(sl).id(function(d) { return d.id; }).distance(opts.linkDist || 80).strength(0.4))
       .force("charge", d3.forceManyBody().strength(opts.charge || -200))
       .force("center", d3.forceCenter(ovW / 2, ovH / 2))
-      .force("collision", d3.forceCollide().radius(function(d) { return d.radius + 4; }));
+      .force("collision", d3.forceCollide().radius(function(d) { return d.radius + 8; }));
     var link = ovG.append("g").selectAll("line").data(sl).join("line")
       .attr("stroke", "var(--border-color, #ddd)").attr("stroke-opacity", 0.4)
       .attr("stroke-width", function(d) { return Math.min((d.weight || 1) * 0.5, 2); });
@@ -96,10 +96,11 @@
     node.append("circle").attr("r", function(d) { return d.radius; }).attr("fill", function(d) { return d.color; })
       .attr("stroke", "var(--main-bg, #fff)").attr("stroke-width", function(d) { return d.expanded ? 3 : 1.5; });
     if (opts.showLabels) {
-      node.append("text").text(function(d) { return d.label || d.title; })
+      node.filter(function(d) { return d.isSection; }).append("text")
+        .text(function(d) { return d.label; })
         .attr("dx", function(d) { return d.radius + 5; }).attr("dy", ".35em")
-        .attr("font-size", function(d) { return Math.max(d.isSection ? 14 : 10, ovW * (d.isSection ? 0.012 : 0.008)) + "px"; })
-        .attr("font-weight", function(d) { return d.isSection ? "700" : "400"; })
+        .attr("font-size", function(d) { return Math.max(14, ovW * 0.012) + "px"; })
+        .attr("font-weight", "700")
         .attr("fill", "var(--text-color, #333)");
     }
     var tooltip = document.getElementById("graph-overlay").querySelector(".graph-tooltip") || document.createElement("div");
@@ -132,7 +133,7 @@
     var sn = Object.keys(postsBySection).map(function(sec) { return { id: sec, title: sectionLabels[sec], label: sectionLabels[sec], color: colorMap[sec], radius: secR, isSection: true }; });
     var sl = []; var sk = Object.keys(postsBySection);
     for (var i = 0; i < sk.length; i++) for (var j = i + 1; j < sk.length; j++) sl.push({ source: sk[i], target: sk[j], weight: 1 });
-    ovRender(sn, sl, { linkDist: Math.max(150, ovW * 0.15), charge: Math.min(-400, -ovW * 0.4), showLabels: true });
+    ovRender(sn, sl, { linkDist: Math.max(200, ovW * 0.2), charge: Math.min(-600, -ovW * 0.6), showLabels: true });
   }
 
   function ovExpandSection(secId) {
@@ -147,7 +148,7 @@
     var all = [center].concat(children).concat(others);
     var links = []; children.forEach(function(c) { links.push({ source: secId, target: c.id, weight: 1 }); });
     for (var i = 0; i < children.length; i++) for (var j = i + 1; j < children.length; j++) { var sh = children[i].tags.filter(function(t) { return children[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: children[i].id, target: children[j].id, weight: sh.length }); }
-    ovRender(all, links, { linkDist: Math.max(60, ovW * 0.06), charge: Math.min(-100, -ovW * 0.1), showLabels: true });
+    ovRender(all, links, { linkDist: Math.max(100, ovW * 0.12), charge: Math.min(-200, -ovW * 0.25), showLabels: true });
   }
 
   function ovExpandPost(post) {
@@ -161,7 +162,7 @@
     var all = [center].concat(rNodes);
     var links = related.map(function(r) { return { source: post.id, target: r.post.id, weight: r.weight }; });
     for (var i = 0; i < rNodes.length; i++) for (var j = i + 1; j < rNodes.length; j++) { var sh = rNodes[i].tags.filter(function(t) { return rNodes[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: rNodes[i].id, target: rNodes[j].id, weight: sh.length }); }
-    ovRender(all, links, { linkDist: Math.max(70, ovW * 0.07), charge: Math.min(-150, -ovW * 0.15), showLabels: true });
+    ovRender(all, links, { linkDist: Math.max(100, ovW * 0.12), charge: Math.min(-250, -ovW * 0.3), showLabels: true });
   }
 
   window._graphOverlayInit = function() {
