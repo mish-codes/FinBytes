@@ -9,10 +9,14 @@ permalink: /
 <style>
 #panel-wrapper { display: none !important; }
 #main-wrapper > .row > .col-xl-9 { max-width: 100% !important; flex: 0 0 100% !important; }
-#main-wrapper { margin-top: 0 !important; padding-top: 0 !important; }
-.content { max-width: 100% !important; padding: 0 !important; }
+#main-wrapper { margin-top: 0 !important; padding-top: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+#main-wrapper .container { max-width: 100% !important; padding: 0 !important; }
+main.col-12 { padding: 0 !important; }
+.content { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
 .px-1 { padding: 0 !important; }
 .dynamic-title { display: none !important; }
+.row { margin: 0 !important; }
+#tail-wrapper { display: none !important; }
 .graph-lede {
   color: var(--text-muted-color, #666);
   font-size: .95rem;
@@ -36,8 +40,8 @@ permalink: /
 .graph-links a:hover { color: var(--link-color, #2a7ae2); }
 .graph-container {
   width: 100%;
-  height: calc(100vh - 140px);
-  min-height: 500px;
+  height: calc(100vh - 80px);
+  min-height: 600px;
   border: none;
   overflow: hidden;
   background: var(--main-bg, #fff);
@@ -104,7 +108,7 @@ permalink: /
   <span class="graph-breadcrumb" id="breadcrumb"></span>
 </div>
 
-<div class="graph-container" id="graph" style="width:100%;height:calc(100vh - 140px);min-height:500px;"></div>
+<div class="graph-container" id="graph" style="width:100%;height:calc(100vh - 80px);min-height:600px;"></div>
 <div class="graph-tooltip" id="tooltip"></div>
 
 <div class="graph-legend">
@@ -242,7 +246,8 @@ permalink: /
     });
     var sl = []; var sk = Object.keys(postsBySection);
     for (var i = 0; i < sk.length; i++) for (var j = i + 1; j < sk.length; j++) sl.push({ source: sk[i], target: sk[j], weight: 1 });
-    renderGraph(sn, sl, { linkDist: Math.max(200, width * 0.2), charge: Math.min(-600, -width * 0.6), showLabels: true });
+    var diag = Math.sqrt(width * width + height * height);
+    renderGraph(sn, sl, { linkDist: diag * 0.2, charge: -diag * 0.8, showLabels: true });
   }
 
   function expandSection(sectionId) {
@@ -257,10 +262,9 @@ permalink: /
     var all = [center].concat(children).concat(others);
     var links = []; children.forEach(function(c) { links.push({ source: sectionId, target: c.id, weight: 1 }); });
     for (var i = 0; i < children.length; i++) for (var j = i + 1; j < children.length; j++) { var sh = children[i].tags.filter(function(t) { return children[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: children[i].id, target: children[j].id, weight: sh.length }); }
-    var nodeCount = children.length;
-    var ld = Math.max(120, Math.min(width, height) * 0.25);
-    var ch = -Math.max(300, Math.min(width, height) * 0.5);
-    renderGraph(all, links, { linkDist: ld, charge: ch, showLabels: true });
+    var diag = Math.sqrt(width * width + height * height);
+    var scale = Math.max(1, children.length / 10);
+    renderGraph(all, links, { linkDist: diag * 0.12 * scale, charge: -diag * 0.5 * scale, showLabels: true });
   }
 
   function expandPost(post) {
@@ -276,9 +280,9 @@ permalink: /
     var all = [center].concat(rNodes);
     var links = related.map(function(r) { return { source: post.id, target: r.post.id, weight: r.weight }; });
     for (var i = 0; i < rNodes.length; i++) for (var j = i + 1; j < rNodes.length; j++) { var sh = rNodes[i].tags.filter(function(t) { return rNodes[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: rNodes[i].id, target: rNodes[j].id, weight: sh.length }); }
-    var ld2 = Math.max(120, Math.min(width, height) * 0.25);
-    var ch2 = -Math.max(300, Math.min(width, height) * 0.5);
-    renderGraph(all, links, { linkDist: ld2, charge: ch2, showLabels: true });
+    var diag3 = Math.sqrt(width * width + height * height);
+    var scale3 = Math.max(1, rNodes.length / 8);
+    renderGraph(all, links, { linkDist: diag3 * 0.12 * scale3, charge: -diag3 * 0.5 * scale3, showLabels: true });
   }
 
   window._graphReset = function() {
