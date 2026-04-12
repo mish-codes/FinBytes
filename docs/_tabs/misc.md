@@ -57,6 +57,10 @@ permalink: /tech-stack/
       <span class="misc-desc">Workflows, OIDC, monorepo patterns</span>
     </li>
     <li>
+      <a href="{{ "/tech-stack/graph-navigation/" | relative_url }}">Graph Navigation for Jekyll</a>
+      <span class="misc-desc">Add an Obsidian-style D3.js expanding graph to any Jekyll blog &mdash; tutorial with gotchas</span>
+    </li>
+    <li>
       <a href="{{ "/tech-stack/plotting-libraries/" | relative_url }}">Plotting Libraries Compared</a>
       <span class="misc-desc">Plotly, Matplotlib, Altair, Bokeh &mdash; same data, four views, outlier handling</span>
     </li>
