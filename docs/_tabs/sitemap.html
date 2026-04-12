@@ -14,6 +14,8 @@ permalink: /
 main.col-12 { padding: 0 !important; }
 .content { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
 .px-1 { padding: 0 !important; }
+#sidebar { transform: translateX(-100%); transition: transform 0.3s ease; z-index: 1100; }
+#sidebar:hover { transform: translateX(0); }
 .dynamic-title { display: none !important; }
 .row { margin: 0 !important; }
 #tail-wrapper { display: none !important; }
@@ -265,7 +267,6 @@ main.col-12 { padding: 0 !important; }
     var others = Object.keys(postsBySection).filter(function(s) { return s !== sectionId; }).map(function(sec) { return { id: sec, title: sectionLabels[sec], label: sectionLabels[sec], color: colorMap[sec], radius: oR, isSection: true }; });
     var all = [center].concat(children).concat(others);
     var links = []; children.forEach(function(c) { links.push({ source: sectionId, target: c.id, weight: 1 }); });
-    for (var i = 0; i < children.length; i++) for (var j = i + 1; j < children.length; j++) { var sh = children[i].tags.filter(function(t) { return children[j].tags.indexOf(t) >= 0; }); if (sh.length >= 3) links.push({ source: children[i].id, target: children[j].id, weight: sh.length }); }
     var diag = Math.sqrt(width * width + height * height);
     var scale = Math.max(1, children.length / 10);
     renderGraph(all, links, { linkDist: diag * 0.12 * scale, charge: -diag * 0.5 * scale, showLabels: true });
@@ -283,7 +284,6 @@ main.col-12 { padding: 0 !important; }
     var rNodes = related.map(function(r) { return { id: r.post.id, title: r.post.title, url: r.post.url, section: r.post.section, tags: r.post.tags, color: r.post.color, radius: rR }; });
     var all = [center].concat(rNodes);
     var links = related.map(function(r) { return { source: post.id, target: r.post.id, weight: r.weight }; });
-    for (var i = 0; i < rNodes.length; i++) for (var j = i + 1; j < rNodes.length; j++) { var sh = rNodes[i].tags.filter(function(t) { return rNodes[j].tags.indexOf(t) >= 0; }); if (sh.length >= 3) links.push({ source: rNodes[i].id, target: rNodes[j].id, weight: sh.length }); }
     var diag3 = Math.sqrt(width * width + height * height);
     var scale3 = Math.max(1, rNodes.length / 8);
     renderGraph(all, links, { linkDist: diag3 * 0.12 * scale3, charge: -diag3 * 0.5 * scale3, showLabels: true });
