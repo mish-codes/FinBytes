@@ -1,0 +1,63 @@
+---
+layout: quant-lab-mini
+title: "Plotting Libraries Compared"
+description: "Same financial data rendered by Plotly, Matplotlib, Altair, and Bokeh — with editable data and outlier detection."
+date: 2026-08-20
+permalink: /quant-lab/plotting-libraries/
+tech: [Python, Plotly, Matplotlib, Altair, Bokeh]
+demo_url: "https://finbytes.streamlit.app/Plotting_Libraries"
+category: dashboard
+tech_stack:
+  - name: Python
+    role: Core language
+  - name: yfinance
+    role: Market data — OHLCV history
+  - name: Plotly
+    role: Interactive charts — native candlestick, hover, zoom
+  - name: Matplotlib
+    role: Static charts — manual candlestick, pixel control
+  - name: Altair
+    role: Grammar of graphics — declarative, concise
+  - name: Bokeh
+    role: Server-side interactive — glyph-based rendering
+  - name: Streamlit
+    role: Web dashboard framework with st.data_editor
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Fetches OHLCV data for any ticker and renders four chart types (line, candlestick, volume bar, returns histogram) using four different Python plotting libraries. The data table is editable — spike a value to see how each library handles outliers.</p>
+
+  <h3>Why four libraries</h3>
+  <p>Each library represents a different philosophy: <strong>Plotly</strong> is interactive and declarative, <strong>Matplotlib</strong> is imperative with pixel control, <strong>Altair</strong> uses grammar-of-graphics for concise specs, and <strong>Bokeh</strong> offers server-side rendering with glyph composition. Comparing them side-by-side reveals which tool fits which job.</p>
+
+  <h3>Outlier handling</h3>
+  <p>Financial data regularly contains extreme values. This project flags values beyond 3 standard deviations and demonstrates each library's approach to marking outliers: annotations (Plotly), arrow labels (Matplotlib), conditional encoding (Altair), and glyph overlays (Bokeh).</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Chart builder pattern</h3>
+  <pre><code class="language-python"># Each library has four functions with the same signature:
+# library_chart_type(df: pd.DataFrame) -> figure_object
+
+from lib.plotting import (
+    plotly_line_chart,      matplotlib_line_chart,
+    altair_line_chart,      bokeh_line_chart,
+    plotly_candlestick,     matplotlib_candlestick,
+    altair_candlestick,     bokeh_candlestick,
+)
+
+# Same data, different renderers
+st.plotly_chart(plotly_line_chart(df))
+st.pyplot(matplotlib_line_chart(df))
+st.altair_chart(altair_line_chart(df))
+components.html(file_html(bokeh_line_chart(df), CDN))
+</code></pre>
+
+  <h3>Outlier detection</h3>
+  <pre><code class="language-python">def detect_outliers(df, n_std=3.0):
+    numeric = df.select_dtypes(include=[np.number])
+    z_scores = (numeric - numeric.mean()).abs() / numeric.std()
+    return z_scores > n_std
+</code></pre>
+</div>
