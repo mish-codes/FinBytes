@@ -52,6 +52,10 @@ permalink: /tech-stack/
       <a href="{{ "/tech-stack/plotting-libraries/" | relative_url }}">Plotting Libraries Compared</a>
       <span class="misc-desc">Plotly, Matplotlib, Altair, Bokeh &mdash; same data, four views, outlier handling</span>
     </li>
+    <li>
+      <a href="{{ "/tech-stack/london-house-prices/" | relative_url }}">London House Prices</a>
+      <span class="misc-desc">Land Registry data, choropleth maps, postcode comparison, brand effect analysis</span>
+    </li>
   </ul>
 </div>
 

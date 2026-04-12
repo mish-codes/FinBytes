@@ -1,0 +1,65 @@
+---
+layout: quant-lab-mini
+title: "London House Prices"
+description: "Choropleth maps of London house prices by postcode district, postcode comparison, and brand effect analysis."
+date: 2026-08-20
+permalink: /quant-lab/london-house-prices/
+tech: [Python, Plotly, GeoPandas, OpenStreetMap]
+demo_url: "https://finbytes.streamlit.app/London_House_Prices"
+category: dashboard
+tech_stack:
+  - name: Python
+    role: Core language
+  - name: pandas
+    role: Data wrangling — Land Registry PPD processing
+  - name: Plotly
+    role: Choropleth maps and line charts
+  - name: GeoPandas
+    role: Spatial joins — point-in-polygon for brand locations
+  - name: OpenStreetMap
+    role: Overpass API — brand shop locations
+  - name: Streamlit
+    role: Web dashboard framework
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Three analysis tabs for London residential property prices using 10 years of Land Registry data across 171 postcode districts.</p>
+
+  <h3>Postcode Growth</h3>
+  <p>Select a postcode district (e.g., SW11, E14) and see average price trends from 2015 to 2024 on an interactive choropleth map of London. Metrics show current price, total growth, peak year, and transaction count.</p>
+
+  <h3>Compare Postcodes</h3>
+  <p>Pick two districts and overlay their price trends on the same chart. Reveals divergent growth patterns hidden by aggregate London-wide statistics.</p>
+
+  <h3>Brand Effect</h3>
+  <p>Enter a brand name (Waitrose, Pret, Greggs) and the dashboard queries OpenStreetMap for that brand's locations in London, then compares house prices in postcode districts with vs without the brand. The classic "Waitrose effect" — quantified.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Choropleth map</h3>
+  <pre><code class="language-python">fig = px.choropleth_mapbox(
+    summary_df,
+    geojson=geojson,
+    locations="postcode_district",
+    featureidkey="properties.name",
+    color="avg_price",
+    color_continuous_scale="YlOrRd",
+    mapbox_style="carto-positron",
+    center={"lat": 51.5, "lon": -0.1},
+    zoom=9,
+)
+</code></pre>
+
+  <h3>Brand location query</h3>
+  <pre><code class="language-python">from shapely.geometry import Point
+import geopandas as gpd
+
+gdf = gpd.GeoDataFrame.from_features(geojson["features"])
+for loc in brand_locations:
+    pt = Point(loc["lon"], loc["lat"])
+    match = gdf[gdf.geometry.contains(pt)]
+    if not match.empty:
+        brand_districts.add(match.iloc[0]["name"])
+</code></pre>
+</div>
