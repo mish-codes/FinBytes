@@ -217,9 +217,8 @@ permalink: /
       .attr("cx", function(d) { return d.x; })
       .attr("cy", function(d) { return d.y; });
   });
-  } // end initGraph
+  }
 
-  // Wait for container to have dimensions before initialising
   function tryInit() {
     if (container.clientWidth > 0 && container.clientHeight > 0) {
       initGraph();
