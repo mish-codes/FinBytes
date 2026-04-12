@@ -229,7 +229,8 @@ main.col-12 { padding: 0 !important; }
       if (expandedPost && !d.isSection) { window.location.href = d.url; return; }
       if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; }
       clickTimer = setTimeout(function() { clickTimer = null;
-        if (d.isSection) { expandSection(d.id); }
+        if (d.isSection && d.expanded) { showTopLevel(); }
+        else if (d.isSection) { expandSection(d.id); }
         else { expandPost(d); }
       }, 250);
     }).on("dblclick", function(ev, d) {

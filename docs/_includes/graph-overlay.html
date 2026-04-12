@@ -117,7 +117,8 @@
       if (ovExpandedPost && !d.isSection) { window.location.href = d.url; return; }
       if (ovClickTimer) { clearTimeout(ovClickTimer); ovClickTimer = null; return; }
       ovClickTimer = setTimeout(function() { ovClickTimer = null;
-        if (d.isSection) { ovExpandSection(d.id); }
+        if (d.isSection && d.expanded) { ovShowTop(); }
+        else if (d.isSection) { ovExpandSection(d.id); }
         else { ovExpandPost(d); }
       }, 250);
     }).on("dblclick", function(ev, d) {
