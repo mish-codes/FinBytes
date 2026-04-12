@@ -1,6 +1,6 @@
 ---
 layout: page
-title: Misc
+title: Tech Stack
 icon: fas fa-toolbox
 order: 6
 permalink: /misc/
@@ -19,7 +19,7 @@ permalink: /misc/
 .misc-desc { display:block; font-size:.82rem; color:var(--text-muted-color, #999); margin-top:.2rem; }
 </style>
 
-<p class="misc-lede">Infrastructure, tooling, and systems. Practical references with code examples you can copy-paste.</p>
+<p class="misc-lede">Technology stack references &mdash; libraries, infrastructure, and tooling. Practical guides with code examples you can copy-paste.</p>
 
 <div class="misc-section" id="tech-references">
   <div class="misc-hdr">Technology references <span class="sub">from the QuantLab project</span></div>
@@ -47,6 +47,10 @@ permalink: /misc/
     <li>
       <a href="{{ "/misc/github-actions/" | relative_url }}">GitHub Actions &amp; CI/CD</a>
       <span class="misc-desc">Workflows, OIDC, monorepo patterns</span>
+    </li>
+    <li>
+      <a href="{{ "/tech-stack/plotting-libraries/" | relative_url }}">Plotting Libraries Compared</a>
+      <span class="misc-desc">Plotly, Matplotlib, Altair, Bokeh &mdash; same data, four views, outlier handling</span>
     </li>
   </ul>
 </div>

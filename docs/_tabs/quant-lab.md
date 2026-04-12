@@ -123,6 +123,12 @@ permalink: /quant-lab/
     <span class="ql-desc">Auto-generated stats, charts, CSV export</span>
     <span class="ql-tech">Python &middot; yfinance &middot; pandas &middot; Plotly &middot; Streamlit</span>
   </li>
+  <li>
+    <a href="{{ "/quant-lab/plotting-libraries/" | relative_url }}">Plotting Libraries Compared</a>
+    <span class="ql-badges"><span class="ql-badge ql-badge-mini">Mini Project</span><span class="ql-badge ql-badge-dash">Dashboard</span></span>
+    <span class="ql-desc">Same data rendered by Plotly, Matplotlib, Altair, Bokeh &mdash; editable data, outlier detection</span>
+    <span class="ql-tech">Python &middot; yfinance &middot; Plotly &middot; Matplotlib &middot; Altair &middot; Bokeh &middot; Streamlit</span>
+  </li>
 </ul>
 
 <div class="ql-section">Mini Projects &mdash; ML &amp; Quantitative</div>
