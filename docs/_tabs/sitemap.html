@@ -146,26 +146,20 @@ permalink: /
   }
 
   var container = document.getElementById("graph");
-  var width = container.clientWidth;
-  var height = container.clientHeight;
   var tooltip = document.getElementById("tooltip");
 
-  var svg = d3.select("#graph").append("svg")
-    .attr("viewBox", [0, 0, width, height]);
+  function initGraph() {
+    var width = container.clientWidth || 800;
+    var height = container.clientHeight || 500;
 
-  var g = svg.append("g");
+    var svg = d3.select("#graph").append("svg")
+      .attr("viewBox", [0, 0, width, height]);
 
-  var zoom = d3.zoom()
-    .scaleExtent([0.3, 6])
-    .on("zoom", function(event) { g.attr("transform", event.transform); });
+    var g = svg.append("g");
 
-  svg.call(zoom);
-
-  // Start zoomed in at 1.8x, centered
-  var initialScale = 1.8;
-  var tx = (width - width * initialScale) / 2;
-  var ty = (height - height * initialScale) / 2;
-  svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(initialScale));
+    svg.call(d3.zoom()
+      .scaleExtent([0.3, 4])
+      .on("zoom", function(event) { g.attr("transform", event.transform); }));
 
   var simulation = d3.forceSimulation(nodes)
     .force("link", d3.forceLink(links).id(function(d) { return d.id; }).distance(80).strength(0.3))
@@ -223,5 +217,13 @@ permalink: /
       .attr("cx", function(d) { return d.x; })
       .attr("cy", function(d) { return d.y; });
   });
+  } // end initGraph
+
+  // Wait for container to have dimensions before initialising
+  if (container.clientWidth > 0) {
+    initGraph();
+  } else {
+    window.addEventListener("load", initGraph);
+  }
 })();
 </script>
