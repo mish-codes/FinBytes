@@ -6,12 +6,12 @@ tags: [aws, s3, boto3, fred, treasury, par-curve, data-lake, quant-lab, python]
 categories:
 - AWS
 - Data Engineering
-permalink: "/2026/04/05/s3-par-curve-ingestion/"
+permalink: "/tech-stack/s3-par-curve-ingestion/"
 ---
 
 <h2>From Local Dict to Data Lake</h2>
 
-<p>In <a href="/2026/04/04/aws-fundamentals-treasury-data/">the previous post</a>, we fetched US Treasury yields from FRED into a Python dictionary. That's fine for one-off analysis, but it doesn't scale: the data disappears when the script ends, there's no audit trail, and two people on the same team can't see the same snapshot.</p>
+<p>In <a href="{{ "/tech-stack/aws-fundamentals-treasury-data/" | relative_url }}">the previous post</a>, we fetched US Treasury yields from FRED into a Python dictionary. That's fine for one-off analysis, but it doesn't scale: the data disappears when the script ends, there's no audit trail, and two people on the same team can't see the same snapshot.</p>
 
 <p>The answer is a data lake &mdash; raw data stored durably in object storage, with one object per day. S3 is the canonical choice: 11 nines of durability, pennies per GB, no server to manage, and you can point any downstream system at it.</p>
 

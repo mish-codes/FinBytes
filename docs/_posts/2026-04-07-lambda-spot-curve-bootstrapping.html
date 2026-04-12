@@ -6,7 +6,7 @@ tags: [aws, lambda, api-gateway, serverless, bootstrapping, yield-curve, fixed-i
 categories:
 - AWS
 - Fixed Income
-permalink: "/2026/04/07/lambda-spot-curve-bootstrapping/"
+permalink: "/tech-stack/lambda-spot-curve-bootstrapping/"
 ---
 
 <h2>From Par Yields to Spot Rates</h2>
@@ -148,6 +148,6 @@ def lambda_handler(event, context):
 
 <h2>What's Next</h2>
 
-<p>The Lambda computes spot rates on demand but doesn't remember anything. <a href="/2026/04/06/rds-postgresql-yield-schema/">The RDS schema</a> from the last post has a <code>spot_curves</code> table waiting. Exercise 13 will wire the Lambda to pull par yields from S3, compute the spot curve, and write it back to RDS &mdash; one S3-triggered pipeline step.</p>
+<p>The Lambda computes spot rates on demand but doesn't remember anything. <a href="{{ "/tech-stack/rds-postgresql-yield-schema/" | relative_url }}">The RDS schema</a> from the last post has a <code>spot_curves</code> table waiting. Exercise 13 will wire the Lambda to pull par yields from S3, compute the spot curve, and write it back to RDS &mdash; one S3-triggered pipeline step.</p>
 
 <p>Full code: <a href="https://github.com/MishCodesFinBytes/QuantLab/tree/master/exercises/12-lambda-api-gateway">exercises/12-lambda-api-gateway</a>.</p>
