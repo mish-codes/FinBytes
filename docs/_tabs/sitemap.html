@@ -155,9 +155,17 @@ permalink: /
 
   var g = svg.append("g");
 
-  svg.call(d3.zoom()
-    .scaleExtent([0.3, 4])
-    .on("zoom", function(event) { g.attr("transform", event.transform); }));
+  var zoom = d3.zoom()
+    .scaleExtent([0.3, 6])
+    .on("zoom", function(event) { g.attr("transform", event.transform); });
+
+  svg.call(zoom);
+
+  // Start zoomed in at 1.8x, centered
+  var initialScale = 1.8;
+  var tx = (width - width * initialScale) / 2;
+  var ty = (height - height * initialScale) / 2;
+  svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(initialScale));
 
   var simulation = d3.forceSimulation(nodes)
     .force("link", d3.forceLink(links).id(function(d) { return d.id; }).distance(80).strength(0.3))
