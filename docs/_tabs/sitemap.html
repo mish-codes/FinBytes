@@ -254,6 +254,7 @@ main.col-12 { padding: 0 !important; }
       rotateTimer = d3.timer(function() {
         rotateAngle += 0.05;
         g.attr("transform", "rotate(" + rotateAngle + "," + (width / 2) + "," + (height / 2) + ")");
+        node.selectAll("text").attr("transform", "rotate(" + (-rotateAngle) + ")");
       });
     });
   }

@@ -141,6 +141,7 @@
       ovRotateTimer = d3.timer(function() {
         ovRotAngle += 0.05;
         ovG.attr("transform", "rotate(" + ovRotAngle + "," + (ovW / 2) + "," + (ovH / 2) + ")");
+        node.selectAll("text").attr("transform", "rotate(" + (-ovRotAngle) + ")");
       });
     });
   }
