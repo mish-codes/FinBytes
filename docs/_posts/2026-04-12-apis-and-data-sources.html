@@ -1,0 +1,172 @@
+---
+layout: post
+title: "APIs & Data Sources: Everything FinBytes Connects To"
+date: 2026-04-12
+tags: [python, api, data, yfinance, openstreetmap, reference, tech-stack]
+section: infrastructure
+permalink: "/tech-stack/apis-data-sources/"
+---
+
+<h2>Data Sources Used Across FinBytes QuantLabs</h2>
+
+<p>Every dashboard page pulls live data from external APIs or pre-processed datasets. This page catalogues every source, what it provides, whether it needs authentication, and which dashboard pages use it.</p>
+
+<table>
+  <thead>
+    <tr><th>Source</th><th>Data</th><th>Auth</th><th>Pages</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong><a href="https://pypi.org/project/yfinance/">yfinance</a></strong></td>
+      <td>Stock OHLCV prices, ESG scores, company info</td>
+      <td>None</td>
+      <td>
+        <a href="https://finbytes.streamlit.app/Stock_Tracker">Stock Tracker</a>,
+        <a href="https://finbytes.streamlit.app/Stock_Analysis">Stock Analysis</a>,
+        <a href="https://finbytes.streamlit.app/VaR_CVaR">VaR &amp; CVaR</a>,
+        <a href="https://finbytes.streamlit.app/Time_Series">Time Series</a>,
+        <a href="https://finbytes.streamlit.app/Anomaly_Detection">Anomaly Detection</a>,
+        <a href="https://finbytes.streamlit.app/Portfolio_Optimization">Portfolio Optimization</a>,
+        <a href="https://finbytes.streamlit.app/Algo_Trading">Algo Trading</a>,
+        <a href="https://finbytes.streamlit.app/Stock_Prediction">Stock Prediction</a>,
+        <a href="https://finbytes.streamlit.app/Market_Insights">Market Insights</a>,
+        <a href="https://finbytes.streamlit.app/ESG_Tracker">ESG Tracker</a>,
+        <a href="https://finbytes.streamlit.app/Financial_Reporting">Financial Reporting</a>,
+        <a href="https://finbytes.streamlit.app/Plotting_Libraries">Plotting Libraries</a>
+      </td>
+    </tr>
+    <tr>
+      <td><strong><a href="https://www.coingecko.com/en/api">CoinGecko API</a></strong></td>
+      <td>Live crypto prices, 24h change, market cap</td>
+      <td>None</td>
+      <td><a href="https://finbytes.streamlit.app/Crypto_Portfolio">Crypto Portfolio</a></td>
+    </tr>
+    <tr>
+      <td><strong><a href="https://open.er-api.com/">Open Exchange Rates</a></strong></td>
+      <td>FX rates for 150+ currencies</td>
+      <td>None</td>
+      <td><a href="https://finbytes.streamlit.app/Currency_Dashboard">Currency Dashboard</a></td>
+    </tr>
+    <tr>
+      <td><strong><a href="https://www.bankofengland.co.uk/statistics">Bank of England</a></strong></td>
+      <td>SONIA overnight rate (GBP benchmark)</td>
+      <td>None</td>
+      <td><a href="https://finbytes.streamlit.app/Benchmark_Rates">Benchmark Rates</a></td>
+    </tr>
+    <tr>
+      <td><strong><a href="https://data.ecb.europa.eu/">ECB Data API</a></strong></td>
+      <td>&euro;STR overnight rate (EUR benchmark)</td>
+      <td>None</td>
+      <td><a href="https://finbytes.streamlit.app/Benchmark_Rates">Benchmark Rates</a></td>
+    </tr>
+    <tr>
+      <td><strong><a href="https://markets.newyorkfed.org/">New York Fed</a></strong></td>
+      <td>SOFR overnight rate (USD benchmark)</td>
+      <td>None</td>
+      <td><a href="https://finbytes.streamlit.app/Benchmark_Rates">Benchmark Rates</a></td>
+    </tr>
+    <tr>
+      <td><strong><a href="https://www.gov.uk/government/statistical-data-sets/price-paid-data-downloads">HM Land Registry</a></strong></td>
+      <td>Every UK residential property sale since 1995</td>
+      <td>None</td>
+      <td><a href="https://finbytes.streamlit.app/London_House_Prices">London House Prices</a></td>
+    </tr>
+    <tr>
+      <td><strong><a href="https://overpass-api.de/">OpenStreetMap Overpass</a></strong></td>
+      <td>Shop/brand locations (spatial queries)</td>
+      <td>None</td>
+      <td><a href="https://finbytes.streamlit.app/London_House_Prices">London House Prices</a> (Brand Effect tab)</td>
+    </tr>
+    <tr>
+      <td><strong><a href="https://docs.github.com/en/rest">GitHub Actions API</a></strong></td>
+      <td>CI workflow run status</td>
+      <td>None (public repos)</td>
+      <td><a href="https://finbytes.streamlit.app/">System Health</a></td>
+    </tr>
+    <tr>
+      <td><strong>FinBytes Scanner API</strong></td>
+      <td>Portfolio risk scans (VaR, CVaR, Sharpe, AI narrative)</td>
+      <td>Internal (Render-hosted)</td>
+      <td><a href="https://finbytes.streamlit.app/Stock_Risk_Scanner">Stock Risk Scanner</a></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>How Each Source Works</h2>
+
+<h3>yfinance &mdash; Market Data</h3>
+
+<p>The most-used data source across the dashboard. A Python wrapper around Yahoo Finance that returns pandas DataFrames. No API key, no signup, no rate limiting for reasonable usage.</p>
+
+<pre><code class="language-python">import yfinance as yf
+
+df = yf.download("AAPL", period="1y", auto_adjust=True, progress=False)
+</code></pre>
+
+<p>Returns OHLCV (Open, High, Low, Close, Volume) indexed by date. Used by 12+ dashboard pages for price history, technical indicators, returns, and risk metrics.</p>
+
+<h3>CoinGecko &mdash; Crypto Prices</h3>
+
+<p>Free REST API for cryptocurrency prices. Returns current price, 24-hour change, and market cap in any fiat currency. No key needed for the simple price endpoint.</p>
+
+<pre><code class="language-python">url = "https://api.coingecko.com/api/v3/simple/price"
+params = {"ids": "bitcoin,ethereum", "vs_currencies": "usd",
+          "include_24hr_change": "true", "include_market_cap": "true"}
+r = requests.get(url, params=params, timeout=10)
+</code></pre>
+
+<h3>Open Exchange Rates &mdash; FX</h3>
+
+<p>Free tier covers 150+ currencies against USD. Returns a flat JSON object of rates. No signup required for the open endpoint.</p>
+
+<pre><code class="language-python">r = requests.get("https://open.er-api.com/v6/latest/USD", timeout=10)
+rates = r.json()["rates"]  # {"EUR": 0.92, "GBP": 0.79, ...}
+</code></pre>
+
+<h3>Central Bank APIs &mdash; Benchmark Rates</h3>
+
+<p>Three central banks, three different API formats, same data type (overnight interest rate):</p>
+
+<ul>
+  <li><strong>Bank of England</strong> &mdash; CSV download with a custom URL scheme. SONIA rate series code <code>IUDSNPY</code>.</li>
+  <li><strong>ECB</strong> &mdash; REST API returning CSV. Euro Short-Term Rate (€STR) via the <code>EST</code> flow.</li>
+  <li><strong>New York Fed</strong> &mdash; REST API returning CSV. SOFR from the markets data service.</li>
+</ul>
+
+<p>All three are free, require no authentication, and return date/rate pairs.</p>
+
+<h3>HM Land Registry &mdash; Property Prices</h3>
+
+<p>The definitive UK property price dataset. Published monthly as CSV files at predictable URLs. Each year is ~150MB with every transaction in England and Wales. We download 10 years, filter to London postcodes, and compress to a 5.6MB Parquet file.</p>
+
+<pre><code class="language-python">url = f"https://price-paid-data.publicdata.landregistry.gov.uk/pp-{year}.csv"
+df = pd.read_csv(url, header=None, names=PPD_COLS)
+</code></pre>
+
+<h3>OpenStreetMap Overpass &mdash; Spatial Queries</h3>
+
+<p>Queries the full OpenStreetMap database. We use it to find brand shop locations in London for the &ldquo;Waitrose effect&rdquo; analysis. Free, no auth, but rate-limited &mdash; retry with backoff on 429 responses.</p>
+
+<pre><code class="language-text">[out:json][timeout:60][bbox:51.28,-0.51,51.69,0.33];
+(node["brand"~"Waitrose",i]; way["brand"~"Waitrose",i];);
+out center;
+</code></pre>
+
+<h3>GitHub Actions API &mdash; CI Status</h3>
+
+<p>The System Health page checks recent CI runs to show a green/red status. Public repos need no authentication for the <code>/actions/runs</code> endpoint.</p>
+
+<pre><code class="language-python">r = requests.get(
+    f"https://api.github.com/repos/{REPO}/actions/runs",
+    params={"per_page": 3}, timeout=10,
+)
+</code></pre>
+
+<h2>Common Patterns</h2>
+
+<ul>
+  <li><strong>All sources are free and require no API key.</strong> The only authenticated endpoint is the internal Scanner API on Render.</li>
+  <li><strong>Every external call is wrapped in try/except</strong> with a fallback (cached data, sample data, or a user-friendly error message).</li>
+  <li><strong>Streamlit caching (<code>@st.cache_data</code>)</strong> prevents redundant API calls on every rerun.</li>
+  <li><strong>Tests mock all external calls</strong> via <code>conftest.py</code> autouse fixtures &mdash; no test ever hits the network.</li>
+</ul>
