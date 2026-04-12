@@ -26,6 +26,13 @@ tech_stack:
   <h3>What it does</h3>
   <p>Three analysis tabs for London residential property prices using 10 years of Land Registry data across 171 postcode districts.</p>
 
+  <h3>The data</h3>
+  <p><strong>Source:</strong> <a href="https://www.gov.uk/government/statistical-data-sets/price-paid-data-downloads">HM Land Registry Price Paid Data</a> &mdash; the official record of every residential property sale in England and Wales, published monthly under the Open Government Licence.</p>
+  <p><strong>Coverage:</strong> 696,485 London transactions from January 2015 to December 2024. Each record includes the sale price, date, full postcode, property type (detached, semi-detached, terraced, flat), and whether it was a new build.</p>
+  <p><strong>Processing:</strong> Yearly CSV files (~150MB each) are downloaded from <code>price-paid-data.publicdata.landregistry.gov.uk</code>, filtered to London postcodes (E, EC, N, NW, SE, SW, W, WC), and compressed into a 5.6MB Parquet file. The postcode district (e.g., &ldquo;SW11&rdquo; from &ldquo;SW11 1AA&rdquo;) is extracted for aggregation.</p>
+  <p><strong>Map boundaries:</strong> 171 London postcode district polygons from <a href="https://github.com/missinglink/uk-postcode-polygons">missinglink/uk-postcode-polygons</a> (CC-BY-SA 3.0), merged into a single GeoJSON file.</p>
+  <p><strong>Brand locations:</strong> Queried live from the <a href="https://overpass-api.de/">OpenStreetMap Overpass API</a> &mdash; free, no authentication. Returns lat/lng for shops matching a brand name within the London bounding box.</p>
+
   <h3>Postcode Growth</h3>
   <p>Select a postcode district (e.g., SW11, E14) and see average price trends from 2015 to 2024 on an interactive choropleth map of London. Metrics show current price, total growth, peak year, and transaction count.</p>
 
