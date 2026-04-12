@@ -60,7 +60,7 @@ permalink: /
 
 <p class="graph-lede">Explore FinBytes &mdash; click any topic to dive in.</p>
 
-<div class="graph-container" id="graph"></div>
+<div class="graph-container" id="graph" style="width:100%;height:70vh;min-height:400px;"></div>
 <div class="graph-tooltip" id="tooltip"></div>
 
 <div class="graph-legend">
@@ -220,10 +220,13 @@ permalink: /
   } // end initGraph
 
   // Wait for container to have dimensions before initialising
-  if (container.clientWidth > 0) {
-    initGraph();
-  } else {
-    window.addEventListener("load", initGraph);
+  function tryInit() {
+    if (container.clientWidth > 0 && container.clientHeight > 0) {
+      initGraph();
+    } else {
+      requestAnimationFrame(tryInit);
+    }
   }
+  tryInit();
 })();
 </script>
