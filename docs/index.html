@@ -75,15 +75,32 @@ permalink: /
   var posts = [
     {% for post in site.posts %}
     {
-      id: {{ forloop.index }},
+      id: "post-{{ forloop.index }}",
       title: {{ post.title | jsonify }},
       url: "{{ post.url | relative_url }}",
       tags: {{ post.tags | jsonify }},
       section: {{ post.section | default: "" | jsonify }},
-      permalink: {{ post.permalink | default: post.url | jsonify }}
+      permalink: {{ post.permalink | default: post.url | jsonify }},
+      radius: 7
     }{% unless forloop.last %},{% endunless %}
     {% endfor %}
   ];
+
+  var projects = [
+    {% for p in site.quant_lab %}
+    {
+      id: "ql-{{ forloop.index }}",
+      title: {{ p.title | jsonify }},
+      url: "{{ p.url | relative_url }}",
+      tags: [{% for t in p.tech %}"{{ t | downcase }}"{% unless forloop.last %},{% endunless %}{% endfor %}],
+      section: "quant-lab",
+      permalink: {{ p.permalink | default: p.url | jsonify }},
+      radius: 5
+    }{% unless forloop.last %},{% endunless %}
+    {% endfor %}
+  ];
+
+  var allItems = posts.concat(projects);
 
   function getSection(p) {
     if (p.section === "math-finance" || p.permalink.indexOf("/math-finance") === 0) return "math-finance";
@@ -104,14 +121,15 @@ permalink: /
     "quant-lab": "#e24a4a"
   };
 
-  var nodes = posts.map(function(p) {
+  var nodes = allItems.map(function(p) {
     return {
       id: p.id,
       title: p.title,
       url: p.url,
       section: getSection(p),
-      tags: p.tags || [],
-      color: colorMap[getSection(p)] || "#999"
+      tags: (p.tags || []).map(function(t) { return t.toLowerCase(); }),
+      color: colorMap[getSection(p)] || "#999",
+      radius: p.radius || 7
     };
   });
 
@@ -157,7 +175,7 @@ permalink: /
     .selectAll("circle")
     .data(nodes)
     .join("circle")
-    .attr("r", 7)
+    .attr("r", function(d) { return d.radius; })
     .attr("fill", function(d) { return d.color; })
     .attr("stroke", "var(--main-bg, #fff)")
     .attr("stroke-width", 1.5)
@@ -167,15 +185,15 @@ permalink: /
       tooltip.textContent = d.title;
       tooltip.style.left = (event.pageX + 12) + "px";
       tooltip.style.top = (event.pageY - 10) + "px";
-      d3.select(this).attr("r", 10).attr("stroke-width", 2.5);
+      d3.select(this).attr("r", d.radius + 3).attr("stroke-width", 2.5);
     })
     .on("mousemove", function(event) {
       tooltip.style.left = (event.pageX + 12) + "px";
       tooltip.style.top = (event.pageY - 10) + "px";
     })
-    .on("mouseout", function() {
+    .on("mouseout", function(event, d) {
       tooltip.style.opacity = 0;
-      d3.select(this).attr("r", 7).attr("stroke-width", 1.5);
+      d3.select(this).attr("r", d.radius).attr("stroke-width", 1.5);
     })
     .on("click", function(event, d) {
       window.location.href = d.url;
