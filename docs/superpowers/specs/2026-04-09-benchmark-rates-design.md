@@ -108,7 +108,7 @@ Add a new subsection "Interest Rate Benchmarks" in the "Yield Curves & Rates" gr
 ### 4. Cross-Linking
 
 - **Blog → Dashboard:** Callout in Intro tab and Worked Example tab linking to `https://finbytes.streamlit.app/Benchmark_Rates`
-- **Dashboard → Blog:** In "How it works" expander, link to `https://mishcodesfinbytes.github.io/FinBytes/math-finance/benchmark-rates-libor-transition/`
+- **Dashboard → Blog:** In "How it works" expander, link to `https://mish-codes.github.io/FinBytes/math-finance/benchmark-rates-libor-transition/`
 
 ## Test Plan
 

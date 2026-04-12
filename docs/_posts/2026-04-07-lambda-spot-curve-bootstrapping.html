@@ -150,4 +150,4 @@ def lambda_handler(event, context):
 
 <p>The Lambda computes spot rates on demand but doesn't remember anything. <a href="{{ "/tech-stack/rds-postgresql-yield-schema/" | relative_url }}">The RDS schema</a> from the last post has a <code>spot_curves</code> table waiting. Exercise 13 will wire the Lambda to pull par yields from S3, compute the spot curve, and write it back to RDS &mdash; one S3-triggered pipeline step.</p>
 
-<p>Full code: <a href="https://github.com/MishCodesFinBytes/QuantLab/tree/master/exercises/12-lambda-api-gateway">exercises/12-lambda-api-gateway</a>.</p>
+<p>Full code: <a href="https://github.com/mish-codes/QuantLab/tree/master/exercises/12-lambda-api-gateway">exercises/12-lambda-api-gateway</a>.</p>

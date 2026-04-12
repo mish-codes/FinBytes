@@ -8,20 +8,20 @@ title: FinBytes
 tagline: "Quantitative Finance & Software Engineering"
 description: >-
   Just a documentary learning blog.
-url: "https://mishcodesfinbytes.github.io"
+url: "https://mish-codes.github.io"
 baseurl: "/FinBytes"
 
 github:
-  username: MishCodesFinBytes
+  username: mish-codes
 
 # Chirpy-specific
 avatar: /assets/images/logo.png
 
 social:
-  name: MishCodesFinBytes
+  name: mish-codes
   email: me@finbytes.anonaddy.com
   links:
-    - https://github.com/MishCodesFinBytes
+    - https://github.com/mish-codes
 
 # Theme mode (dark/light/auto) — leave empty for auto
 theme_mode:

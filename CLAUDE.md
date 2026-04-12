@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 FinBytes is an educational repository with two main parts:
 1. **Python modules** (`FinBytes/`) — standalone financial/Python teaching examples (not an installable package)
-2. **Jekyll blog** (`docs/`) — GitHub Pages site at https://mishcodesfinbytes.github.io/FinBytes/
+2. **Jekyll blog** (`docs/`) — GitHub Pages site at https://mish-codes.github.io/FinBytes/
 
 License: CC0 1.0 Universal
 
