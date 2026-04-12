@@ -229,7 +229,8 @@ main.col-12 { padding: 0 !important; }
       if (expandedPost && !d.isSection) { window.location.href = d.url; return; }
       if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; return; }
       clickTimer = setTimeout(function() { clickTimer = null;
-        if (d.isSection) { expandSection(d.id); }
+        if (d.isSection && d.expanded) { showTopLevel(); }
+        else if (d.isSection) { expandSection(d.id); }
         else { expandPost(d); }
       }, 250);
     }).on("dblclick", function(ev, d) {
@@ -266,8 +267,7 @@ main.col-12 { padding: 0 !important; }
     var center = { id: sectionId, title: sectionLabels[sectionId], label: sectionLabels[sectionId], color: colorMap[sectionId], radius: cR, isSection: true, expanded: true };
     var children = (postsBySection[sectionId] || []).map(function(p) { return { id: p.id, title: p.title, url: p.url, section: p.section, tags: p.tags, color: p.color, radius: pR }; });
     var others = Object.keys(postsBySection).filter(function(s) { return s !== sectionId; }).map(function(sec) { return { id: sec, title: sectionLabels[sec], label: sectionLabels[sec], color: colorMap[sec], radius: oR, isSection: true }; });
-    var backNode = { id: "_back", label: "\u2190 Back", color: "#888", radius: Math.max(14, width * 0.012), isBack: true, fx: 50, fy: 50 };
-    var all = [backNode, center].concat(children).concat(others);
+    var all = [center].concat(children).concat(others);
     var links = []; children.forEach(function(c) { links.push({ source: sectionId, target: c.id, weight: 1 }); });
     var diag = Math.sqrt(width * width + height * height);
     var scale = Math.max(1, children.length / 10);
@@ -284,8 +284,7 @@ main.col-12 { padding: 0 !important; }
     var center = { id: post.id, title: post.title, url: post.url, section: post.section, tags: post.tags, color: post.color, radius: cR, expanded: true };
     var related = findRelated(post);
     var rNodes = related.map(function(r) { return { id: r.post.id, title: r.post.title, url: r.post.url, section: r.post.section, tags: r.post.tags, color: r.post.color, radius: rR }; });
-    var backNode3 = { id: "_back", label: "\u2190 Back", color: "#888", radius: Math.max(14, width * 0.012), isBack: true, fx: 50, fy: 50 };
-    var all = [backNode3, center].concat(rNodes);
+    var all = [center].concat(rNodes);
     var links = related.map(function(r) { return { source: post.id, target: r.post.id, weight: r.weight }; });
     var diag3 = Math.sqrt(width * width + height * height);
     var scale3 = Math.max(1, rNodes.length / 8);

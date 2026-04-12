@@ -156,10 +156,12 @@ for (var i = 0; i &lt; children.length; i++) {
 
 <h2>Step 6: Navigate on Click</h2>
 
-<p>Use a click/double-click pattern, or make the deepest level navigate directly:</p>
+<p>The click handler covers four cases: clicking the expanded center node goes back, clicking a section expands it, clicking a post at the deepest level navigates, and clicking a post otherwise expands it to show related content.</p>
 
 <pre><code class="language-javascript">node.on("click", function(ev, d) {
-  if (d.isSection) {
+  if (d.isSection &amp;&amp; d.expanded) {
+    showTopLevel();
+  } else if (d.isSection) {
     expandSection(d.id);
   } else if (alreadyExpanded) {
     window.location.href = d.url;
