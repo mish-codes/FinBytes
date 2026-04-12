@@ -113,7 +113,7 @@
       if (ovRotateTimer) { ovRotateTimer.stop(); ovRotateTimer = null; }
     }).on("mouseout", function(ev, d) {
       d3.select(this).select("circle").attr("r", d.radius).attr("stroke-width", d.expanded ? 3 : 1.5);
-      if (ovCanRotate && !ovRotateTimer) { ovRotateTimer = d3.timer(function() { ovRotAngle += 0.05; ovG.attr("transform", "rotate(" + ovRotAngle + "," + (ovW / 2) + "," + (ovH / 2) + ")"); }); }
+      if (ovCanRotate && !ovRotateTimer) { ovRotateTimer = d3.timer(function() { ovRotAngle += 0.05; ovG.attr("transform", "rotate(" + ovRotAngle + "," + (ovW / 2) + "," + (ovH / 2) + ")"); node.selectAll("text").attr("transform", "rotate(" + (-ovRotAngle) + ")"); }); }
     }).on("click", function(ev, d) {
       if (d.isBack) { window._graphOverlayReset(); return; }
       if (ovExpandedPost && !d.isSection) { window.location.href = d.url; return; }
@@ -143,6 +143,7 @@
       ovRotateTimer = d3.timer(function() {
         ovRotAngle += 0.05;
         ovG.attr("transform", "rotate(" + ovRotAngle + "," + (ovW / 2) + "," + (ovH / 2) + ")");
+        node.selectAll("text").attr("transform", "rotate(" + (-ovRotAngle) + ")");
       });
     });
   }
