@@ -1,0 +1,93 @@
+---
+layout: post
+title: "London House Prices: Land Registry Data, Choropleth Maps, and the Waitrose Effect"
+date: 2026-04-12
+tags: [python, data-analysis, plotly, geopandas, openstreetmap, london, house-prices, tech-stack]
+section: infrastructure
+permalink: "/tech-stack/london-house-prices/"
+---
+
+<h2>The Data: Land Registry Price Paid</h2>
+
+<p>Every residential property sale in England and Wales is recorded by HM Land Registry and published as open data. The Price Paid Dataset contains the price, date, postcode, property type (detached, semi, terraced, flat), and whether it was a new build &mdash; for every transaction since 1995. For London alone, that is over 700,000 transactions in the last decade.</p>
+
+<p>The dataset is free to download as yearly CSV files from <code>price-paid-data.publicdata.landregistry.gov.uk</code>. Each file is around 150MB, with no header row and 16 columns. We filter to London postcodes (those starting with E, EC, N, NW, SE, SW, W, WC), extract the postcode district (the first half of the postcode, e.g., &ldquo;SW11&rdquo; from &ldquo;SW11 1AA&rdquo;), and save as a compressed Parquet file for fast loading.</p>
+
+<pre><code class="language-python">import pandas as pd
+import re
+
+LONDON_RE = re.compile(r"^(E|EC|N|NW|SE|SW|W|WC)\d", re.IGNORECASE)
+
+df = pd.read_csv(url, header=None, names=PPD_COLS)
+london = df[df["postcode"].str.match(LONDON_RE, na=False)]
+london["postcode_district"] = london["postcode"].str.split().str[0]
+london.to_parquet("london_ppd.parquet")
+</code></pre>
+
+<h2>Choropleth Maps with Plotly and GeoJSON</h2>
+
+<p>To render London as a colour-coded map, we need two things: the price data aggregated by postcode district, and GeoJSON polygon boundaries for each district. The boundaries come from the <a href="https://github.com/missinglink/uk-postcode-polygons">missinglink/uk-postcode-polygons</a> repository (CC-BY-SA), which provides one GeoJSON file per postcode area. We merge the eight London area files (E, EC, N, NW, SE, SW, W, WC) into a single FeatureCollection with 171 district polygons.</p>
+
+<p>Plotly&rsquo;s <code>choropleth_mapbox</code> takes a DataFrame, a GeoJSON dict, and a key to join them:</p>
+
+<pre><code class="language-python">import plotly.express as px
+
+fig = px.choropleth_mapbox(
+    summary_df,
+    geojson=geojson,
+    locations="postcode_district",
+    featureidkey="properties.name",
+    color="avg_price",
+    color_continuous_scale="YlOrRd",
+    mapbox_style="carto-positron",
+    center={"lat": 51.5, "lon": -0.1},
+    zoom=9,
+)
+</code></pre>
+
+<p>The result is an interactive map of London where each postcode district is shaded by average house price. Hover shows the district name and price. The <code>carto-positron</code> basemap is free and renders cleanly in both light and dark modes.</p>
+
+<h2>Comparing Postcode Districts</h2>
+
+<p>The dashboard lets you pick two postcode districts and overlay their price trends on the same chart. This reveals patterns that aggregate London-wide statistics hide. For example, E14 (Canary Wharf) and SW11 (Battersea) have similar current prices but very different growth trajectories &mdash; E14 peaked in 2017 and has been flat since, while SW11 dipped and recovered.</p>
+
+<p>The comparison is a simple <code>groupby</code> and <code>mean</code> per year for each district, rendered as two traces on a Plotly line chart.</p>
+
+<h2>The Brand Effect: Waitrose, Greggs, and House Prices</h2>
+
+<p>The most interesting tab. You type a brand name (Waitrose, Pret, Costa, Greggs) and the dashboard queries the <a href="https://overpass-api.de/">OpenStreetMap Overpass API</a> for that brand&rsquo;s locations within the London bounding box. It then uses a spatial join (GeoPandas point-in-polygon) to determine which postcode districts contain that brand, and compares average prices in &ldquo;has brand&rdquo; vs &ldquo;no brand&rdquo; districts.</p>
+
+<pre><code class="language-python">from shapely.geometry import Point
+import geopandas as gpd
+
+gdf = gpd.GeoDataFrame.from_features(geojson["features"])
+for loc in brand_locations:
+    pt = Point(loc["lon"], loc["lat"])
+    match = gdf[gdf.geometry.contains(pt)]
+    if not match.empty:
+        brand_districts.add(match.iloc[0]["name"])
+</code></pre>
+
+<p>The &ldquo;Waitrose effect&rdquo; is a well-known observation in UK property: areas with a Waitrose tend to have higher house prices. The dashboard quantifies this. Try comparing Waitrose vs Greggs &mdash; the premium is striking, though of course correlation is not causation. Waitrose chooses affluent locations; it does not cause affluence.</p>
+
+<h2>OpenStreetMap Overpass API</h2>
+
+<p>The Overpass API is free, requires no authentication, and serves structured queries against the full OpenStreetMap database. The query language is terse but powerful:</p>
+
+<pre><code class="language-text">[out:json][timeout:60][bbox:51.28,-0.51,51.69,0.33];
+(
+  node["brand"~"Waitrose",i];
+  way["brand"~"Waitrose",i];
+  node["name"~"Waitrose",i]["shop"];
+  way["name"~"Waitrose",i]["shop"];
+);
+out center;
+</code></pre>
+
+<p>This searches for nodes and ways with a <code>brand</code> or <code>name</code> tag matching &ldquo;Waitrose&rdquo; (case-insensitive) within the London bounding box. The <code>out center</code> directive returns the centroid for ways (buildings), not their full geometry. The response is JSON with <code>lat</code>/<code>lon</code> for each element.</p>
+
+<p>Rate limiting is the main concern &mdash; the API returns 429 if you query too aggressively. The dashboard caches results with <code>@st.cache_data</code> and retries with exponential backoff.</p>
+
+<h2>Try It Yourself</h2>
+
+<p>The <a href="https://finbytes.streamlit.app/London_House_Prices">London House Prices</a> dashboard on FinBytes QuantLabs lets you explore any postcode district, compare two areas side by side, and test the brand effect with any shop name.</p>

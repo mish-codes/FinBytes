@@ -25,6 +25,10 @@ permalink: /tech-stack/
   <div class="misc-hdr">Technology references <span class="sub">from the QuantLab project</span></div>
   <ul class="misc-list">
     <li>
+      <a href="{{ "/tech-stack/apis-data-sources/" | relative_url }}">APIs &amp; Data Sources</a>
+      <span class="misc-desc">yfinance, CoinGecko, Land Registry, Overpass, central bank APIs &mdash; everything FinBytes connects to</span>
+    </li>
+    <li>
       <a href="{{ "/tech-stack/aws-services/" | relative_url }}">AWS Services</a>
       <span class="misc-desc">S3, Lambda, API Gateway, RDS, DynamoDB, SQS, SNS, ElastiCache, CloudWatch</span>
     </li>
@@ -51,6 +55,10 @@ permalink: /tech-stack/
     <li>
       <a href="{{ "/tech-stack/plotting-libraries/" | relative_url }}">Plotting Libraries Compared</a>
       <span class="misc-desc">Plotly, Matplotlib, Altair, Bokeh &mdash; same data, four views, outlier handling</span>
+    </li>
+    <li>
+      <a href="{{ "/tech-stack/london-house-prices/" | relative_url }}">London House Prices</a>
+      <span class="misc-desc">Land Registry data, choropleth maps, postcode comparison, brand effect analysis</span>
     </li>
   </ul>
 </div>
