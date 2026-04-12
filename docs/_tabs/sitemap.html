@@ -218,7 +218,8 @@ main.col-12 { padding: 0 !important; }
     node.on("mouseover", function(ev, d) {
       var hint = d.isSection ? d.label + " (" + (postsBySection[d.id] || []).length + " posts)" : d.title;
       showTooltip(ev, hint);
-      d3.select(this).select("circle").attr("r", d.radius + 3).attr("stroke-width", 2.5);
+      d3.select(this).select("circle").attr("r", d.radius * 1.8).attr("stroke-width", 2.5);
+      if (rotateTimer) { rotateTimer.stop(); rotateTimer = null; }
     }).on("mousemove", function(ev) {
       tooltip.style.left = (ev.pageX + 12) + "px"; tooltip.style.top = (ev.pageY - 10) + "px";
     }).on("mouseout", function(ev, d) {
@@ -254,6 +255,7 @@ main.col-12 { padding: 0 !important; }
       rotateTimer = d3.timer(function() {
         rotateAngle += 0.05;
         g.attr("transform", "rotate(" + rotateAngle + "," + (width / 2) + "," + (height / 2) + ")");
+        node.selectAll("text").attr("transform", "rotate(" + (-rotateAngle) + ")");
       });
     });
   }

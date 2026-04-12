@@ -171,7 +171,33 @@ for (var i = 0; i &lt; children.length; i++) {
 });
 </code></pre>
 
-<h2>Step 7: Add It to Every Page (Floating Button)</h2>
+<h2>Step 7: Slow Rotation After Settling</h2>
+
+<p>A subtle touch that makes the graph feel alive: after the force simulation finishes and nodes reach their final positions, start a slow rotation around the center. This draws the eye and signals that the graph is interactive.</p>
+
+<pre><code class="language-javascript">var rotateTimer = null;
+
+simulation.on("end", function() {
+  var angle = 0;
+  rotateTimer = d3.timer(function() {
+    angle += 0.05;
+    g.attr("transform",
+      "rotate(" + angle + "," + (width / 2) + "," + (height / 2) + ")");
+  });
+});
+</code></pre>
+
+<p>Stop the rotation when the user interacts &mdash; drag, click, or zoom should take priority. Clear the timer at the start of <code>renderGraph</code> (so it stops whenever the graph re-renders) and the zoom handler will naturally override the rotation transform:</p>
+
+<pre><code class="language-javascript">function renderGraph(nodes, links, opts) {
+  if (rotateTimer) { rotateTimer.stop(); rotateTimer = null; }
+  /* ... rest of render ... */
+}
+</code></pre>
+
+<p>The rotation speed of 0.05 degrees per frame gives roughly one full revolution every two minutes &mdash; slow enough to feel ambient, fast enough to notice.</p>
+
+<h2>Step 8: Add It to Every Page (Floating Button)</h2>
 
 <p>To make the graph accessible from any page, override your theme&rsquo;s base layout and inject a floating button + full-screen overlay:</p>
 
