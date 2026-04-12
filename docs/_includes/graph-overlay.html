@@ -113,6 +113,7 @@
     }).on("mouseout", function(ev, d) {
       d3.select(this).select("circle").attr("r", d.radius).attr("stroke-width", d.expanded ? 3 : 1.5);
     }).on("click", function(ev, d) {
+      if (d.isBack) { window._graphOverlayReset(); return; }
       if (ovExpandedPost && !d.isSection) { window.location.href = d.url; return; }
       if (ovClickTimer) { clearTimeout(ovClickTimer); ovClickTimer = null; return; }
       ovClickTimer = setTimeout(function() { ovClickTimer = null;
@@ -150,7 +151,8 @@
     var center = { id: secId, title: sectionLabels[secId], label: sectionLabels[secId], color: colorMap[secId], radius: cR, isSection: true, expanded: true };
     var children = (postsBySection[secId] || []).map(function(p) { return { id: p.id, title: p.title, url: p.url, section: p.section, tags: p.tags, color: p.color, radius: pR }; });
     var others = Object.keys(postsBySection).filter(function(s) { return s !== secId; }).map(function(sec) { return { id: sec, title: sectionLabels[sec], label: sectionLabels[sec], color: colorMap[sec], radius: oR, isSection: true }; });
-    var all = [center].concat(children).concat(others);
+    var backNode = { id: "_back", label: "\u2190 Back", color: "#888", radius: Math.max(14, ovW * 0.012), isBack: true, fx: 50, fy: 50 };
+    var all = [backNode, center].concat(children).concat(others);
     var links = []; children.forEach(function(c) { links.push({ source: secId, target: c.id, weight: 1 }); });
     var diag2 = Math.sqrt(ovW * ovW + ovH * ovH);
     var scale2 = Math.max(1, children.length / 10);
@@ -165,7 +167,8 @@
     var center = { id: post.id, title: post.title, url: post.url, section: post.section, tags: post.tags, color: post.color, radius: cR, expanded: true };
     var related = findRelated(post);
     var rNodes = related.map(function(r) { return { id: r.post.id, title: r.post.title, url: r.post.url, section: r.post.section, tags: r.post.tags, color: r.post.color, radius: rR }; });
-    var all = [center].concat(rNodes);
+    var backNode3 = { id: "_back", label: "\u2190 Back", color: "#888", radius: Math.max(14, ovW * 0.012), isBack: true, fx: 50, fy: 50 };
+    var all = [backNode3, center].concat(rNodes);
     var links = related.map(function(r) { return { source: post.id, target: r.post.id, weight: r.weight }; });
     var diag3 = Math.sqrt(ovW * ovW + ovH * ovH);
     var scale3 = Math.max(1, rNodes.length / 8);
