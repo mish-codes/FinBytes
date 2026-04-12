@@ -29,6 +29,10 @@ permalink: /tech-stack/
       <span class="misc-desc">yfinance, CoinGecko, Land Registry, Overpass, central bank APIs &mdash; everything FinBytes connects to</span>
     </li>
     <li>
+      <a href="{{ "/tech-stack/parquet-files/" | relative_url }}">Parquet Files in Python</a>
+      <span class="misc-desc">Why CSV is not enough &mdash; columnar storage, compression, type preservation, real benchmarks</span>
+    </li>
+    <li>
       <a href="{{ "/tech-stack/aws-services/" | relative_url }}">AWS Services</a>
       <span class="misc-desc">S3, Lambda, API Gateway, RDS, DynamoDB, SQS, SNS, ElastiCache, CloudWatch</span>
     </li>

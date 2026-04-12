@@ -1,0 +1,141 @@
+---
+layout: post
+title: "Parquet Files in Python: Why CSV Is Not Enough"
+date: 2026-04-12
+tags: [python, parquet, pandas, data-engineering, performance, tech-stack]
+section: infrastructure
+permalink: "/tech-stack/parquet-files/"
+---
+
+<h2>The Problem with CSV</h2>
+
+<p>CSV is the default format for sharing tabular data. It is human-readable, universally supported, and simple. It is also slow, bloated, and lossy. A CSV file has no concept of data types &mdash; every value is a string. When you load it into pandas, the library has to guess whether <code>"2024-03-15"</code> is a date, a string, or three separate integers. Columns that should be integers get cast to floats because of a single missing value. And the file itself is enormous because every digit, comma, and newline is stored as a character.</p>
+
+<p>For the London House Prices dashboard, the raw Land Registry CSV files for 10 years of London transactions total ~1.5GB. The same data as a Parquet file: <strong>5.6MB</strong>. That is a 270x compression ratio. Load time drops from minutes to under a second.</p>
+
+<h2>What Is Parquet</h2>
+
+<p>Apache Parquet is a columnar storage format. Instead of storing data row by row (like CSV), it stores each column as a contiguous block. This has three consequences:</p>
+
+<ol>
+  <li><strong>Compression:</strong> Values in the same column tend to be similar (all prices are integers in the same range, all postcodes are short strings). Columnar layout lets compression algorithms exploit this similarity. A column of prices compresses far better than a row containing a price, a date, a postcode, and a property type interleaved.</li>
+  <li><strong>Type preservation:</strong> Each column stores its data type in metadata. A date column stays a date. An integer column stays an integer. No guessing, no silent type coercion.</li>
+  <li><strong>Column pruning:</strong> If you only need the <code>price</code> and <code>date</code> columns, Parquet reads only those columns from disk. CSV has to read every byte of every row to find the columns you want.</li>
+</ol>
+
+<h2>Reading and Writing Parquet in Python</h2>
+
+<p>pandas has built-in Parquet support via the <code>pyarrow</code> backend (installed by default with modern pandas).</p>
+
+<h3>Writing</h3>
+
+<pre><code class="language-python">import pandas as pd
+
+df = pd.read_csv("big_file.csv")
+df.to_parquet("small_file.parquet", index=False)
+</code></pre>
+
+<p>That is the entire migration. One line to read CSV, one line to write Parquet. The resulting file is smaller, faster to load, and preserves your dtypes.</p>
+
+<h3>Reading</h3>
+
+<pre><code class="language-python">df = pd.read_parquet("small_file.parquet")
+</code></pre>
+
+<p>No <code>parse_dates</code> argument, no <code>dtype</code> dict, no <code>low_memory=False</code>. The types are already correct because Parquet stored them.</p>
+
+<h3>Reading specific columns</h3>
+
+<pre><code class="language-python">df = pd.read_parquet("small_file.parquet", columns=["price", "date"])
+</code></pre>
+
+<p>This reads only the <code>price</code> and <code>date</code> columns from disk. On a file with 16 columns, this is roughly 8x faster than reading the whole file.</p>
+
+<h2>Real Numbers: London House Prices</h2>
+
+<p>The FinBytes London House Prices dashboard uses Land Registry data &mdash; 696,485 transactions across 10 years. Here is the comparison:</p>
+
+<table>
+  <thead>
+    <tr><th>Metric</th><th>CSV (raw)</th><th>Parquet</th><th>Improvement</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>File size (London only)</td><td>~80 MB</td><td>5.6 MB</td><td>14x smaller</td></tr>
+    <tr><td>File size (all England, 1 year)</td><td>157 MB</td><td>~11 MB</td><td>14x smaller</td></tr>
+    <tr><td>Load time (pandas)</td><td>~4 seconds</td><td>~0.3 seconds</td><td>13x faster</td></tr>
+    <tr><td>Type inference needed</td><td>Yes (dates, prices)</td><td>No</td><td>&mdash;</td></tr>
+    <tr><td>Git-friendly</td><td>Yes (text diffs)</td><td>No (binary)</td><td>Trade-off</td></tr>
+  </tbody>
+</table>
+
+<h2>When to Use Parquet</h2>
+
+<p><strong>Use Parquet when:</strong></p>
+<ul>
+  <li>You have more than a few thousand rows</li>
+  <li>The data is read more often than written</li>
+  <li>You want to preserve dtypes without manual configuration</li>
+  <li>File size matters (deployment, git, network transfer)</li>
+  <li>You are loading data in a dashboard or notebook where startup speed matters</li>
+</ul>
+
+<p><strong>Keep CSV when:</strong></p>
+<ul>
+  <li>The file needs to be human-readable or editable in a spreadsheet</li>
+  <li>You are sharing with non-Python tools that do not support Parquet</li>
+  <li>The dataset is tiny (under 1MB) and type inference is not a problem</li>
+  <li>You want text-based git diffs</li>
+</ul>
+
+<h2>Parquet with Compression Options</h2>
+
+<p>By default, <code>to_parquet</code> uses Snappy compression &mdash; fast to read and write, moderate compression ratio. You can choose other algorithms:</p>
+
+<pre><code class="language-python">df.to_parquet("data.parquet", compression="snappy")   # default — fast, good ratio
+df.to_parquet("data.parquet", compression="gzip")      # smaller file, slower write
+df.to_parquet("data.parquet", compression="zstd")      # best of both — fast + small
+df.to_parquet("data.parquet", compression=None)         # no compression — fastest I/O
+</code></pre>
+
+<p>For a Streamlit dashboard where the file is read on every app restart, Snappy (default) is the right choice. For archival storage where you read rarely, gzip or zstd saves more space.</p>
+
+<h2>Parquet in the FinBytes Pipeline</h2>
+
+<p>The data prep script (<code>scripts/build_london_ppd.py</code>) downloads 10 yearly CSV files from Land Registry, filters to London postcodes, and saves the result as Parquet:</p>
+
+<pre><code class="language-python">import re
+import pandas as pd
+
+LONDON_RE = re.compile(r"^(E|EC|N|NW|SE|SW|W|WC)\d", re.IGNORECASE)
+
+frames = []
+for year in range(2015, 2025):
+    url = f"https://price-paid-data.publicdata.landregistry.gov.uk/pp-{year}.csv"
+    df = pd.read_csv(url, header=None, names=PPD_COLS)
+    df = df[df["postcode"].str.match(LONDON_RE, na=False)]
+    df["postcode_district"] = df["postcode"].str.split().str[0]
+    df["date"] = pd.to_datetime(df["date"])
+    frames.append(df)
+
+combined = pd.concat(frames, ignore_index=True)
+combined.to_parquet("dashboard/data/london_ppd.parquet", index=False)
+</code></pre>
+
+<p>The dashboard then loads this single file on startup &mdash; 5.6MB, under a second, types already correct. No CSV parsing, no type guessing, no wasted memory.</p>
+
+<h2>Beyond pandas: Polars and DuckDB</h2>
+
+<p>Parquet is not a pandas-specific format. It is an open standard supported by every modern data tool:</p>
+
+<ul>
+  <li><strong>Polars:</strong> <code>pl.read_parquet("file.parquet")</code> &mdash; often 2-5x faster than pandas for the same file</li>
+  <li><strong>DuckDB:</strong> <code>SELECT * FROM 'file.parquet' WHERE price > 500000</code> &mdash; SQL queries directly on Parquet files, no loading step</li>
+  <li><strong>PySpark:</strong> <code>spark.read.parquet("file.parquet")</code> &mdash; distributed processing of large Parquet datasets</li>
+  <li><strong>R (arrow):</strong> <code>arrow::read_parquet("file.parquet")</code></li>
+</ul>
+
+<p>If you write your data as Parquet once, every tool in the ecosystem can read it without conversion.</p>
+
+<h2>Try It Yourself</h2>
+
+<p>The <a href="https://finbytes.streamlit.app/London_House_Prices">London House Prices</a> dashboard loads a Parquet file on every page visit. The <a href="https://github.com/MishCodesFinBytes/QuantLab/blob/master/scripts/build_london_ppd.py">build script</a> shows the full CSV-to-Parquet pipeline.</p>
