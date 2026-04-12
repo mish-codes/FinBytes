@@ -264,3 +264,153 @@ streamlit run app.py
   <li><strong>Sleep in Streamlit blocks everything:</strong> <code>time.sleep(1)</code> in a polling loop freezes the entire UI. Use <code>st.spinner()</code> to show a loading indicator, and keep the total wait time reasonable.</li>
   <li><strong>Auto-deploy surprises:</strong> Streamlit Cloud redeploys on every push to the tracked branch. If you push broken code, the live app goes down immediately. Use a separate branch for development and only merge to the tracked branch when ready.</li>
 </ul>
+
+<h2>Testing with AppTest</h2>
+
+<p>Streamlit provides <code>AppTest</code> in <code>streamlit.testing.v1</code> &mdash; a headless runner that executes your page script and lets you inspect the rendered elements without a browser. Combined with pytest, it gives you fast, deterministic frontend tests.</p>
+
+<h3>Basic Smoke Test</h3>
+
+<p>The simplest test: load the page and check it does not crash.</p>
+
+<pre><code class="language-python">from streamlit.testing.v1 import AppTest
+
+class TestStockAnalysis:
+    def _run(self):
+        at = AppTest.from_file("pages/22_Stock_Analysis.py", default_timeout=15)
+        at.run()
+        return at
+
+    def test_loads_without_error(self):
+        at = self._run()
+        assert not at.exception, f"Page crashed: {at.exception}"
+</code></pre>
+
+<p><code>AppTest.from_file</code> takes the path relative to the working directory (usually <code>dashboard/</code>). Set <code>default_timeout</code> high enough for pages that do computation on load. If the page raises any exception, <code>at.exception</code> will contain it.</p>
+
+<h3>Inspecting Elements</h3>
+
+<p>After <code>at.run()</code>, you can query every Streamlit element by type:</p>
+
+<pre><code class="language-python">def test_shows_title(self):
+    at = self._run()
+    assert any("Technical Analysis" in t.value for t in at.title)
+
+def test_has_ticker_input(self):
+    at = self._run()
+    ti = [w for w in at.text_input if w.value == "AAPL"]
+    assert ti, "Expected a ticker text_input defaulting to AAPL"
+
+def test_has_period_selectbox(self):
+    at = self._run()
+    labels = [s.label for s in at.selectbox]
+    assert any("Period" in lbl for lbl in labels)
+
+def test_has_confidence_slider(self):
+    at = self._run()
+    sliders = [s for s in at.slider if s.min == 90 and s.max == 99]
+    assert sliders, "Expected a confidence slider with range 90-99"
+
+def test_has_tabs(self):
+    at = self._run()
+    assert len(at.tabs) >= 2
+
+def test_checkbox_checked_by_default(self):
+    at = self._run()
+    sma_cb = [c for c in at.checkbox if "SMA" in c.label][0]
+    assert sma_cb.value is True
+</code></pre>
+
+<p>Available element lists: <code>at.title</code>, <code>at.markdown</code>, <code>at.text_input</code>, <code>at.selectbox</code>, <code>at.slider</code>, <code>at.button</code>, <code>at.checkbox</code>, <code>at.radio</code>, <code>at.tabs</code>, <code>at.dataframe</code>, <code>at.number_input</code>, <code>at.exception</code>, and more. Each item exposes <code>.value</code>, <code>.label</code>, and type-specific attributes.</p>
+
+<h3>Mocking External Dependencies</h3>
+
+<p>AppTest runs the actual page script, which means it will call yfinance, requests, boto3, and anything else your page imports. You need autouse fixtures in <code>conftest.py</code> to intercept these:</p>
+
+<pre><code class="language-python"># conftest.py
+import pytest
+from unittest.mock import patch, MagicMock
+import pandas as pd
+import numpy as np
+
+@pytest.fixture(autouse=True)
+def mock_set_page_config():
+    """Make st.set_page_config a no-op so pages don't crash in AppTest."""
+    with patch("streamlit.set_page_config"):
+        yield
+
+@pytest.fixture(autouse=True)
+def mock_yfinance(sample_ohlcv_df):
+    """Patch yfinance.download so no test hits the network."""
+    def fake_download(tickers, **kwargs):
+        return sample_ohlcv_df
+    with patch("yfinance.download", side_effect=fake_download):
+        yield
+
+@pytest.fixture(autouse=True)
+def mock_requests():
+    """Patch requests.get for all external HTTP calls."""
+    def fake_get(url, **kwargs):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {}
+        return resp
+    with patch("requests.get", side_effect=fake_get):
+        yield
+</code></pre>
+
+<p>Key points:</p>
+<ul>
+  <li><strong><code>st.set_page_config</code> must be patched</strong> &mdash; it raises an error if called more than once in a session, and AppTest triggers it on every <code>at.run()</code></li>
+  <li><strong>Use <code>autouse=True</code></strong> so every test gets the mocks automatically. Pages import at the module level, so if a mock is missing, the page crashes before your test even starts.</li>
+  <li><strong>Match the mock to the URL</strong> &mdash; if your page calls different APIs, use the URL in <code>fake_get</code> to return appropriate fake data for each one</li>
+  <li><strong>Provide realistic fake data</strong> &mdash; a 252-row OHLCV DataFrame with realistic price ranges prevents <code>NaN</code> and division-by-zero errors in pages that compute indicators</li>
+</ul>
+
+<h3>Testing Pattern per Page</h3>
+
+<p>The QuantLab dashboard follows a consistent pattern: one test class per page, with a shared <code>_run()</code> helper that calls AppTest. Tests then check for expected elements:</p>
+
+<pre><code class="language-python">class TestVaRCVaR:
+    def _run(self):
+        at = AppTest.from_file("pages/30_VaR_CVaR.py", default_timeout=15)
+        at.run()
+        return at
+
+    def test_loads_without_error(self):
+        at = self._run()
+        assert not at.exception, f"Page crashed: {at.exception}"
+
+    def test_shows_title(self):
+        at = self._run()
+        assert any("Value at Risk" in t.value for t in at.title)
+
+    def test_has_ticker_input(self):
+        at = self._run()
+        ti = [w for w in at.text_input if w.value == "AAPL"]
+        assert ti, "Expected a ticker text_input defaulting to AAPL"
+</code></pre>
+
+<p>Every page gets at least a smoke test (<code>test_loads_without_error</code>) and a title check. Pages with inputs get widget assertion tests. This catches two categories of bugs: import/runtime errors, and broken UI contracts (e.g., a renamed widget that breaks downstream logic).</p>
+
+<h3>CI Integration</h3>
+
+<p>The QuantLab CI runs AppTest tests on every push and generates a JSON report that the dashboard itself displays in a Tests tab per page:</p>
+
+<pre><code class="language-bash"># In GitHub Actions
+pip install pytest pytest-json-report
+echo 'API_URL = "http://localhost:8000"' > .streamlit/secrets.toml
+python -m pytest tests/ -v --tb=short --json-report --json-report-file=test_results.json
+</code></pre>
+
+<p>The <code>test_results.json</code> file is committed back via a CI-generated PR, so the deployed dashboard always shows the latest test results without running tests at runtime.</p>
+
+<h3>Things That Tripped Me Up</h3>
+
+<ul>
+  <li><strong><code>st.set_page_config</code> crashes:</strong> If you forget to patch it, AppTest fails with "can only be called once." Add the autouse fixture and forget about it.</li>
+  <li><strong>Sidebar elements are separate:</strong> <code>at.text_input</code> includes both main area and sidebar widgets. If you need to distinguish, check <code>.label</code> rather than position.</li>
+  <li><strong>Tabs render all content:</strong> AppTest executes all tab bodies, not just the active one. This is good for testing but means all tabs need their mocks in place.</li>
+  <li><strong>Slow pages need higher timeouts:</strong> The default timeout is 3 seconds. Pages with heavy computation or multiple chart renders need <code>default_timeout=15</code> or <code>30</code>.</li>
+  <li><strong>Bokeh version mismatch:</strong> <code>st.bokeh_chart</code> only supports Bokeh 2.4.x. If you use a newer Bokeh, render via <code>components.html(file_html(fig, CDN))</code> instead &mdash; AppTest handles this fine.</li>
+</ul>
