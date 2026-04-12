@@ -9,10 +9,14 @@ permalink: /
 <style>
 #panel-wrapper { display: none !important; }
 #main-wrapper > .row > .col-xl-9 { max-width: 100% !important; flex: 0 0 100% !important; }
-#main-wrapper { margin-top: 0 !important; padding-top: 0 !important; }
-.content { max-width: 100% !important; padding: 0 !important; }
+#main-wrapper { margin-top: 0 !important; padding-top: 0 !important; padding-left: 0 !important; padding-right: 0 !important; }
+#main-wrapper .container { max-width: 100% !important; padding: 0 !important; }
+main.col-12 { padding: 0 !important; }
+.content { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
 .px-1 { padding: 0 !important; }
 .dynamic-title { display: none !important; }
+.row { margin: 0 !important; }
+#tail-wrapper { display: none !important; }
 .graph-lede {
   color: var(--text-muted-color, #666);
   font-size: .95rem;
@@ -36,8 +40,8 @@ permalink: /
 .graph-links a:hover { color: var(--link-color, #2a7ae2); }
 .graph-container {
   width: 100%;
-  height: calc(100vh - 140px);
-  min-height: 500px;
+  height: calc(100vh - 80px);
+  min-height: 600px;
   border: none;
   overflow: hidden;
   background: var(--main-bg, #fff);
@@ -104,7 +108,7 @@ permalink: /
   <span class="graph-breadcrumb" id="breadcrumb"></span>
 </div>
 
-<div class="graph-container" id="graph" style="width:100%;height:calc(100vh - 140px);min-height:500px;"></div>
+<div class="graph-container" id="graph" style="width:100%;height:calc(100vh - 80px);min-height:600px;"></div>
 <div class="graph-tooltip" id="tooltip"></div>
 
 <div class="graph-legend">
