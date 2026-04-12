@@ -133,7 +133,8 @@
     var sn = Object.keys(postsBySection).map(function(sec) { return { id: sec, title: sectionLabels[sec], label: sectionLabels[sec], color: colorMap[sec], radius: secR, isSection: true }; });
     var sl = []; var sk = Object.keys(postsBySection);
     for (var i = 0; i < sk.length; i++) for (var j = i + 1; j < sk.length; j++) sl.push({ source: sk[i], target: sk[j], weight: 1 });
-    ovRender(sn, sl, { linkDist: Math.max(200, ovW * 0.2), charge: Math.min(-600, -ovW * 0.6), showLabels: true });
+    var diag = Math.sqrt(ovW * ovW + ovH * ovH);
+    ovRender(sn, sl, { linkDist: diag * 0.2, charge: -diag * 0.8, showLabels: true });
   }
 
   function ovExpandSection(secId) {
@@ -148,9 +149,9 @@
     var all = [center].concat(children).concat(others);
     var links = []; children.forEach(function(c) { links.push({ source: secId, target: c.id, weight: 1 }); });
     for (var i = 0; i < children.length; i++) for (var j = i + 1; j < children.length; j++) { var sh = children[i].tags.filter(function(t) { return children[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: children[i].id, target: children[j].id, weight: sh.length }); }
-    var ld = Math.max(120, Math.min(ovW, ovH) * 0.25);
-    var ch = -Math.max(300, Math.min(ovW, ovH) * 0.5);
-    ovRender(all, links, { linkDist: ld, charge: ch, showLabels: true });
+    var diag2 = Math.sqrt(ovW * ovW + ovH * ovH);
+    var scale2 = Math.max(1, children.length / 10);
+    ovRender(all, links, { linkDist: diag2 * 0.12 * scale2, charge: -diag2 * 0.5 * scale2, showLabels: true });
   }
 
   function ovExpandPost(post) {
@@ -164,9 +165,9 @@
     var all = [center].concat(rNodes);
     var links = related.map(function(r) { return { source: post.id, target: r.post.id, weight: r.weight }; });
     for (var i = 0; i < rNodes.length; i++) for (var j = i + 1; j < rNodes.length; j++) { var sh = rNodes[i].tags.filter(function(t) { return rNodes[j].tags.indexOf(t) >= 0; }); if (sh.length >= 2) links.push({ source: rNodes[i].id, target: rNodes[j].id, weight: sh.length }); }
-    var ld2 = Math.max(120, Math.min(ovW, ovH) * 0.25);
-    var ch2 = -Math.max(300, Math.min(ovW, ovH) * 0.5);
-    ovRender(all, links, { linkDist: ld2, charge: ch2, showLabels: true });
+    var diag3 = Math.sqrt(ovW * ovW + ovH * ovH);
+    var scale3 = Math.max(1, rNodes.length / 8);
+    ovRender(all, links, { linkDist: diag3 * 0.12 * scale3, charge: -diag3 * 0.5 * scale3, showLabels: true });
   }
 
   window._graphOverlayInit = function() {
