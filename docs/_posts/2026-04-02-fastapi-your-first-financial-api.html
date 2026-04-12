@@ -5,7 +5,7 @@ date: 2026-04-02
 tags: [fastapi, api, python, finance, quant-lab]
 categories:
 - Python fundamentals
-permalink: "/2026/04/02/fastapi-your-first-financial-api/"
+permalink: "/python/fastapi-your-first-financial-api/"
 ---
 
 <h2>Why FastAPI for Financial Services?</h2>
@@ -106,7 +106,7 @@ def analyze_portfolio(body: PortfolioIn):
     )
 </code></pre>
 
-<p>If a client sends <code>{"tickers": ["AAPL", "MSFT"], "weights": [0.5]}</code>, FastAPI returns a <strong>422 Unprocessable Entity</strong> with a detailed error message &mdash; and your endpoint function never runs. The Pydantic model_validator catches the mismatch before your code sees the data. This is the same pattern from the <a href="/FinBytes/2026/04/02/pydantic-models-trading-data/">Pydantic exercise</a>, now integrated into an API.</p>
+<p>If a client sends <code>{"tickers": ["AAPL", "MSFT"], "weights": [0.5]}</code>, FastAPI returns a <strong>422 Unprocessable Entity</strong> with a detailed error message &mdash; and your endpoint function never runs. The Pydantic model_validator catches the mismatch before your code sees the data. This is the same pattern from the <a href="/FinBytes/python/pydantic-models-trading-data/">Pydantic exercise</a>, now integrated into an API.</p>
 
 <p>The <code>/analyze</code> endpoint returns a stub for now. Real market data analysis comes in later exercises (yfinance for data, Claude API for narrative). The endpoint shape is ready &mdash; we just swap the stub for real logic.</p>
 
