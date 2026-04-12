@@ -201,12 +201,16 @@ main.col-12 { padding: 0 !important; }
       .attr("stroke", "var(--main-bg, #fff)").attr("stroke-width", function(d) { return d.expanded ? 3 : 1.5; });
 
     if (opts.showLabels) {
-      node.filter(function(d) { return d.isSection; }).append("text")
-        .text(function(d) { return d.label; })
-        .attr("dx", function(d) { return d.radius + 5; }).attr("dy", ".35em")
-        .attr("font-size", function(d) { return Math.max(14, width * 0.012) + "px"; })
-        .attr("font-weight", "700")
-        .attr("fill", "var(--text-color, #333)");
+      node.append("text")
+        .text(function(d) {
+          var t = d.label || d.title || "";
+          return d.isSection ? t : (t.length > 30 ? t.substring(0, 28) + "\u2026" : t);
+        })
+        .attr("dx", function(d) { return d.radius + 4; }).attr("dy", ".35em")
+        .attr("font-size", function(d) { return d.isSection ? Math.max(13, width * 0.011) + "px" : Math.max(9, width * 0.007) + "px"; })
+        .attr("font-weight", function(d) { return d.isSection ? "700" : "400"; })
+        .attr("fill", "var(--text-color, #333)")
+        .style("pointer-events", "none");
     }
 
     node.on("mouseover", function(ev, d) {
