@@ -113,6 +113,7 @@
       if (ovRotateTimer) { ovRotateTimer.stop(); ovRotateTimer = null; }
     }).on("mouseout", function(ev, d) {
       d3.select(this).select("circle").attr("r", d.radius).attr("stroke-width", d.expanded ? 3 : 1.5);
+      if (ovCanRotate && !ovRotateTimer) { ovRotateTimer = d3.timer(function() { ovRotAngle += 0.05; ovG.attr("transform", "rotate(" + ovRotAngle + "," + (ovW / 2) + "," + (ovH / 2) + ")"); }); }
     }).on("click", function(ev, d) {
       if (d.isBack) { window._graphOverlayReset(); return; }
       if (ovExpandedPost && !d.isSection) { window.location.href = d.url; return; }
@@ -127,8 +128,9 @@
       if (!d.isSection) window.location.href = d.url;
     });
     if (ovRotateTimer) { ovRotateTimer.stop(); ovRotateTimer = null; }
+    ovG.attr("transform", null);
     var ovRotAngle = 0;
-    var ovSettled = false;
+    var ovCanRotate = (ovExpandedSection !== null || ovExpandedPost !== null);
 
     ovSim.on("tick", function() {
       link.attr("x1", function(d) { return d.source.x; }).attr("y1", function(d) { return d.source.y; })
@@ -137,12 +139,10 @@
     });
 
     ovSim.on("end", function() {
-      if (ovSettled) return;
-      ovSettled = true;
+      if (!ovCanRotate || ovRotateTimer) return;
       ovRotateTimer = d3.timer(function() {
         ovRotAngle += 0.05;
         ovG.attr("transform", "rotate(" + ovRotAngle + "," + (ovW / 2) + "," + (ovH / 2) + ")");
-        node.selectAll("text").attr("transform", "rotate(" + (-ovRotAngle) + ")");
       });
     });
   }
