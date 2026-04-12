@@ -1,0 +1,75 @@
+---
+layout: quant-lab-capstone
+title: "AWS & Bond/Credit Risk"
+description: "Capstone project — a 12-exercise arc from AWS fundamentals through Monte Carlo Credit VaR, covering infrastructure-as-code, serverless compute, and quantitative credit risk."
+date: 2026-04-16
+tags: [AWS, Terraform, Lambda, S3, RDS, SQS, SNS, Redis, WebSockets, Credit Risk, Bond Pricing, VaR]
+---
+
+<div id="tab-brief" class="ql-tab-content active">
+  <h2>What is the AWS &amp; Credit Risk Arc?</h2>
+  <p>
+    Twelve exercises that build a complete bond and credit risk analytics pipeline on AWS. Starting from raw Treasury yield data
+    on S3, the arc constructs par curves, bootstraps spot rates, fits Nelson-Siegel models, prices bonds with OAS and Z-spread,
+    computes default probabilities and expected losses, streams credit spreads via WebSockets, and culminates in a Monte Carlo
+    Credit VaR simulation with correlated spread movements.
+  </p>
+
+  <h3>Pipeline Flow</h3>
+  <ol>
+    <li><strong>Ingest</strong> &mdash; FRED Treasury data &rarr; S3 (versioned, partitioned by date)</li>
+    <li><strong>Store</strong> &mdash; RDS PostgreSQL with Alembic-managed 6-table yield schema</li>
+    <li><strong>Compute</strong> &mdash; Lambda functions for spot curve bootstrapping, forward rates, Nelson-Siegel fitting</li>
+    <li><strong>Deploy</strong> &mdash; Terraform IaC, GitHub Actions CI/CD with OIDC (no stored AWS keys)</li>
+    <li><strong>Message</strong> &mdash; SQS/SNS for credit spread event processing, WebSockets for real-time streaming</li>
+    <li><strong>Cache</strong> &mdash; ElastiCache Redis for bond price and yield curve caching</li>
+    <li><strong>Monitor</strong> &mdash; CloudWatch dashboards and alarms</li>
+    <li><strong>Analyse</strong> &mdash; OAS/Z-spread via binomial trees, default probability term structures, Monte Carlo Credit VaR</li>
+  </ol>
+
+  <h3>Tech Stack</h3>
+  <table>
+    <thead><tr><th>Layer</th><th>Technology</th></tr></thead>
+    <tbody>
+      <tr><td>Data Ingestion</td><td>S3, boto3, FRED API</td></tr>
+      <tr><td>Database</td><td>RDS PostgreSQL, SQLAlchemy 2.0 async, Alembic</td></tr>
+      <tr><td>Compute</td><td>Lambda, API Gateway (REST + WebSocket)</td></tr>
+      <tr><td>Infrastructure</td><td>Terraform (modules, state, workspaces)</td></tr>
+      <tr><td>CI/CD</td><td>GitHub Actions, OIDC, automated Lambda deploys</td></tr>
+      <tr><td>Messaging</td><td>SQS, SNS, DynamoDB (WebSocket connections)</td></tr>
+      <tr><td>Caching</td><td>ElastiCache Redis, cache-aside pattern</td></tr>
+      <tr><td>Monitoring</td><td>CloudWatch (metrics, alarms, dashboards)</td></tr>
+      <tr><td>Quantitative</td><td>NumPy, SciPy (Nelson-Siegel, Cholesky), Monte Carlo</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Exercises That Built This Project</h2>
+  <table>
+    <thead>
+      <tr><th>#</th><th>Topic</th><th>Key Concepts</th><th>Pipeline Role</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>07</td><td><a href="{{ "/tech-stack/docker-for-python-services/" | relative_url }}">Docker</a></td><td>Multi-stage builds, compose</td><td>Container orchestration for local dev</td></tr>
+      <tr><td>09</td><td><a href="{{ "/tech-stack/aws-fundamentals-treasury-data/" | relative_url }}">AWS Fundamentals</a></td><td>IAM, FRED API, yield classification</td><td>Foundation &mdash; credentials, data source</td></tr>
+      <tr><td>10</td><td><a href="{{ "/tech-stack/s3-par-curve-ingestion/" | relative_url }}">S3 Ingestion</a></td><td>boto3, moto, versioned storage</td><td>Data lake for par curves</td></tr>
+      <tr><td>11</td><td><a href="{{ "/tech-stack/rds-postgresql-yield-schema/" | relative_url }}">RDS &amp; Yield Schema</a></td><td>Alembic, seed from S3</td><td>Persistent yield curve storage</td></tr>
+      <tr><td>12</td><td><a href="{{ "/tech-stack/lambda-spot-curve-bootstrapping/" | relative_url }}">Lambda &amp; Spot Curves</a></td><td>Serverless, API Gateway</td><td>On-demand spot curve computation</td></tr>
+      <tr><td>13</td><td><a href="{{ "/tech-stack/cicd-forward-rate-curve/" | relative_url }}">CI/CD &amp; Forward Rates</a></td><td>GitHub Actions, OIDC</td><td>Automated deploy pipeline</td></tr>
+      <tr><td>14</td><td><a href="{{ "/tech-stack/terraform-nelson-siegel/" | relative_url }}">Terraform &amp; Nelson-Siegel</a></td><td>IaC, curve fitting</td><td>Declarative infra + smooth curves</td></tr>
+      <tr><td>15</td><td><a href="{{ "/tech-stack/sqs-sns-credit-spreads/" | relative_url }}">SQS/SNS &amp; Credit Spreads</a></td><td>Event-driven, CDS, hazard rates</td><td>Async credit spread processing</td></tr>
+      <tr><td>16</td><td><a href="{{ "/tech-stack/websockets-realtime-spreads/" | relative_url }}">WebSockets</a></td><td>Real-time streaming, DynamoDB</td><td>Live spread updates to clients</td></tr>
+      <tr><td>17</td><td><a href="{{ "/tech-stack/elasticache-bond-caching/" | relative_url }}">ElastiCache &amp; Caching</a></td><td>Redis, TTL, cache-aside</td><td>Bond price and curve caching</td></tr>
+      <tr><td>18</td><td><a href="{{ "/tech-stack/terraform-advanced-default-probs/" | relative_url }}">Terraform Advanced</a></td><td>Modules, default probabilities</td><td>Survival curves, expected loss</td></tr>
+      <tr><td>19</td><td><a href="{{ "/tech-stack/cloudwatch-oas-zspreads/" | relative_url }}">CloudWatch &amp; OAS</a></td><td>Binomial trees, callable bonds</td><td>Bond pricing with embedded options</td></tr>
+      <tr><td>20</td><td><a href="{{ "/tech-stack/integration-testing-credit-var/" | relative_url }}">Credit VaR</a></td><td>Monte Carlo, Cholesky, correlation</td><td>Portfolio-level credit risk</td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div id="tab-links" class="ql-tab-content" style="display:none">
+  <h2>Related Posts</h2>
+  <ul>
+    <li><a href="{{ "/quant-lab/phase2-explained/" | relative_url }}">Phase 2 Explained</a> &mdash; every AWS service and finance formula, from scratch</li>
+    <li><a href="{{ "/quant-lab/phase1-explained/" | relative_url }}">Phase 1 Explained</a> &mdash; the Python foundations that precede this arc</li>
+  </ul>
+</div>

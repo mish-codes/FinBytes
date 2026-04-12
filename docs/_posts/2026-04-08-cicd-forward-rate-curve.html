@@ -7,7 +7,7 @@ categories:
 - AWS
 - DevOps
 - Fixed Income
-permalink: "/2026/04/08/cicd-forward-rate-curve/"
+permalink: "/tech-stack/cicd-forward-rate-curve/"
 ---
 
 <h2>What a Forward Rate Tells You</h2>
@@ -69,7 +69,7 @@ permalink: "/2026/04/08/cicd-forward-rate-curve/"
 
 <h2>Shipping it as a Lambda</h2>
 
-<p>Same pattern as the bootstrapping handler from <a href="/2026/04/07/lambda-spot-curve-bootstrapping/">last post</a>: parse JSON, validate, compute, respond. The handler is ~15 lines and the zip is 1.6KB. Plumbing it into the existing API Gateway takes one new resource (<code>/curves/forwards</code>) plus a POST method, Lambda-proxy integration, invoke permission, and a redeploy.</p>
+<p>Same pattern as the bootstrapping handler from <a href="{{ "/tech-stack/lambda-spot-curve-bootstrapping/" | relative_url }}">last post</a>: parse JSON, validate, compute, respond. The handler is ~15 lines and the zip is 1.6KB. Plumbing it into the existing API Gateway takes one new resource (<code>/curves/forwards</code>) plus a POST method, Lambda-proxy integration, invoke permission, and a redeploy.</p>
 
 <pre><code class="language-bash">curl -X POST https://&lt;API_ID&gt;.execute-api.us-east-1.amazonaws.com/dev/curves/forwards \
   -H "Content-Type: application/json" \

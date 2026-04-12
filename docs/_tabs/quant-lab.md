@@ -35,6 +35,29 @@ permalink: /quant-lab/
     <span class="ql-desc">Full-stack portfolio risk analysis &mdash; FastAPI backend, PostgreSQL, Docker, Claude AI narratives, Streamlit dashboard</span>
     <span class="ql-tech">Python &middot; FastAPI &middot; PostgreSQL &middot; SQLAlchemy &middot; Docker &middot; Claude API &middot; yfinance &middot; NumPy &middot; Streamlit &middot; GitHub Actions</span>
   </li>
+  <li>
+    <a href="{{ "/quant-lab/aws-credit-risk/" | relative_url }}">AWS &amp; Bond/Credit Risk</a>
+    <span class="ql-badges"><span class="ql-badge ql-badge-capstone">Capstone</span></span>
+    <span class="ql-desc">12-exercise arc &mdash; AWS fundamentals through Monte Carlo Credit VaR</span>
+    <span class="ql-tech">Python &middot; AWS (S3, Lambda, RDS, SQS, SNS, ElastiCache, CloudWatch) &middot; Terraform &middot; WebSockets &middot; Redis</span>
+  </li>
+</ul>
+
+<div class="ql-section">Explainers &amp; Architecture</div>
+
+<ul class="ql-list">
+  <li>
+    <a href="{{ "/quant-lab/phase1-explained/" | relative_url }}">Phase 1 Explained</a>
+    <span class="ql-desc">Every technology and concept from exercises 01&ndash;08, explained from scratch</span>
+  </li>
+  <li>
+    <a href="{{ "/quant-lab/phase2-explained/" | relative_url }}">Phase 2 Explained</a>
+    <span class="ql-desc">Every AWS service and finance formula from exercises 09&ndash;20</span>
+  </li>
+  <li>
+    <a href="{{ "/quant-lab/stock-risk-scanner-architecture/" | relative_url }}">Stock Risk Scanner &mdash; Architecture Deep Dive</a>
+    <span class="ql-desc">Request flow, module breakdown, deployment, async patterns</span>
+  </li>
 </ul>
 
 <div class="ql-section">Mini Projects &mdash; Calculators</div>

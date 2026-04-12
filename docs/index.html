@@ -1,0 +1,217 @@
+---
+layout: default
+title: Home
+permalink: /
+---
+
+<style>
+.graph-lede {
+  color: var(--text-muted-color, #666);
+  font-size: .95rem;
+  margin-bottom: 1.5rem;
+  max-width: 580px;
+  line-height: 1.7;
+}
+.graph-container {
+  width: 100%;
+  height: 70vh;
+  min-height: 400px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--main-bg, #fff);
+}
+.graph-container svg { width: 100%; height: 100%; }
+.graph-tooltip {
+  position: absolute;
+  padding: 6px 10px;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  font-size: .82rem;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  max-width: 280px;
+}
+.graph-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 1rem;
+  font-size: .78rem;
+  color: var(--text-muted-color, #888);
+}
+.graph-legend-item {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+}
+.graph-legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+</style>
+
+<p class="graph-lede">Explore FinBytes &mdash; click any topic to dive in.</p>
+
+<div class="graph-container" id="graph"></div>
+<div class="graph-tooltip" id="tooltip"></div>
+
+<div class="graph-legend">
+  <span class="graph-legend-item"><span class="graph-legend-dot" style="background:#4a90d9"></span> Python</span>
+  <span class="graph-legend-item"><span class="graph-legend-dot" style="background:#2ea043"></span> Tech Stack</span>
+  <span class="graph-legend-item"><span class="graph-legend-dot" style="background:#e8893c"></span> Math / Finance</span>
+  <span class="graph-legend-item"><span class="graph-legend-dot" style="background:#a371f7"></span> Comparisons</span>
+  <span class="graph-legend-item"><span class="graph-legend-dot" style="background:#e24a4a"></span> Quant Lab</span>
+</div>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script>
+(function() {
+  var posts = [
+    {% for post in site.posts %}
+    {
+      id: "post-{{ forloop.index }}",
+      title: {{ post.title | jsonify }},
+      url: "{{ post.url | relative_url }}",
+      tags: {{ post.tags | jsonify }},
+      section: {{ post.section | default: "" | jsonify }},
+      permalink: {{ post.permalink | default: post.url | jsonify }},
+      radius: 7
+    }{% unless forloop.last %},{% endunless %}
+    {% endfor %}
+  ];
+
+  var projects = [
+    {% for p in site.quant_lab %}
+    {
+      id: "ql-{{ forloop.index }}",
+      title: {{ p.title | jsonify }},
+      url: "{{ p.url | relative_url }}",
+      tags: [{% for t in p.tech %}"{{ t | downcase }}"{% unless forloop.last %},{% endunless %}{% endfor %}],
+      section: "quant-lab",
+      permalink: {{ p.permalink | default: p.url | jsonify }},
+      radius: 5
+    }{% unless forloop.last %},{% endunless %}
+    {% endfor %}
+  ];
+
+  var allItems = posts.concat(projects);
+
+  function getSection(p) {
+    if (p.section === "math-finance" || p.permalink.indexOf("/math-finance") === 0) return "math-finance";
+    if (p.section === "comparisons" || p.permalink.indexOf("/comparisons") === 0) return "comparisons";
+    if (p.permalink.indexOf("/quant-lab") === 0) return "quant-lab";
+    if (p.permalink.indexOf("/tech-stack") === 0) return "tech-stack";
+    if (p.permalink.indexOf("/python") === 0) return "python";
+    if (p.section === "infrastructure") return "tech-stack";
+    if (p.section === "testing" || p.section === "python") return "python";
+    return "python";
+  }
+
+  var colorMap = {
+    "python": "#4a90d9",
+    "tech-stack": "#2ea043",
+    "math-finance": "#e8893c",
+    "comparisons": "#a371f7",
+    "quant-lab": "#e24a4a"
+  };
+
+  var nodes = allItems.map(function(p) {
+    return {
+      id: p.id,
+      title: p.title,
+      url: p.url,
+      section: getSection(p),
+      tags: (p.tags || []).map(function(t) { return t.toLowerCase(); }),
+      color: colorMap[getSection(p)] || "#999",
+      radius: p.radius || 7
+    };
+  });
+
+  var links = [];
+  for (var i = 0; i < nodes.length; i++) {
+    for (var j = i + 1; j < nodes.length; j++) {
+      var shared = nodes[i].tags.filter(function(t) { return nodes[j].tags.indexOf(t) >= 0; });
+      if (shared.length >= 2) {
+        links.push({ source: nodes[i].id, target: nodes[j].id, weight: shared.length });
+      }
+    }
+  }
+
+  var container = document.getElementById("graph");
+  var width = container.clientWidth;
+  var height = container.clientHeight;
+  var tooltip = document.getElementById("tooltip");
+
+  var svg = d3.select("#graph").append("svg")
+    .attr("viewBox", [0, 0, width, height]);
+
+  var g = svg.append("g");
+
+  svg.call(d3.zoom()
+    .scaleExtent([0.3, 4])
+    .on("zoom", function(event) { g.attr("transform", event.transform); }));
+
+  var simulation = d3.forceSimulation(nodes)
+    .force("link", d3.forceLink(links).id(function(d) { return d.id; }).distance(80).strength(0.3))
+    .force("charge", d3.forceManyBody().strength(-120))
+    .force("center", d3.forceCenter(width / 2, height / 2))
+    .force("collision", d3.forceCollide().radius(12));
+
+  var link = g.append("g")
+    .selectAll("line")
+    .data(links)
+    .join("line")
+    .attr("stroke", "var(--border-color, #ddd)")
+    .attr("stroke-opacity", 0.4)
+    .attr("stroke-width", function(d) { return Math.min(d.weight * 0.5, 2); });
+
+  var node = g.append("g")
+    .selectAll("circle")
+    .data(nodes)
+    .join("circle")
+    .attr("r", function(d) { return d.radius; })
+    .attr("fill", function(d) { return d.color; })
+    .attr("stroke", "var(--main-bg, #fff)")
+    .attr("stroke-width", 1.5)
+    .style("cursor", "pointer")
+    .on("mouseover", function(event, d) {
+      tooltip.style.opacity = 1;
+      tooltip.textContent = d.title;
+      tooltip.style.left = (event.pageX + 12) + "px";
+      tooltip.style.top = (event.pageY - 10) + "px";
+      d3.select(this).attr("r", d.radius + 3).attr("stroke-width", 2.5);
+    })
+    .on("mousemove", function(event) {
+      tooltip.style.left = (event.pageX + 12) + "px";
+      tooltip.style.top = (event.pageY - 10) + "px";
+    })
+    .on("mouseout", function(event, d) {
+      tooltip.style.opacity = 0;
+      d3.select(this).attr("r", d.radius).attr("stroke-width", 1.5);
+    })
+    .on("click", function(event, d) {
+      window.location.href = d.url;
+    })
+    .call(d3.drag()
+      .on("start", function(event, d) { if (!event.active) simulation.alphaTarget(0.3).restart(); d.fx = d.x; d.fy = d.y; })
+      .on("drag", function(event, d) { d.fx = event.x; d.fy = event.y; })
+      .on("end", function(event, d) { if (!event.active) simulation.alphaTarget(0); d.fx = null; d.fy = null; }));
+
+  simulation.on("tick", function() {
+    link
+      .attr("x1", function(d) { return d.source.x; })
+      .attr("y1", function(d) { return d.source.y; })
+      .attr("x2", function(d) { return d.target.x; })
+      .attr("y2", function(d) { return d.target.y; });
+    node
+      .attr("cx", function(d) { return d.x; })
+      .attr("cy", function(d) { return d.y; });
+  });
+})();
+</script>

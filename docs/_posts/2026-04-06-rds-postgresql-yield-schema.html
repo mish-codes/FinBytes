@@ -6,12 +6,12 @@ tags: [aws, rds, postgresql, sqlalchemy, alembic, yield-curve, quant-lab, python
 categories:
 - AWS
 - Databases
-permalink: "/2026/04/06/rds-postgresql-yield-schema/"
+permalink: "/tech-stack/rds-postgresql-yield-schema/"
 ---
 
 <h2>Moving Beyond S3 JSON Files</h2>
 
-<p>In <a href="/2026/04/05/s3-par-curve-ingestion/">the previous post</a>, we wrote daily yield curves to S3 as dated JSON objects. That works for immutable snapshots, but it doesn't help when you want to answer questions like "how did the 10Y yield evolve in Q1?" or "give me every curve between two dates". For those, we need a database.</p>
+<p>In <a href="{{ "/tech-stack/s3-par-curve-ingestion/" | relative_url }}">the previous post</a>, we wrote daily yield curves to S3 as dated JSON objects. That works for immutable snapshots, but it doesn't help when you want to answer questions like "how did the 10Y yield evolve in Q1?" or "give me every curve between two dates". For those, we need a database.</p>
 
 <p>This post covers setting up AWS RDS PostgreSQL, designing the schema for yield curves and bonds, and building async SQLAlchemy models with an in-memory SQLite test suite that runs without AWS.</p>
 
