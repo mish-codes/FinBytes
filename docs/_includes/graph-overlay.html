@@ -64,7 +64,7 @@
   allPosts.forEach(function(p) { if (!postsBySection[p.section]) postsBySection[p.section] = []; postsBySection[p.section].push(p); });
 
   var initialized = false;
-  var ovSvg, ovG, ovSim, ovW, ovH;
+  var ovSvg, ovG, ovSim, ovW, ovH, ovRotateTimer = null;
   var ovExpandedSection = null, ovExpandedPost = null, ovClickTimer = null;
   var ovContainer = null, ovResetBtn = null;
 
@@ -125,10 +125,23 @@
       if (ovClickTimer) { clearTimeout(ovClickTimer); ovClickTimer = null; }
       if (!d.isSection) window.location.href = d.url;
     });
+    if (ovRotateTimer) { ovRotateTimer.stop(); ovRotateTimer = null; }
+    var ovRotAngle = 0;
+    var ovSettled = false;
+
     ovSim.on("tick", function() {
       link.attr("x1", function(d) { return d.source.x; }).attr("y1", function(d) { return d.source.y; })
           .attr("x2", function(d) { return d.target.x; }).attr("y2", function(d) { return d.target.y; });
       node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+    });
+
+    ovSim.on("end", function() {
+      if (ovSettled) return;
+      ovSettled = true;
+      ovRotateTimer = d3.timer(function() {
+        ovRotAngle += 0.05;
+        ovG.attr("transform", "rotate(" + ovRotAngle + "," + (ovW / 2) + "," + (ovH / 2) + ")");
+      });
     });
   }
 

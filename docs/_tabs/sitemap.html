@@ -161,7 +161,7 @@ main.col-12 { padding: 0 !important; }
   var tooltip = document.getElementById("tooltip");
   var resetBtn = document.getElementById("resetBtn");
   var breadcrumb = document.getElementById("breadcrumb");
-  var svg, g, simulation, width, height;
+  var svg, g, simulation, width, height, rotateTimer = null;
   var expandedSection = null, expandedPost = null, clickTimer = null;
 
   function showTooltip(event, text) {
@@ -238,10 +238,23 @@ main.col-12 { padding: 0 !important; }
       if (!d.isSection) window.location.href = d.url;
     });
 
+    if (rotateTimer) { rotateTimer.stop(); rotateTimer = null; }
+    var rotateAngle = 0;
+    var settled = false;
+
     simulation.on("tick", function() {
       link.attr("x1", function(d) { return d.source.x; }).attr("y1", function(d) { return d.source.y; })
           .attr("x2", function(d) { return d.target.x; }).attr("y2", function(d) { return d.target.y; });
       node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+    });
+
+    simulation.on("end", function() {
+      if (settled) return;
+      settled = true;
+      rotateTimer = d3.timer(function() {
+        rotateAngle += 0.05;
+        g.attr("transform", "rotate(" + rotateAngle + "," + (width / 2) + "," + (height / 2) + ")");
+      });
     });
   }
 
