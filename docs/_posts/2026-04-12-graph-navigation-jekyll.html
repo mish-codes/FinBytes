@@ -1,0 +1,232 @@
+---
+layout: post
+title: "Adding an Obsidian-Style Graph to Your Jekyll Blog"
+date: 2026-04-12
+tags: [jekyll, d3js, javascript, graph, navigation, tutorial, tech-stack]
+section: infrastructure
+permalink: "/tech-stack/graph-navigation/"
+---
+
+<h2>What You Get</h2>
+
+<p>An interactive force-directed graph where every blog post is a node, connected by shared tags. Click a category to expand its posts, click a post to see related content, double-click to navigate. The graph works as a homepage and as a floating overlay accessible from any page.</p>
+
+<p>This is how the FinBytes blog navigation works. This post explains how to build it on any Jekyll site, step by step.</p>
+
+<h2>Prerequisites</h2>
+
+<ul>
+  <li><strong>Jekyll blog</strong> with posts that have <code>tags</code> in their front matter</li>
+  <li><strong>Posts organised into sections</strong> (via a <code>section</code> field, permalink prefix, or categories)</li>
+  <li>Basic familiarity with HTML, JavaScript, and Liquid templates</li>
+  <li>No build tools, npm, or bundlers needed &mdash; D3.js is loaded from a CDN</li>
+</ul>
+
+<h2>Step 1: Generate Post Data with Liquid</h2>
+
+<p>Jekyll&rsquo;s Liquid templates can output JavaScript objects at build time. This is the key insight: you do not need a separate data file or API. The graph data is baked into the HTML.</p>
+
+<pre><code class="language-html">&lt;script src="https://d3js.org/d3.v7.min.js"&gt;&lt;/script&gt;
+&lt;script&gt;
+(function() {
+  var posts = [
+    {&#37; for post in site.posts &#37;}
+    {
+      id: "post-{&#123; forloop.index &#125;}",
+      title: {&#123; post.title | jsonify &#125;},
+      url: "{&#123; post.url | relative_url &#125;}",
+      tags: {&#123; post.tags | jsonify &#125;},
+      section: {&#123; post.section | default: "" | jsonify &#125;},
+      permalink: {&#123; post.permalink | default: post.url | jsonify &#125;}
+    }{&#37; unless forloop.last &#37;},{&#37; endunless &#37;}
+    {&#37; endfor &#37;}
+  ];
+})();
+&lt;/script&gt;
+</code></pre>
+
+<p><code>jsonify</code> handles escaping quotes in titles. <code>relative_url</code> prepends your <code>baseurl</code> so links work on GitHub Pages subpaths.</p>
+
+<h2>Step 2: Assign Sections from Metadata</h2>
+
+<p>Each node needs a section for colour-coding. You can derive this from any front matter field. Here we check the <code>section</code> field first, then fall back to the permalink prefix:</p>
+
+<pre><code class="language-javascript">function getSection(p) {
+  if (p.section === "math-finance") return "math-finance";
+  if (p.permalink.indexOf("/python") === 0) return "python";
+  if (p.permalink.indexOf("/tech-stack") === 0) return "tech-stack";
+  return "general";
+}
+
+var colorMap = {
+  "python": "#4a90d9",
+  "tech-stack": "#2ea043",
+  "math-finance": "#e8893c",
+  "general": "#999"
+};
+</code></pre>
+
+<h2>Step 3: Build the Top-Level Graph</h2>
+
+<p>The first view shows one large node per section. Group your posts by section and create a node for each:</p>
+
+<pre><code class="language-javascript">var postsBySection = {};
+allPosts.forEach(function(p) {
+  var sec = getSection(p);
+  if (!postsBySection[sec]) postsBySection[sec] = [];
+  postsBySection[sec].push(p);
+});
+
+var sectionNodes = Object.keys(postsBySection).map(function(sec) {
+  return {
+    id: sec,
+    label: sec,
+    color: colorMap[sec],
+    radius: 40,
+    isSection: true
+  };
+});
+</code></pre>
+
+<h2>Step 4: D3 Force Simulation</h2>
+
+<p>The force simulation positions nodes automatically. Four forces work together:</p>
+
+<pre><code class="language-javascript">var simulation = d3.forceSimulation(nodes)
+  .force("link", d3.forceLink(links)
+    .id(function(d) { return d.id; })
+    .distance(linkDist))
+  .force("charge", d3.forceManyBody()
+    .strength(charge))
+  .force("center", d3.forceCenter(width / 2, height / 2))
+  .force("collision", d3.forceCollide()
+    .radius(function(d) { return d.radius + 8; }));
+</code></pre>
+
+<ul>
+  <li><strong>link</strong> &mdash; pulls connected nodes together</li>
+  <li><strong>charge</strong> &mdash; pushes all nodes apart (negative value = repulsion)</li>
+  <li><strong>center</strong> &mdash; pulls everything toward the middle of the SVG</li>
+  <li><strong>collision</strong> &mdash; prevents nodes from overlapping</li>
+</ul>
+
+<h2>Step 5: Expanding on Click</h2>
+
+<p>When a section node is clicked, replace the graph with that section&rsquo;s posts radiating from a center node:</p>
+
+<pre><code class="language-javascript">function expandSection(sectionId) {
+  var center = { id: sectionId, label: sectionId,
+                 radius: 25, isSection: true };
+
+  var children = postsBySection[sectionId].map(function(p) {
+    return { id: p.id, title: p.title, url: p.url,
+             color: p.color, radius: 8 };
+  });
+
+  var links = [];
+  children.forEach(function(c) {
+    links.push({ source: sectionId, target: c.id });
+  });
+
+  renderGraph([center].concat(children), links);
+}
+</code></pre>
+
+<p>Keep the links parent-to-child only &mdash; no sibling cross-links. This gives a clean star layout that is easy to read.</p>
+
+<h2>Step 6: Navigate on Click</h2>
+
+<p>Use a click/double-click pattern, or make the deepest level navigate directly:</p>
+
+<pre><code class="language-javascript">node.on("click", function(ev, d) {
+  if (d.isSection) {
+    expandSection(d.id);
+  } else if (alreadyExpanded) {
+    window.location.href = d.url;
+  } else {
+    expandPost(d);
+  }
+});
+</code></pre>
+
+<h2>Step 7: Add It to Every Page (Floating Button)</h2>
+
+<p>To make the graph accessible from any page, override your theme&rsquo;s base layout and inject a floating button + full-screen overlay:</p>
+
+<pre><code class="language-html">&lt;!-- In _layouts/default.html, before &lt;/body&gt; --&gt;
+{&#37; include graph-overlay.html &#37;}
+</code></pre>
+
+<p>The overlay include contains:</p>
+
+<ul>
+  <li>A fixed-position button (bottom-right corner)</li>
+  <li>A hidden <code>div</code> with <code>position: fixed; width: 100vw; height: 100vh</code></li>
+  <li>The same D3 script and Liquid data generation</li>
+  <li>A close button and Escape key handler</li>
+</ul>
+
+<p>Skip the overlay on the homepage (where the graph is already inline) using a Liquid conditional:</p>
+
+<pre><code class="language-html">{&#37; unless page.permalink == "/" &#37;}
+  &lt;!-- floating button + overlay --&gt;
+{&#37; endunless &#37;}
+</code></pre>
+
+<h2>Gotchas</h2>
+
+<h3>HTML compressors eat JavaScript comments</h3>
+
+<p>If your Jekyll theme uses an HTML compressor (Chirpy does via <code>layout: compress</code>), it strips newlines. A <code>// comment</code> in inline JavaScript will swallow everything after it on the same line &mdash; including your actual code. <strong>Never use <code>//</code> comments in inline scripts.</strong> Use <code>/* */</code> if you must comment, or just don&rsquo;t comment inline JS.</p>
+
+<h3>Container dimensions at script execution time</h3>
+
+<p>If the graph container has zero width/height when the script runs (common with theme layouts that defer rendering), the SVG viewBox will be <code>[0,0,0,0]</code> and nothing will render. Use a polling init:</p>
+
+<pre><code class="language-javascript">function tryInit() {
+  if (container.clientWidth > 0 && container.clientHeight > 0) {
+    initGraph();
+  } else {
+    requestAnimationFrame(tryInit);
+  }
+}
+tryInit();
+</code></pre>
+
+<h3>Force tuning depends on node count</h3>
+
+<p>A section with 5 posts and a section with 25 posts need different force parameters. Scale link distance and charge with the number of visible nodes:</p>
+
+<pre><code class="language-javascript">var diag = Math.sqrt(width * width + height * height);
+var scale = Math.max(1, children.length / 10);
+var linkDist = diag * 0.06 * scale;
+var charge = -diag * 0.2 * scale;
+</code></pre>
+
+<h3>Sidebar overlap</h3>
+
+<p>If your theme has a fixed sidebar, the graph container&rsquo;s <code>clientWidth</code> reflects the available space (not the viewport). On the graph homepage, you can auto-hide the sidebar with CSS:</p>
+
+<pre><code class="language-css">#sidebar {
+  transform: translateX(-100%);
+  transition: transform 0.3s ease;
+}
+#sidebar:hover {
+  transform: translateX(0);
+}
+</code></pre>
+
+<h2>Full Source</h2>
+
+<p>The complete implementation is open source:</p>
+
+<ul>
+  <li><a href="https://github.com/MishCodesFinBytes/FinBytes/blob/master/docs/_tabs/sitemap.html">Sitemap page (inline graph)</a></li>
+  <li><a href="https://github.com/MishCodesFinBytes/FinBytes/blob/master/docs/_includes/graph-overlay.html">Graph overlay (floating button)</a></li>
+  <li><a href="https://github.com/MishCodesFinBytes/FinBytes/blob/master/docs/_layouts/default.html">Layout override</a></li>
+  <li><a href="https://github.com/MishCodesFinBytes/FinBytes/blob/master/docs/_includes/sidebar.html">Sidebar override (collapse button)</a></li>
+</ul>
+
+<h2>Try It</h2>
+
+<p>The live graph is at <a href="https://mishcodesfinbytes.github.io/FinBytes/">mishcodesfinbytes.github.io/FinBytes</a>. Click the floating button on any blog post page to open the overlay version.</p>
