@@ -416,6 +416,27 @@
     }
   });
 
+  // --- Keyboard shortcuts ---
+  document.addEventListener('keydown', function (ev) {
+    // Ignore if user is typing in a text input (except for Escape)
+    var inField = ev.target.tagName === 'INPUT' || ev.target.tagName === 'TEXTAREA';
+    if (ev.key === 'Escape') {
+      if (inField) els.search.blur();
+      else showLanding();
+      return;
+    }
+    if (inField) return;
+    if (ev.key === '/') {
+      ev.preventDefault();
+      els.search.focus();
+      els.search.select();
+    } else if (ev.key === 'r' || ev.key === 'R') {
+      ev.preventDefault();
+      var pick = rawEntries[Math.floor(Math.random() * rawEntries.length)];
+      focusOn(pick.id);
+    }
+  });
+
   // --- Init ---
   renderFeatured();
   var initialParams = new URLSearchParams(window.location.search);
