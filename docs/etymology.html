@@ -1,9 +1,7 @@
 ---
 layout: page
 title: Etymology
-icon: fas fa-language
-order: 10
-permalink: /etymology.html
+permalink: /quant-lab/etymology/
 ---
 
 <link rel="stylesheet" href="{{ '/assets/css/etymology.css' | relative_url }}">
@@ -37,7 +35,7 @@ permalink: /etymology.html
     <ul>
       {% for e in site.data.etymology %}
         {% if e.featured %}
-          <li><a href="{{ '/etymology.html' | relative_url }}?w={{ e.id }}">{{ e.word }}</a> — {{ e.gloss }}</li>
+          <li><a href="{{ '/quant-lab/etymology/' | relative_url }}?w={{ e.id }}">{{ e.word }}</a> — {{ e.gloss }}</li>
         {% endif %}
       {% endfor %}
     </ul>

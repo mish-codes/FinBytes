@@ -224,3 +224,14 @@ permalink: /quant-lab/
     <span class="ql-tech">Python &middot; yfinance &middot; VADER &middot; Plotly &middot; Streamlit</span>
   </li>
 </ul>
+
+<div class="ql-section">Word Tools</div>
+
+<ul class="ql-list">
+  <li>
+    <a href="{{ "/quant-lab/etymology/" | relative_url }}">Etymology</a>
+    <span class="ql-badges"><span class="ql-badge ql-badge-mini">Mini Project</span></span>
+    <span class="ql-desc">Obsidian-style force-directed graph of English word roots &mdash; Greek, Latin, and Proto-Indo-European ancestry</span>
+    <span class="ql-tech">D3.js &middot; Jekyll &middot; YAML</span>
+  </li>
+</ul>
