@@ -1,0 +1,62 @@
+---
+layout: page
+title: Etymology
+icon: fas fa-language
+order: 10
+permalink: /etymology.html
+---
+
+<link rel="stylesheet" href="{{ '/assets/css/etymology.css' | relative_url }}">
+
+<div class="etym-page">
+  <header class="etym-header">
+    <h1>Etymology</h1>
+    <p class="etym-sub">Word roots from Greek, Latin, and Proto-Indo-European. Click a featured root or search for a word.</p>
+  </header>
+
+  <div class="etym-controls">
+    <input id="etym-search" type="search" placeholder="type a word..." aria-label="Search for a word" autocomplete="off">
+    <button id="etym-surprise" type="button" aria-label="Random word">🎲 surprise me</button>
+    <button id="etym-home" type="button" aria-label="Back to featured roots" style="display:none;">⌂ home</button>
+  </div>
+
+  <div id="etym-search-miss" class="etym-miss" role="status" aria-live="polite" hidden></div>
+
+  <section id="etym-landing" class="etym-landing">
+    <h2>Featured roots</h2>
+    <ul id="etym-featured" class="etym-featured-grid"></ul>
+  </section>
+
+  <section id="etym-focus" class="etym-focus" hidden>
+    <div id="etym-canvas" class="etym-canvas" role="img" aria-label="Etymology graph"></div>
+    <aside id="etym-panel" class="etym-panel" aria-live="polite"></aside>
+  </section>
+
+  <noscript>
+    <p><strong>JavaScript is required for the interactive graph.</strong> Below is the raw featured roots list:</p>
+    <ul>
+      {% for e in site.data.etymology %}
+        {% if e.featured %}
+          <li><a href="{{ '/etymology.html' | relative_url }}?w={{ e.id }}">{{ e.word }}</a> — {{ e.gloss }}</li>
+        {% endif %}
+      {% endfor %}
+    </ul>
+  </noscript>
+
+  <div class="etym-legend" aria-hidden="true">
+    <span><i class="etym-dot" style="background:#d4af37"></i>PIE</span>
+    <span><i class="etym-dot" style="background:#4a90e2"></i>Greek</span>
+    <span><i class="etym-dot" style="background:#c0392b"></i>Latin</span>
+    <span><i class="etym-dot" style="background:#27ae60"></i>Germanic</span>
+    <span><i class="etym-dot" style="background:#8e44ad"></i>Old French</span>
+    <span><i class="etym-dot" style="background:#e67e22"></i>Sanskrit</span>
+    <span><i class="etym-dot" style="background:#888"></i>English</span>
+  </div>
+</div>
+
+<script id="etym-data" type="application/json">
+{{ site.data.etymology | jsonify }}
+</script>
+
+<script src="https://d3js.org/d3.v7.min.js"></script>
+<script src="{{ '/assets/js/etymology-graph.js' | relative_url }}"></script>

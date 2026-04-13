@@ -1,0 +1,240 @@
+.etym-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.etym-header h1 {
+  margin-bottom: 4px;
+}
+
+.etym-sub {
+  color: var(--text-muted-color, #888);
+  margin-bottom: 20px;
+}
+
+.etym-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+#etym-search {
+  flex: 1;
+  max-width: 400px;
+  padding: 8px 12px;
+  font-size: 1rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  background: var(--card-bg, #fff);
+  color: var(--text-color, #333);
+}
+
+#etym-surprise,
+#etym-home {
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  background: var(--card-bg, #fff);
+  color: var(--text-color, #333);
+  cursor: pointer;
+}
+
+#etym-surprise:hover,
+#etym-home:hover {
+  background: var(--hover-bg, #f0f0f0);
+}
+
+.etym-miss {
+  padding: 10px 14px;
+  background: #fef7e0;
+  border-left: 3px solid #e8893c;
+  color: #664d03;
+  border-radius: 3px;
+  margin-bottom: 12px;
+}
+
+.etym-featured-grid {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.etym-featured-grid li {
+  margin: 0;
+}
+
+.etym-featured-grid button {
+  width: 100%;
+  padding: 16px 12px;
+  font-size: 1.05rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  background: var(--card-bg, #fff);
+  color: var(--text-color, #333);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+.etym-featured-grid button:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.etym-focus {
+  display: flex;
+  gap: 16px;
+  min-height: 70vh;
+}
+
+.etym-canvas {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+  background: var(--card-bg, #fff);
+}
+
+.etym-canvas svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.etym-panel {
+  width: 320px;
+  flex-shrink: 0;
+  padding: 16px;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  background: var(--card-bg, #fff);
+  font-size: 0.92rem;
+}
+
+.etym-panel h2 {
+  font-size: 1.3rem;
+  margin: 0 0 4px;
+}
+
+.etym-panel .etym-panel-lang {
+  color: var(--text-muted-color, #888);
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.etym-panel .etym-panel-gloss {
+  font-style: italic;
+  margin-bottom: 16px;
+}
+
+.etym-panel h3 {
+  font-size: 0.95rem;
+  margin: 16px 0 6px;
+  color: var(--text-muted-color, #666);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.etym-panel ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0;
+}
+
+.etym-panel .etym-ancestry li {
+  padding: 3px 0 3px 14px;
+  border-left: 2px solid var(--border-color, #ddd);
+  margin-left: 4px;
+}
+
+.etym-panel .etym-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.etym-panel .etym-chips button {
+  padding: 4px 10px;
+  font-size: 0.85rem;
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 12px;
+  background: var(--card-bg, #fff);
+  color: var(--text-color, #333);
+  cursor: pointer;
+}
+
+.etym-panel .etym-chips button:hover {
+  background: var(--hover-bg, #f0f0f0);
+}
+
+.etym-panel .etym-source {
+  margin-top: 14px;
+  font-size: 0.8rem;
+  color: var(--text-muted-color, #888);
+}
+
+.etym-legend {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 4px;
+  font-size: 0.75rem;
+  color: var(--text-color, #333);
+  z-index: 10;
+}
+
+.etym-legend span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.etym-legend .etym-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.etym-tooltip {
+  position: absolute;
+  pointer-events: none;
+  padding: 6px 10px;
+  background: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  font-size: 0.82rem;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 20;
+}
+
+@media (max-width: 768px) {
+  .etym-focus {
+    flex-direction: column;
+  }
+  .etym-panel {
+    width: auto;
+    max-height: 40vh;
+    overflow-y: auto;
+  }
+  .etym-legend {
+    bottom: 10px;
+    left: 10px;
+    font-size: 0.7rem;
+  }
+  .etym-featured-grid {
+    grid-template-columns: 1fr;
+  }
+}

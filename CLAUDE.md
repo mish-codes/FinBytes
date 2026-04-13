@@ -30,6 +30,9 @@ python FinBytes/pers_fin_dashboard/dashboard.py --file data.csv --month 2023-03
 pytest FinBytes/test_samples/
 pytest FinBytes/TestingWithMocks/
 pytest FinBytes/pers_fin_dashboard/
+
+# Run a single test
+pytest FinBytes/test_samples/test_foo.py::test_name
 ```
 
 ## Python dependencies (no requirements.txt)

@@ -1,0 +1,10 @@
+- id: philosophy
+  word: philosophy
+  language: en
+  gloss: "love of wisdom"
+  parents: [philo]
+- id: philo
+  word: philo
+  language: grc
+  gloss: "loving"
+  parents: []

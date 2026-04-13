@@ -1,0 +1,10 @@
+- id: a
+  word: a
+  language: en
+  gloss: "a"
+  parents: [b]
+- id: b
+  word: b
+  language: en
+  gloss: "b"
+  parents: [a]
