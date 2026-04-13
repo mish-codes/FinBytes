@@ -389,8 +389,120 @@
     showMiss(query);
   }
 
+  // --- Autocomplete dropdown ---
+  var suggestBox = null;
+  var suggestItems = [];
+  var suggestIndex = -1;
+
+  function normalizeForMatch(s) {
+    return String(s || '').toLowerCase().replace(/[^a-zα-ωἀ-ῼ]/gi, '');
+  }
+
+  function buildSuggestBox() {
+    if (suggestBox) return;
+    suggestBox = document.createElement('ul');
+    suggestBox.id = 'etym-suggest';
+    suggestBox.className = 'etym-suggest';
+    suggestBox.setAttribute('role', 'listbox');
+    // Insert as next sibling of the search input
+    els.search.parentNode.insertBefore(suggestBox, els.search.nextSibling);
+  }
+
+  function computeSuggestions(query) {
+    var q = normalizeForMatch(query);
+    if (!q) return [];
+    var prefix = [];
+    var contains = [];
+    for (var i = 0; i < rawEntries.length; i++) {
+      var e = rawEntries[i];
+      var w = normalizeForMatch(e.word);
+      var idN = normalizeForMatch(e.id);
+      if (w.indexOf(q) === 0 || idN.indexOf(q) === 0) {
+        prefix.push(e);
+      } else if (w.indexOf(q) >= 0 || idN.indexOf(q) >= 0) {
+        contains.push(e);
+      }
+      if (prefix.length >= 20) break;
+    }
+    return prefix.concat(contains).slice(0, 10);
+  }
+
+  function renderSuggestions(query) {
+    buildSuggestBox();
+    suggestItems = computeSuggestions(query);
+    suggestIndex = -1;
+    if (suggestItems.length === 0) {
+      suggestBox.style.display = 'none';
+      return;
+    }
+    var html = '';
+    for (var i = 0; i < suggestItems.length; i++) {
+      var e = suggestItems[i];
+      html += '<li role="option" data-id="' + escapeHtml(e.id) + '">' +
+              '<span class="etym-suggest-word" style="color:' + (LANG_COLOR[e.language] || LANG_COLOR.unk) + '">' +
+              escapeHtml(e.word) + '</span>' +
+              ' <span class="etym-suggest-gloss">' + escapeHtml(e.gloss || '') + '</span>' +
+              '</li>';
+    }
+    suggestBox.innerHTML = html;
+    suggestBox.style.display = 'block';
+    Array.prototype.forEach.call(suggestBox.querySelectorAll('li'), function (li) {
+      li.addEventListener('mousedown', function (ev) {
+        ev.preventDefault(); // prevent blur before click fires
+        focusOn(li.getAttribute('data-id'));
+        hideSuggestions();
+        els.search.blur();
+      });
+    });
+  }
+
+  function hideSuggestions() {
+    if (suggestBox) suggestBox.style.display = 'none';
+    suggestIndex = -1;
+  }
+
+  function highlightSuggestion(delta) {
+    if (suggestItems.length === 0) return;
+    suggestIndex = (suggestIndex + delta + suggestItems.length) % suggestItems.length;
+    Array.prototype.forEach.call(suggestBox.querySelectorAll('li'), function (li, i) {
+      if (i === suggestIndex) li.classList.add('active');
+      else li.classList.remove('active');
+    });
+  }
+
+  els.search.addEventListener('input', function () {
+    renderSuggestions(els.search.value);
+  });
+
+  els.search.addEventListener('focus', function () {
+    if (els.search.value) renderSuggestions(els.search.value);
+  });
+
+  els.search.addEventListener('blur', function () {
+    // Delay so mousedown-click on a suggestion still fires
+    setTimeout(hideSuggestions, 150);
+  });
+
   els.search.addEventListener('keydown', function (ev) {
-    if (ev.key === 'Enter') handleSearch(els.search.value);
+    if (ev.key === 'ArrowDown') {
+      ev.preventDefault();
+      if (suggestItems.length === 0) renderSuggestions(els.search.value);
+      highlightSuggestion(1);
+    } else if (ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      highlightSuggestion(-1);
+    } else if (ev.key === 'Enter') {
+      if (suggestIndex >= 0 && suggestItems[suggestIndex]) {
+        focusOn(suggestItems[suggestIndex].id);
+        hideSuggestions();
+        els.search.blur();
+      } else {
+        handleSearch(els.search.value);
+        hideSuggestions();
+      }
+    } else if (ev.key === 'Escape') {
+      hideSuggestions();
+    }
   });
 
   els.surprise.addEventListener('click', function () {
