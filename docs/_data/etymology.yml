@@ -167,3 +167,276 @@
   gloss: "to write, scratch"
   parents: []
   source: wiktionary
+
+# --- bio- cluster ---
+
+- id: bios
+  word: "βίος (bios)"
+  language: grc
+  gloss: "life"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: biology
+  word: biology
+  language: en
+  gloss: "study of life"
+  parents: [bios, logos]
+  source: wiktionary
+
+- id: biography
+  word: biography
+  language: en
+  gloss: "life writing"
+  parents: [bios, graphein]
+  source: wiktionary
+
+- id: microbe
+  word: microbe
+  language: en
+  gloss: "tiny life"
+  parents: [mikros, bios]
+  source: wiktionary
+
+# --- geo- cluster ---
+
+- id: ge
+  word: "γῆ (gē)"
+  language: grc
+  gloss: "earth"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: geology
+  word: geology
+  language: en
+  gloss: "study of earth"
+  parents: [ge, logos]
+  source: wiktionary
+
+- id: geography
+  word: geography
+  language: en
+  gloss: "earth writing"
+  parents: [ge, graphein]
+  source: wiktionary
+
+- id: geometry
+  word: geometry
+  language: en
+  gloss: "earth measure"
+  parents: [ge, metron]
+  source: wiktionary
+
+- id: metron
+  word: "μέτρον (metron)"
+  language: grc
+  gloss: "measure"
+  parents: []
+  source: wiktionary
+
+# --- photo- cluster ---
+
+- id: phos
+  word: "φῶς (phōs)"
+  language: grc
+  gloss: "light"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: photograph
+  word: photograph
+  language: en
+  gloss: "light writing"
+  parents: [phos, graphein]
+  source: wiktionary
+
+- id: photon
+  word: photon
+  language: en
+  gloss: "particle of light"
+  parents: [phos]
+  source: wiktionary
+
+# --- micro-/macro- ---
+
+- id: mikros
+  word: "μικρός (mikros)"
+  language: grc
+  gloss: "small"
+  parents: []
+  source: wiktionary
+
+- id: makros
+  word: "μακρός (makros)"
+  language: grc
+  gloss: "long, large"
+  parents: []
+  source: wiktionary
+
+- id: microscope
+  word: microscope
+  language: en
+  gloss: "small-seeing"
+  parents: [mikros, skopein]
+  source: wiktionary
+
+- id: macroscopic
+  word: macroscopic
+  language: en
+  gloss: "visible to the eye"
+  parents: [makros, skopein]
+  source: wiktionary
+
+# --- mono-/poly- ---
+
+- id: monos
+  word: "μόνος (monos)"
+  language: grc
+  gloss: "alone, single"
+  parents: []
+  source: wiktionary
+
+- id: polys
+  word: "πολύς (polys)"
+  language: grc
+  gloss: "many, much"
+  parents: []
+  source: wiktionary
+
+- id: monologue
+  word: monologue
+  language: en
+  gloss: "solo speech"
+  parents: [monos, logos]
+  source: wiktionary
+
+- id: monotone
+  word: monotone
+  language: en
+  gloss: "single tone"
+  parents: [monos, tonos]
+  source: wiktionary
+
+- id: tonos
+  word: "τόνος (tonos)"
+  language: grc
+  gloss: "pitch, stretching"
+  parents: []
+  source: wiktionary
+
+- id: polygon
+  word: polygon
+  language: en
+  gloss: "many-angled"
+  parents: [polys, gonia]
+  source: wiktionary
+
+- id: gonia
+  word: "γωνία (gōnia)"
+  language: grc
+  gloss: "angle, corner"
+  parents: []
+  source: wiktionary
+
+- id: polyglot
+  word: polyglot
+  language: en
+  gloss: "many tongues"
+  parents: [polys, glotta]
+  source: wiktionary
+
+- id: glotta
+  word: "γλῶττα (glōtta)"
+  language: grc
+  gloss: "tongue, language"
+  parents: []
+  source: wiktionary
+
+# --- psych- ---
+
+- id: psyche
+  word: "ψυχή (psychē)"
+  language: grc
+  gloss: "soul, mind, breath"
+  parents: []
+  source: wiktionary
+
+- id: psychology
+  word: psychology
+  language: en
+  gloss: "study of mind"
+  parents: [psyche, logos]
+  source: wiktionary
+
+# --- anthro- expansion ---
+
+- id: anthropology
+  word: anthropology
+  language: en
+  gloss: "study of humans"
+  parents: [anthropos, logos]
+  source: wiktionary
+
+# --- Latin roots ---
+
+- id: aqua
+  word: aqua
+  language: la
+  gloss: "water"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: aquarium
+  word: aquarium
+  language: en
+  gloss: "water vessel"
+  parents: [aqua]
+  source: wiktionary
+
+- id: aquatic
+  word: aquatic
+  language: en
+  gloss: "of water"
+  parents: [aqua]
+  source: wiktionary
+
+- id: terra
+  word: terra
+  language: la
+  gloss: "earth, land"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: terrain
+  word: terrain
+  language: en
+  gloss: "piece of land"
+  parents: [terra]
+  source: wiktionary
+
+- id: territory
+  word: territory
+  language: en
+  gloss: "land around a place"
+  parents: [terra]
+  source: wiktionary
+
+- id: portare
+  word: portare
+  language: la
+  gloss: "to carry"
+  parents: []
+  source: wiktionary
+
+- id: portable
+  word: portable
+  language: en
+  gloss: "able to be carried"
+  parents: [portare]
+  source: wiktionary
