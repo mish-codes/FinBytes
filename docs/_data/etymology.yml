@@ -1,0 +1,67 @@
+# Etymology dataset — see etymology.README.md
+# This is the smoke-test seed. Grows to ~300 entries over Task 14.
+
+- id: philosophy
+  word: philosophy
+  language: en
+  gloss: "love of wisdom"
+  parents: [philo, sophia]
+  source: wiktionary
+
+- id: philo
+  word: "φίλος (philos)"
+  language: grc
+  gloss: "loving, dear"
+  parents: [pie-bhili]
+  featured: true
+  source: wiktionary
+
+- id: sophia
+  word: "σοφία (sophia)"
+  language: grc
+  gloss: "wisdom"
+  parents: []
+  source: wiktionary
+
+- id: pie-bhili
+  word: "*bʰilos"
+  language: pie
+  gloss: "friendly"
+  parents: []
+  source: wiktionary
+
+- id: philanthropy
+  word: philanthropy
+  language: en
+  gloss: "love of humanity"
+  parents: [philo, anthropos]
+  source: wiktionary
+
+- id: anthropos
+  word: "ἄνθρωπος (anthropos)"
+  language: grc
+  gloss: "human being"
+  parents: []
+  source: wiktionary
+
+- id: television
+  word: television
+  language: en
+  gloss: "far-sight device"
+  parents: [tele, visio]
+  source: wiktionary
+
+- id: tele
+  word: "τῆλε (tēle)"
+  language: grc
+  gloss: "far off"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: visio
+  word: visio
+  language: la
+  gloss: "seeing, sight"
+  parents: []
+  source: wiktionary
