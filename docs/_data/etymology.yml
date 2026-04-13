@@ -440,3 +440,496 @@
   gloss: "able to be carried"
   parents: [portare]
   source: wiktionary
+
+# --- chrono- cluster ---
+
+- id: chronos
+  word: "χρόνος (chronos)"
+  language: grc
+  gloss: "time"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: chronology
+  word: chronology
+  language: en
+  gloss: "ordering of time"
+  parents: [chronos, logos]
+  source: wiktionary
+
+- id: chronic
+  word: chronic
+  language: en
+  gloss: "lasting a long time"
+  parents: [chronos]
+  source: wiktionary
+
+- id: synchronize
+  word: synchronize
+  language: en
+  gloss: "same-time"
+  parents: [chronos]
+  source: wiktionary
+
+# --- astro- / nomos cluster ---
+
+- id: astron
+  word: "ἄστρον (astron)"
+  language: grc
+  gloss: "star"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: nomos
+  word: "νόμος (nomos)"
+  language: grc
+  gloss: "law, custom"
+  parents: []
+  source: wiktionary
+
+- id: astronomy
+  word: astronomy
+  language: en
+  gloss: "law of the stars"
+  parents: [astron, nomos]
+  source: wiktionary
+
+- id: astrology
+  word: astrology
+  language: en
+  gloss: "study of the stars"
+  parents: [astron, logos]
+  source: wiktionary
+
+- id: astronaut
+  word: astronaut
+  language: en
+  gloss: "star sailor"
+  parents: [astron, nautes]
+  source: wiktionary
+
+- id: nautes
+  word: "ναύτης (nautēs)"
+  language: grc
+  gloss: "sailor"
+  parents: []
+  source: wiktionary
+
+# --- eco- cluster ---
+
+- id: oikos
+  word: "οἶκος (oikos)"
+  language: grc
+  gloss: "house, household"
+  parents: []
+  source: wiktionary
+
+- id: economy
+  word: economy
+  language: en
+  gloss: "household management"
+  parents: [oikos, nomos]
+  source: wiktionary
+
+- id: ecology
+  word: ecology
+  language: en
+  gloss: "study of the house"
+  parents: [oikos, logos]
+  source: wiktionary
+
+- id: ecosystem
+  word: ecosystem
+  language: en
+  gloss: "house-system"
+  parents: [oikos, systema]
+  source: wiktionary
+
+- id: systema
+  word: "σύστημα (systēma)"
+  language: grc
+  gloss: "organized whole"
+  parents: []
+  source: wiktionary
+
+# --- theo- cluster ---
+
+- id: theos
+  word: "θεός (theos)"
+  language: grc
+  gloss: "god"
+  parents: []
+  source: wiktionary
+
+- id: theology
+  word: theology
+  language: en
+  gloss: "study of god"
+  parents: [theos, logos]
+  source: wiktionary
+
+- id: atheist
+  word: atheist
+  language: en
+  gloss: "without a god"
+  parents: [theos]
+  source: wiktionary
+
+# --- auto- cluster ---
+
+- id: autos
+  word: "αὐτός (autos)"
+  language: grc
+  gloss: "self"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: autograph
+  word: autograph
+  language: en
+  gloss: "self-writing"
+  parents: [autos, graphein]
+  source: wiktionary
+
+- id: autonomous
+  word: autonomous
+  language: en
+  gloss: "self-governing"
+  parents: [autos, nomos]
+  source: wiktionary
+
+- id: autobiography
+  word: autobiography
+  language: en
+  gloss: "self-life writing"
+  parents: [autos, bios, graphein]
+  source: wiktionary
+
+- id: automobile
+  word: automobile
+  language: en
+  gloss: "self-moving"
+  parents: [autos, mobilis]
+  source: wiktionary
+
+- id: mobilis
+  word: mobilis
+  language: la
+  gloss: "movable"
+  parents: []
+  source: wiktionary
+
+# --- hydro- cluster ---
+
+- id: hydor
+  word: "ὕδωρ (hudōr)"
+  language: grc
+  gloss: "water"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: hydraulic
+  word: hydraulic
+  language: en
+  gloss: "water-pipe"
+  parents: [hydor]
+  source: wiktionary
+
+- id: dehydrate
+  word: dehydrate
+  language: en
+  gloss: "remove water"
+  parents: [hydor]
+  source: wiktionary
+
+- id: hydrophobia
+  word: hydrophobia
+  language: en
+  gloss: "fear of water"
+  parents: [hydor, phobos]
+  source: wiktionary
+
+- id: phobos
+  word: "φόβος (phobos)"
+  language: grc
+  gloss: "fear"
+  parents: []
+  source: wiktionary
+
+- id: claustrophobia
+  word: claustrophobia
+  language: en
+  gloss: "fear of enclosed spaces"
+  parents: [claustrum, phobos]
+  source: wiktionary
+
+- id: claustrum
+  word: claustrum
+  language: la
+  gloss: "enclosed space"
+  parents: []
+  source: wiktionary
+
+# --- medical Greek ---
+
+- id: kardia
+  word: "καρδία (kardia)"
+  language: grc
+  gloss: "heart"
+  parents: []
+  source: wiktionary
+
+- id: cardiology
+  word: cardiology
+  language: en
+  gloss: "study of the heart"
+  parents: [kardia, logos]
+  source: wiktionary
+
+- id: cardiac
+  word: cardiac
+  language: en
+  gloss: "of the heart"
+  parents: [kardia]
+  source: wiktionary
+
+- id: neuron-grc
+  word: "νεῦρον (neuron)"
+  language: grc
+  gloss: "sinew, nerve"
+  parents: []
+  source: wiktionary
+
+- id: neurology
+  word: neurology
+  language: en
+  gloss: "study of nerves"
+  parents: [neuron-grc, logos]
+  source: wiktionary
+
+- id: derma
+  word: "δέρμα (derma)"
+  language: grc
+  gloss: "skin"
+  parents: []
+  source: wiktionary
+
+- id: dermatology
+  word: dermatology
+  language: en
+  gloss: "study of skin"
+  parents: [derma, logos]
+  source: wiktionary
+
+- id: haima
+  word: "αἷμα (haima)"
+  language: grc
+  gloss: "blood"
+  parents: []
+  source: wiktionary
+
+- id: hemophilia
+  word: hemophilia
+  language: en
+  gloss: "love of blood (bleeding tendency)"
+  parents: [haima, philo]
+  source: wiktionary
+
+# --- archaeo ---
+
+- id: archaios
+  word: "ἀρχαῖος (archaios)"
+  language: grc
+  gloss: "ancient"
+  parents: []
+  source: wiktionary
+
+- id: archaeology
+  word: archaeology
+  language: en
+  gloss: "study of ancient things"
+  parents: [archaios, logos]
+  source: wiktionary
+
+- id: archaic
+  word: archaic
+  language: en
+  gloss: "ancient in style"
+  parents: [archaios]
+  source: wiktionary
+
+# --- Latin: vita / mors / corpus ---
+
+- id: vita
+  word: vita
+  language: la
+  gloss: "life"
+  parents: []
+  source: wiktionary
+
+- id: vital
+  word: vital
+  language: en
+  gloss: "of life, essential"
+  parents: [vita]
+  source: wiktionary
+
+- id: revitalize
+  word: revitalize
+  language: en
+  gloss: "bring back to life"
+  parents: [vita]
+  source: wiktionary
+
+- id: mors
+  word: mors
+  language: la
+  gloss: "death"
+  parents: []
+  source: wiktionary
+
+- id: mortal
+  word: mortal
+  language: en
+  gloss: "subject to death"
+  parents: [mors]
+  source: wiktionary
+
+- id: immortal
+  word: immortal
+  language: en
+  gloss: "not subject to death"
+  parents: [mors]
+  source: wiktionary
+
+- id: corpus
+  word: corpus
+  language: la
+  gloss: "body"
+  parents: []
+  source: wiktionary
+
+- id: corporal
+  word: corporal
+  language: en
+  gloss: "of the body"
+  parents: [corpus]
+  source: wiktionary
+
+- id: corporation
+  word: corporation
+  language: en
+  gloss: "body of people"
+  parents: [corpus]
+  source: wiktionary
+
+# --- Latin: scribere / audire / vocare ---
+
+- id: scribere
+  word: scribere
+  language: la
+  gloss: "to write"
+  parents: []
+  source: wiktionary
+
+- id: scribe
+  word: scribe
+  language: en
+  gloss: "writer"
+  parents: [scribere]
+  source: wiktionary
+
+- id: script
+  word: script
+  language: en
+  gloss: "something written"
+  parents: [scribere]
+  source: wiktionary
+
+- id: manuscript
+  word: manuscript
+  language: en
+  gloss: "handwritten text"
+  parents: [manus, scribere]
+  source: wiktionary
+
+- id: manus
+  word: manus
+  language: la
+  gloss: "hand"
+  parents: []
+  source: wiktionary
+
+- id: manual
+  word: manual
+  language: en
+  gloss: "of the hand"
+  parents: [manus]
+  source: wiktionary
+
+- id: manufacture
+  word: manufacture
+  language: en
+  gloss: "make by hand"
+  parents: [manus, facere]
+  source: wiktionary
+
+- id: facere
+  word: facere
+  language: la
+  gloss: "to make, do"
+  parents: []
+  source: wiktionary
+
+- id: factory
+  word: factory
+  language: en
+  gloss: "place of making"
+  parents: [facere]
+  source: wiktionary
+
+- id: audire
+  word: audire
+  language: la
+  gloss: "to hear"
+  parents: []
+  source: wiktionary
+
+- id: audio
+  word: audio
+  language: en
+  gloss: "I hear; sound"
+  parents: [audire]
+  source: wiktionary
+
+- id: audience
+  word: audience
+  language: en
+  gloss: "those who hear"
+  parents: [audire]
+  source: wiktionary
+
+- id: vocare
+  word: vocare
+  language: la
+  gloss: "to call"
+  parents: []
+  source: wiktionary
+
+- id: vocal
+  word: vocal
+  language: en
+  gloss: "of the voice"
+  parents: [vocare]
+  source: wiktionary
+
+- id: vocation
+  word: vocation
+  language: en
+  gloss: "a calling"
+  parents: [vocare]
+  source: wiktionary
