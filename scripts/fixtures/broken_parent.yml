@@ -1,0 +1,5 @@
+- id: philosophy
+  word: philosophy
+  language: en
+  gloss: "love of wisdom"
+  parents: [nonexistent]
