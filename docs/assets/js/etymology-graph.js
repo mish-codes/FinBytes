@@ -104,10 +104,144 @@
     els.miss.hidden = false;
   }
 
-  // --- Rendering placeholder (to be built in later tasks) ---
+  // --- Subgraph builder ---
+  // Returns { nodes, links } for the 2-hop radius around focusId.
+  // Nodes include the focused entry, all its ancestors up to 2 levels,
+  // and all its 1-hop descendants (children that list focusId as parent).
+  function buildSubgraph(focusId) {
+    var nodes = [];
+    var links = [];
+    var seen = {};
+
+    function addNode(id, depth) {
+      if (seen[id]) return;
+      var entry = byId[id] || { id: id, word: id, language: 'unk', gloss: '(unknown)', parents: [] };
+      seen[id] = true;
+      nodes.push({
+        id: id,
+        word: entry.word,
+        language: entry.language || 'unk',
+        gloss: entry.gloss || '',
+        depth: depth,
+        isFocus: id === focusId
+      });
+    }
+
+    // Walk up parents, capped at 2 levels back from focus
+    function walkAncestors(id, depth) {
+      if (depth > 2) return;
+      addNode(id, depth);
+      var entry = byId[id];
+      if (!entry || !entry.parents) return;
+      entry.parents.forEach(function (pid) {
+        links.push({ source: id, target: pid });
+        walkAncestors(pid, depth + 1);
+      });
+    }
+
+    walkAncestors(focusId, 0);
+
+    // Add 1-hop descendants (other entries that name focusId as a parent)
+    rawEntries.forEach(function (e) {
+      if ((e.parents || []).indexOf(focusId) >= 0) {
+        addNode(e.id, -1);
+        links.push({ source: e.id, target: focusId });
+      }
+    });
+
+    return { nodes: nodes, links: links };
+  }
+
   function render() {
-    els.canvas.innerHTML = '<p style="padding:20px;color:#888;">Graph for: ' + state.focusId + '</p>';
-    els.panel.innerHTML = '<p>Panel for: ' + state.focusId + '</p>';
+    var sub = buildSubgraph(state.focusId);
+
+    // Clear canvas
+    els.canvas.innerHTML = '';
+
+    var width = els.canvas.clientWidth || 800;
+    var height = els.canvas.clientHeight || 600;
+
+    var svg = d3.select(els.canvas)
+      .append('svg')
+      .attr('viewBox', [0, 0, width, height]);
+
+    var g = svg.append('g');
+
+    // Force simulation
+    var simulation = d3.forceSimulation(sub.nodes)
+      .force('link', d3.forceLink(sub.links).id(function (d) { return d.id; }).distance(80))
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('center', d3.forceCenter(width / 2, height / 2))
+      .force('collide', d3.forceCollide().radius(30));
+
+    var link = g.append('g')
+      .attr('stroke', '#999')
+      .attr('stroke-opacity', 0.5)
+      .selectAll('line')
+      .data(sub.links)
+      .enter().append('line')
+      .attr('stroke-width', 1.5);
+
+    var nodeGroup = g.append('g')
+      .selectAll('g')
+      .data(sub.nodes)
+      .enter().append('g')
+      .attr('class', 'etym-node')
+      .style('cursor', 'pointer')
+      .call(d3.drag()
+        .on('start', function (ev, d) {
+          if (!ev.active) simulation.alphaTarget(0.3).restart();
+          d.fx = d.x; d.fy = d.y;
+        })
+        .on('drag', function (ev, d) { d.fx = ev.x; d.fy = ev.y; })
+        .on('end', function (ev, d) {
+          if (!ev.active) simulation.alphaTarget(0);
+          d.fx = null; d.fy = null;
+        }));
+
+    nodeGroup.append('circle')
+      .attr('r', function (d) {
+        if (d.isFocus) return 24;
+        if (d.depth === 1 || d.depth === -1) return 16;
+        return 10;
+      })
+      .attr('fill', function (d) { return LANG_COLOR[d.language] || LANG_COLOR.unk; })
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 2);
+
+    nodeGroup.append('text')
+      .attr('dy', function (d) { return d.isFocus ? 38 : 26; })
+      .attr('text-anchor', 'middle')
+      .attr('font-size', '11px')
+      .attr('fill', 'var(--text-color, #333)')
+      .text(function (d) { return d.word; });
+
+    simulation.on('tick', function () {
+      link
+        .attr('x1', function (d) { return d.source.x; })
+        .attr('y1', function (d) { return d.source.y; })
+        .attr('x2', function (d) { return d.target.x; })
+        .attr('y2', function (d) { return d.target.y; });
+
+      nodeGroup.attr('transform', function (d) {
+        return 'translate(' + d.x + ',' + d.y + ')';
+      });
+    });
+
+    // Side panel — keep the minimal version for this task, flesh out in Task 8
+    var focus = byId[state.focusId];
+    els.panel.innerHTML =
+      '<h2>' + escapeHtml(focus.word) + '</h2>' +
+      '<div class="etym-panel-lang">' + (LANG_LABEL[focus.language] || 'Unknown') + '</div>' +
+      '<div class="etym-panel-gloss">"' + escapeHtml(focus.gloss || '') + '"</div>';
+  }
+
+  function escapeHtml(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
   }
 
   // --- Search ---
