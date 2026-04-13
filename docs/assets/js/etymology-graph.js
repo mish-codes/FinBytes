@@ -173,6 +173,50 @@
     return { nodes: nodes, links: links };
   }
 
+  // Walks the full parent chain, one generation at a time, until roots.
+  // Returns an array of strings (one per generation), each listing that
+  // generation's words and glosses, e.g.
+  //   [ 'philo "loving" + sophia "wisdom"', '*bʰilos "friendly"' ]
+  function traceAncestry(focusId) {
+    var lines = [];
+    var visited = {};
+    var currentGen = [focusId];
+    while (currentGen.length > 0) {
+      var nextGen = [];
+      currentGen.forEach(function (id) {
+        var entry = byId[id];
+        if (!entry || !entry.parents) return;
+        entry.parents.forEach(function (pid) {
+          if (!visited[pid]) { visited[pid] = true; nextGen.push(pid); }
+        });
+      });
+      if (nextGen.length > 0) {
+        var label = nextGen
+          .map(function (pid) {
+            var e = byId[pid] || { word: pid, gloss: '' };
+            return escapeHtml(e.word) + (e.gloss ? ' "' + escapeHtml(e.gloss) + '"' : '');
+          })
+          .join(' + ');
+        lines.push(label);
+      }
+      currentGen = nextGen;
+      if (lines.length > 10) break; // depth cap defense against cycles
+    }
+    return lines;
+  }
+
+  // All entries (other than focusId) that share at least one parent with focusId.
+  function findSiblings(focusId) {
+    var focus = byId[focusId];
+    if (!focus || !focus.parents || focus.parents.length === 0) return [];
+    var parentSet = {};
+    focus.parents.forEach(function (p) { parentSet[p] = true; });
+    return rawEntries.filter(function (e) {
+      if (e.id === focusId) return false;
+      return (e.parents || []).some(function (p) { return parentSet[p]; });
+    });
+  }
+
   function render() {
     var sub = buildSubgraph(state.focusId);
 
@@ -271,12 +315,54 @@
       });
     });
 
-    // Side panel — keep the minimal version for this task, flesh out in Task 8
     var focus = byId[state.focusId];
-    els.panel.innerHTML =
-      '<h2>' + escapeHtml(focus.word) + '</h2>' +
-      '<div class="etym-panel-lang">' + (LANG_LABEL[focus.language] || 'Unknown') + '</div>' +
-      '<div class="etym-panel-gloss">"' + escapeHtml(focus.gloss || '') + '"</div>';
+    var ancestry = traceAncestry(state.focusId);
+    var siblings = findSiblings(state.focusId);
+
+    var html = '';
+    html += '<h2>' + escapeHtml(focus.word) + '</h2>';
+    html += '<div class="etym-panel-lang">' + (LANG_LABEL[focus.language] || 'Unknown') + '</div>';
+    if (focus.gloss) {
+      html += '<div class="etym-panel-gloss">"' + escapeHtml(focus.gloss) + '"</div>';
+    }
+
+    if (ancestry.length > 0) {
+      html += '<h3>Ancestry</h3><ul class="etym-ancestry">';
+      ancestry.forEach(function (line, i) {
+        var prefix = i === 0 ? '' : '← ';
+        html += '<li>' + prefix + line + '</li>';
+      });
+      html += '</ul>';
+    }
+
+    if (siblings.length > 0) {
+      html += '<h3>Shares root</h3><ul class="etym-chips">';
+      siblings.forEach(function (s) {
+        html += '<li><button type="button" data-focus-id="' + escapeHtml(s.id) + '">' +
+          escapeHtml(s.word) + '</button></li>';
+      });
+      html += '</ul>';
+    }
+
+    if (focus.source) {
+      var src = focus.source;
+      var srcHtml = /^https?:\/\//.test(src)
+        ? '<a href="' + escapeHtml(src) + '" target="_blank" rel="noopener">' + escapeHtml(src) + '</a>'
+        : escapeHtml(src);
+      html += '<div class="etym-source">source: ' + srcHtml + '</div>';
+    }
+
+    els.panel.innerHTML = html;
+
+    // Wire sibling chip clicks
+    Array.prototype.forEach.call(
+      els.panel.querySelectorAll('[data-focus-id]'),
+      function (btn) {
+        btn.addEventListener('click', function () {
+          focusOn(btn.getAttribute('data-focus-id'));
+        });
+      }
+    );
   }
 
   function escapeHtml(s) {
