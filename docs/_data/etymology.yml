@@ -933,3 +933,829 @@
   gloss: "a calling"
   parents: [vocare]
   source: wiktionary
+
+# --- pan- / demos / kratos ---
+
+- id: pan
+  word: "πᾶν (pan)"
+  language: grc
+  gloss: "all, every"
+  parents: []
+  source: wiktionary
+
+- id: demos
+  word: "δῆμος (dēmos)"
+  language: grc
+  gloss: "people"
+  parents: []
+  source: wiktionary
+
+- id: kratos
+  word: "κράτος (kratos)"
+  language: grc
+  gloss: "power, rule"
+  parents: []
+  source: wiktionary
+
+- id: democracy
+  word: democracy
+  language: en
+  gloss: "rule by the people"
+  parents: [demos, kratos]
+  source: wiktionary
+
+- id: demography
+  word: demography
+  language: en
+  gloss: "writing about peoples"
+  parents: [demos, graphein]
+  source: wiktionary
+
+- id: pandemic
+  word: pandemic
+  language: en
+  gloss: "affecting all people"
+  parents: [pan, demos]
+  source: wiktionary
+
+- id: panorama
+  word: panorama
+  language: en
+  gloss: "all-seeing view"
+  parents: [pan, horama]
+  source: wiktionary
+
+- id: horama
+  word: "ὅραμα (horama)"
+  language: grc
+  gloss: "sight, view"
+  parents: []
+  source: wiktionary
+
+- id: pantheon
+  word: pantheon
+  language: en
+  gloss: "all the gods"
+  parents: [pan, theos]
+  source: wiktionary
+
+- id: theocracy
+  word: theocracy
+  language: en
+  gloss: "rule by god"
+  parents: [theos, kratos]
+  source: wiktionary
+
+- id: aristocracy
+  word: aristocracy
+  language: en
+  gloss: "rule by the best"
+  parents: [aristos, kratos]
+  source: wiktionary
+
+- id: aristos
+  word: "ἄριστος (aristos)"
+  language: grc
+  gloss: "best"
+  parents: []
+  source: wiktionary
+
+# --- genos / morphe ---
+
+- id: genos
+  word: "γένος (genos)"
+  language: grc
+  gloss: "birth, race, kind"
+  parents: []
+  source: wiktionary
+
+- id: genesis
+  word: genesis
+  language: en
+  gloss: "origin"
+  parents: [genos]
+  source: wiktionary
+
+- id: genetics
+  word: genetics
+  language: en
+  gloss: "study of heredity"
+  parents: [genos]
+  source: wiktionary
+
+- id: genocide
+  word: genocide
+  language: en
+  gloss: "killing of a people"
+  parents: [genos, caedere]
+  source: wiktionary
+
+- id: caedere
+  word: caedere
+  language: la
+  gloss: "to kill, cut down"
+  parents: []
+  source: wiktionary
+
+- id: morphe
+  word: "μορφή (morphē)"
+  language: grc
+  gloss: "form, shape"
+  parents: []
+  source: wiktionary
+
+- id: morphology
+  word: morphology
+  language: en
+  gloss: "study of form"
+  parents: [morphe, logos]
+  source: wiktionary
+
+- id: metamorphosis
+  word: metamorphosis
+  language: en
+  gloss: "change of form"
+  parents: [morphe]
+  source: wiktionary
+
+- id: anthropomorphic
+  word: anthropomorphic
+  language: en
+  gloss: "human-shaped"
+  parents: [anthropos, morphe]
+  source: wiktionary
+
+# --- aer / gyne / andros / iatros ---
+
+- id: aer
+  word: "ἀήρ (aēr)"
+  language: grc
+  gloss: "air"
+  parents: []
+  source: wiktionary
+
+- id: aerobic
+  word: aerobic
+  language: en
+  gloss: "with air"
+  parents: [aer]
+  source: wiktionary
+
+- id: aerial
+  word: aerial
+  language: en
+  gloss: "of the air"
+  parents: [aer]
+  source: wiktionary
+
+- id: aeronautics
+  word: aeronautics
+  language: en
+  gloss: "air sailing"
+  parents: [aer, nautes]
+  source: wiktionary
+
+- id: gyne
+  word: "γυνή (gynē)"
+  language: grc
+  gloss: "woman"
+  parents: []
+  source: wiktionary
+
+- id: gynecology
+  word: gynecology
+  language: en
+  gloss: "study of women"
+  parents: [gyne, logos]
+  source: wiktionary
+
+- id: misogyny
+  word: misogyny
+  language: en
+  gloss: "hatred of women"
+  parents: [misein, gyne]
+  source: wiktionary
+
+- id: misein
+  word: "μισεῖν (misein)"
+  language: grc
+  gloss: "to hate"
+  parents: []
+  source: wiktionary
+
+- id: andros
+  word: "ἀνήρ (anēr)"
+  language: grc
+  gloss: "man"
+  parents: []
+  source: wiktionary
+
+- id: android
+  word: android
+  language: en
+  gloss: "man-shaped"
+  parents: [andros, eidos]
+  source: wiktionary
+
+- id: eidos
+  word: "εἶδος (eidos)"
+  language: grc
+  gloss: "form, appearance"
+  parents: []
+  source: wiktionary
+
+- id: iatros
+  word: "ἰατρός (iatros)"
+  language: grc
+  gloss: "healer, physician"
+  parents: []
+  source: wiktionary
+
+- id: psychiatry
+  word: psychiatry
+  language: en
+  gloss: "healing of the mind"
+  parents: [psyche, iatros]
+  source: wiktionary
+
+- id: pediatric
+  word: pediatric
+  language: en
+  gloss: "healing of children"
+  parents: [paidos, iatros]
+  source: wiktionary
+
+- id: paidos
+  word: "παῖς (pais)"
+  language: grc
+  gloss: "child"
+  parents: []
+  source: wiktionary
+
+# --- Latin: credere / legere / movere / currere ---
+
+- id: credere
+  word: credere
+  language: la
+  gloss: "to believe, trust"
+  parents: []
+  source: wiktionary
+
+- id: credit
+  word: credit
+  language: en
+  gloss: "trust, belief"
+  parents: [credere]
+  source: wiktionary
+
+- id: credible
+  word: credible
+  language: en
+  gloss: "believable"
+  parents: [credere]
+  source: wiktionary
+
+- id: incredible
+  word: incredible
+  language: en
+  gloss: "not believable"
+  parents: [credere]
+  source: wiktionary
+
+- id: legere
+  word: legere
+  language: la
+  gloss: "to read, choose"
+  parents: []
+  source: wiktionary
+
+- id: legend
+  word: legend
+  language: en
+  gloss: "thing to be read"
+  parents: [legere]
+  source: wiktionary
+
+- id: legible
+  word: legible
+  language: en
+  gloss: "readable"
+  parents: [legere]
+  source: wiktionary
+
+- id: lecture
+  word: lecture
+  language: en
+  gloss: "a reading"
+  parents: [legere]
+  source: wiktionary
+
+- id: movere
+  word: movere
+  language: la
+  gloss: "to move"
+  parents: []
+  source: wiktionary
+
+- id: motion
+  word: motion
+  language: en
+  gloss: "movement"
+  parents: [movere]
+  source: wiktionary
+
+- id: motor
+  word: motor
+  language: en
+  gloss: "mover"
+  parents: [movere]
+  source: wiktionary
+
+- id: remote
+  word: remote
+  language: en
+  gloss: "moved away"
+  parents: [movere]
+  source: wiktionary
+
+- id: motive
+  word: motive
+  language: en
+  gloss: "moving reason"
+  parents: [movere]
+  source: wiktionary
+
+- id: promote
+  word: promote
+  language: en
+  gloss: "move forward"
+  parents: [movere]
+  source: wiktionary
+
+- id: currere
+  word: currere
+  language: la
+  gloss: "to run"
+  parents: []
+  source: wiktionary
+
+- id: current
+  word: current
+  language: en
+  gloss: "running, flowing"
+  parents: [currere]
+  source: wiktionary
+
+- id: currency
+  word: currency
+  language: en
+  gloss: "circulation"
+  parents: [currere]
+  source: wiktionary
+
+- id: cursor
+  word: cursor
+  language: en
+  gloss: "runner"
+  parents: [currere]
+  source: wiktionary
+
+- id: occur
+  word: occur
+  language: en
+  gloss: "run toward, happen"
+  parents: [currere]
+  source: wiktionary
+
+# --- Latin: tenere / trahere / pedem ---
+
+- id: tenere
+  word: tenere
+  language: la
+  gloss: "to hold"
+  parents: []
+  source: wiktionary
+
+- id: tenant
+  word: tenant
+  language: en
+  gloss: "one holding"
+  parents: [tenere]
+  source: wiktionary
+
+- id: tenure
+  word: tenure
+  language: en
+  gloss: "holding"
+  parents: [tenere]
+  source: wiktionary
+
+- id: contain
+  word: contain
+  language: en
+  gloss: "hold together"
+  parents: [tenere]
+  source: wiktionary
+
+- id: retain
+  word: retain
+  language: en
+  gloss: "hold back"
+  parents: [tenere]
+  source: wiktionary
+
+- id: trahere
+  word: trahere
+  language: la
+  gloss: "to pull, drag"
+  parents: []
+  source: wiktionary
+
+- id: traction
+  word: traction
+  language: en
+  gloss: "pulling"
+  parents: [trahere]
+  source: wiktionary
+
+- id: attract
+  word: attract
+  language: en
+  gloss: "draw toward"
+  parents: [trahere]
+  source: wiktionary
+
+- id: extract
+  word: extract
+  language: en
+  gloss: "pull out"
+  parents: [trahere]
+  source: wiktionary
+
+- id: tractor
+  word: tractor
+  language: en
+  gloss: "puller"
+  parents: [trahere]
+  source: wiktionary
+
+- id: pedem
+  word: pes
+  language: la
+  gloss: "foot"
+  parents: []
+  source: wiktionary
+
+- id: pedal
+  word: pedal
+  language: en
+  gloss: "foot-operated"
+  parents: [pedem]
+  source: wiktionary
+
+- id: pedestrian
+  word: pedestrian
+  language: en
+  gloss: "one going on foot"
+  parents: [pedem]
+  source: wiktionary
+
+- id: centipede
+  word: centipede
+  language: en
+  gloss: "hundred feet"
+  parents: [centum, pedem]
+  source: wiktionary
+
+- id: centum
+  word: centum
+  language: la
+  gloss: "hundred"
+  parents: []
+  source: wiktionary
+
+- id: century
+  word: century
+  language: en
+  gloss: "hundred years"
+  parents: [centum]
+  source: wiktionary
+
+- id: percent
+  word: percent
+  language: en
+  gloss: "per hundred"
+  parents: [centum]
+  source: wiktionary
+
+# --- Latin: ducere / mittere / venire / ponere ---
+
+- id: ducere
+  word: ducere
+  language: la
+  gloss: "to lead"
+  parents: []
+  source: wiktionary
+
+- id: conduct
+  word: conduct
+  language: en
+  gloss: "lead together"
+  parents: [ducere]
+  source: wiktionary
+
+- id: induce
+  word: induce
+  language: en
+  gloss: "lead into"
+  parents: [ducere]
+  source: wiktionary
+
+- id: introduce
+  word: introduce
+  language: en
+  gloss: "lead inside"
+  parents: [ducere]
+  source: wiktionary
+
+- id: education
+  word: education
+  language: en
+  gloss: "leading out"
+  parents: [ducere]
+  source: wiktionary
+
+- id: mittere
+  word: mittere
+  language: la
+  gloss: "to send"
+  parents: []
+  source: wiktionary
+
+- id: mission
+  word: mission
+  language: en
+  gloss: "a sending"
+  parents: [mittere]
+  source: wiktionary
+
+- id: transmit
+  word: transmit
+  language: en
+  gloss: "send across"
+  parents: [mittere]
+  source: wiktionary
+
+- id: submit
+  word: submit
+  language: en
+  gloss: "send under"
+  parents: [mittere]
+  source: wiktionary
+
+- id: dismiss
+  word: dismiss
+  language: en
+  gloss: "send away"
+  parents: [mittere]
+  source: wiktionary
+
+- id: venire
+  word: venire
+  language: la
+  gloss: "to come"
+  parents: []
+  source: wiktionary
+
+- id: event
+  word: event
+  language: en
+  gloss: "outcome, thing that comes out"
+  parents: [venire]
+  source: wiktionary
+
+- id: advent
+  word: advent
+  language: en
+  gloss: "a coming to"
+  parents: [venire]
+  source: wiktionary
+
+- id: prevent
+  word: prevent
+  language: en
+  gloss: "come before"
+  parents: [venire]
+  source: wiktionary
+
+- id: convene
+  word: convene
+  language: en
+  gloss: "come together"
+  parents: [venire]
+  source: wiktionary
+
+- id: ponere
+  word: ponere
+  language: la
+  gloss: "to place"
+  parents: []
+  source: wiktionary
+
+- id: position
+  word: position
+  language: en
+  gloss: "placement"
+  parents: [ponere]
+  source: wiktionary
+
+- id: postpone
+  word: postpone
+  language: en
+  gloss: "place after"
+  parents: [ponere]
+  source: wiktionary
+
+- id: propose
+  word: propose
+  language: en
+  gloss: "put forward"
+  parents: [ponere]
+  source: wiktionary
+
+- id: deposit
+  word: deposit
+  language: en
+  gloss: "place down"
+  parents: [ponere]
+  source: wiktionary
+
+# --- Latin: specere / vertere / lux / nox / annus ---
+
+- id: specere
+  word: specere
+  language: la
+  gloss: "to look at"
+  parents: []
+  source: wiktionary
+
+- id: spectator
+  word: spectator
+  language: en
+  gloss: "one who watches"
+  parents: [specere]
+  source: wiktionary
+
+- id: inspect
+  word: inspect
+  language: en
+  gloss: "look into"
+  parents: [specere]
+  source: wiktionary
+
+- id: respect
+  word: respect
+  language: en
+  gloss: "look back at"
+  parents: [specere]
+  source: wiktionary
+
+- id: suspect
+  word: suspect
+  language: en
+  gloss: "look from below"
+  parents: [specere]
+  source: wiktionary
+
+- id: prospect
+  word: prospect
+  language: en
+  gloss: "look ahead"
+  parents: [specere]
+  source: wiktionary
+
+- id: vertere
+  word: vertere
+  language: la
+  gloss: "to turn"
+  parents: []
+  source: wiktionary
+
+- id: convert
+  word: convert
+  language: en
+  gloss: "turn together"
+  parents: [vertere]
+  source: wiktionary
+
+- id: divert
+  word: divert
+  language: en
+  gloss: "turn aside"
+  parents: [vertere]
+  source: wiktionary
+
+- id: universe
+  word: universe
+  language: en
+  gloss: "turned into one"
+  parents: [vertere]
+  source: wiktionary
+
+- id: version
+  word: version
+  language: en
+  gloss: "a turning"
+  parents: [vertere]
+  source: wiktionary
+
+- id: lux
+  word: lux
+  language: la
+  gloss: "light"
+  parents: []
+  source: wiktionary
+
+- id: lucid
+  word: lucid
+  language: en
+  gloss: "clear, bright"
+  parents: [lux]
+  source: wiktionary
+
+- id: illuminate
+  word: illuminate
+  language: en
+  gloss: "light up"
+  parents: [lux]
+  source: wiktionary
+
+- id: translucent
+  word: translucent
+  language: en
+  gloss: "light through"
+  parents: [lux]
+  source: wiktionary
+
+- id: nox
+  word: nox
+  language: la
+  gloss: "night"
+  parents: []
+  source: wiktionary
+
+- id: nocturnal
+  word: nocturnal
+  language: en
+  gloss: "of the night"
+  parents: [nox]
+  source: wiktionary
+
+- id: equinox
+  word: equinox
+  language: en
+  gloss: "equal night"
+  parents: [aequus, nox]
+  source: wiktionary
+
+- id: aequus
+  word: aequus
+  language: la
+  gloss: "equal, even"
+  parents: []
+  source: wiktionary
+
+- id: equal
+  word: equal
+  language: en
+  gloss: "the same"
+  parents: [aequus]
+  source: wiktionary
+
+- id: annus
+  word: annus
+  language: la
+  gloss: "year"
+  parents: []
+  source: wiktionary
+
+- id: annual
+  word: annual
+  language: en
+  gloss: "yearly"
+  parents: [annus]
+  source: wiktionary
+
+- id: anniversary
+  word: anniversary
+  language: en
+  gloss: "yearly turning"
+  parents: [annus, vertere]
+  source: wiktionary
+
+- id: biennial
+  word: biennial
+  language: en
+  gloss: "every two years"
+  parents: [annus]
+  source: wiktionary

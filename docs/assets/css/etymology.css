@@ -18,6 +18,53 @@
   gap: 8px;
   align-items: center;
   margin-bottom: 12px;
+  position: relative;
+}
+
+.etym-suggest {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  max-width: 500px;
+  margin: 4px 0 0;
+  padding: 4px 0;
+  list-style: none;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #ddd);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  max-height: 320px;
+  overflow-y: auto;
+  z-index: 50;
+  display: none;
+}
+
+.etym-suggest li {
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1.3;
+  border-bottom: 1px solid var(--border-color, #f0f0f0);
+}
+
+.etym-suggest li:last-child {
+  border-bottom: none;
+}
+
+.etym-suggest li:hover,
+.etym-suggest li.active {
+  background: var(--hover-bg, #f4f6f8);
+}
+
+.etym-suggest-word {
+  font-weight: 600;
+}
+
+.etym-suggest-gloss {
+  color: var(--text-muted-color, #888);
+  font-size: 0.82rem;
+  margin-left: 6px;
 }
 
 #etym-search {
