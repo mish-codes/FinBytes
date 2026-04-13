@@ -63,7 +63,7 @@
   word: visio
   language: la
   gloss: "seeing, sight"
-  parents: []
+  parents: [pie-weid]
   source: wiktionary
 
 # --- philo- cluster expansion ---
@@ -174,7 +174,7 @@
   word: "βίος (bios)"
   language: grc
   gloss: "life"
-  parents: []
+  parents: [pie-gwei]
   featured: true
   source: wiktionary
 
@@ -234,7 +234,7 @@
   word: "μέτρον (metron)"
   language: grc
   gloss: "measure"
-  parents: []
+  parents: [pie-med]
   source: wiktionary
 
 # --- photo- cluster ---
@@ -478,7 +478,7 @@
   word: "ἄστρον (astron)"
   language: grc
   gloss: "star"
-  parents: []
+  parents: [pie-ster]
   featured: true
   source: wiktionary
 
@@ -628,7 +628,7 @@
   word: "ὕδωρ (hudōr)"
   language: grc
   gloss: "water"
-  parents: []
+  parents: [pie-wodr]
   featured: true
   source: wiktionary
 
@@ -680,7 +680,7 @@
   word: "καρδία (kardia)"
   language: grc
   gloss: "heart"
-  parents: []
+  parents: [pie-kerd]
   source: wiktionary
 
 - id: cardiology
@@ -768,7 +768,7 @@
   word: vita
   language: la
   gloss: "life"
-  parents: []
+  parents: [pie-gwei]
   source: wiktionary
 
 - id: vital
@@ -1026,7 +1026,7 @@
   word: "γένος (genos)"
   language: grc
   gloss: "birth, race, kind"
-  parents: []
+  parents: [pie-gen]
   source: wiktionary
 
 - id: genesis
@@ -1403,7 +1403,7 @@
   word: pes
   language: la
   gloss: "foot"
-  parents: []
+  parents: [pie-pod]
   source: wiktionary
 
 - id: pedal
@@ -1673,7 +1673,7 @@
   word: lux
   language: la
   gloss: "light"
-  parents: []
+  parents: [pie-leuk]
   source: wiktionary
 
 - id: lucid
@@ -1701,7 +1701,7 @@
   word: nox
   language: la
   gloss: "night"
-  parents: []
+  parents: [pie-nokt]
   source: wiktionary
 
 - id: nocturnal
@@ -1758,4 +1758,799 @@
   language: en
   gloss: "every two years"
   parents: [annus]
+  source: wiktionary
+
+# =====================================================================
+# PIE (Proto-Indo-European) roots
+# =====================================================================
+
+- id: pie-mater
+  word: "*méh₂tēr"
+  language: pie
+  gloss: "mother"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: pie-pater
+  word: "*ph₂tḗr"
+  language: pie
+  gloss: "father"
+  parents: []
+  source: wiktionary
+
+- id: pie-bhrater
+  word: "*bʰréh₂tēr"
+  language: pie
+  gloss: "brother"
+  parents: []
+  source: wiktionary
+
+- id: pie-duo
+  word: "*dwóh₁"
+  language: pie
+  gloss: "two"
+  parents: []
+  source: wiktionary
+
+- id: pie-ster
+  word: "*h₂stḗr"
+  language: pie
+  gloss: "star"
+  parents: []
+  source: wiktionary
+
+- id: pie-kerd
+  word: "*ḱḗr"
+  language: pie
+  gloss: "heart"
+  parents: []
+  source: wiktionary
+
+- id: pie-bher
+  word: "*bʰer-"
+  language: pie
+  gloss: "to carry, bear"
+  parents: []
+  source: wiktionary
+
+- id: pie-weid
+  word: "*weyd-"
+  language: pie
+  gloss: "to see, know"
+  parents: []
+  source: wiktionary
+
+- id: pie-wodr
+  word: "*wódr̥"
+  language: pie
+  gloss: "water"
+  parents: []
+  source: wiktionary
+
+- id: pie-nokt
+  word: "*nókʷts"
+  language: pie
+  gloss: "night"
+  parents: []
+  source: wiktionary
+
+- id: pie-dyew
+  word: "*dyḗws"
+  language: pie
+  gloss: "sky, day, shining"
+  parents: []
+  source: wiktionary
+
+- id: pie-med
+  word: "*med-"
+  language: pie
+  gloss: "to measure, take appropriate measures"
+  parents: []
+  source: wiktionary
+
+- id: pie-leuk
+  word: "*lewk-"
+  language: pie
+  gloss: "light, brightness"
+  parents: []
+  source: wiktionary
+
+- id: pie-gen
+  word: "*ǵenh₁-"
+  language: pie
+  gloss: "to give birth, produce"
+  parents: []
+  source: wiktionary
+
+- id: pie-newos
+  word: "*néwos"
+  language: pie
+  gloss: "new"
+  parents: []
+  source: wiktionary
+
+- id: pie-gwei
+  word: "*gʷeih₃-"
+  language: pie
+  gloss: "to live"
+  parents: []
+  source: wiktionary
+
+- id: pie-solo
+  word: "*sóh₂wl̥"
+  language: pie
+  gloss: "sun"
+  parents: []
+  source: wiktionary
+
+- id: pie-mens
+  word: "*méh₁n̥s"
+  language: pie
+  gloss: "moon, month"
+  parents: []
+  source: wiktionary
+
+- id: pie-dhghem
+  word: "*dʰéǵʰōm"
+  language: pie
+  gloss: "earth, ground"
+  parents: []
+  source: wiktionary
+
+- id: pie-pod
+  word: "*pṓds"
+  language: pie
+  gloss: "foot"
+  parents: []
+  source: wiktionary
+
+# =====================================================================
+# Germanic / Old English roots
+# =====================================================================
+
+- id: gem-modor
+  word: "mōdor"
+  language: gem
+  gloss: "mother"
+  parents: [pie-mater]
+  source: wiktionary
+
+- id: mother
+  word: mother
+  language: en
+  gloss: "female parent"
+  parents: [gem-modor]
+  source: wiktionary
+
+- id: gem-fader
+  word: "fæder"
+  language: gem
+  gloss: "father"
+  parents: [pie-pater]
+  source: wiktionary
+
+- id: father
+  word: father
+  language: en
+  gloss: "male parent"
+  parents: [gem-fader]
+  source: wiktionary
+
+- id: gem-brodor
+  word: "brōðor"
+  language: gem
+  gloss: "brother"
+  parents: [pie-bhrater]
+  source: wiktionary
+
+- id: brother
+  word: brother
+  language: en
+  gloss: "male sibling"
+  parents: [gem-brodor]
+  source: wiktionary
+
+- id: gem-hus
+  word: "hūs"
+  language: gem
+  gloss: "house, dwelling"
+  parents: []
+  source: wiktionary
+
+- id: house
+  word: house
+  language: en
+  gloss: "dwelling"
+  parents: [gem-hus]
+  source: wiktionary
+
+- id: gem-water
+  word: "wæter"
+  language: gem
+  gloss: "water"
+  parents: [pie-wodr]
+  source: wiktionary
+
+- id: water
+  word: water
+  language: en
+  gloss: "clear liquid"
+  parents: [gem-water]
+  source: wiktionary
+
+- id: gem-daeg
+  word: "dæg"
+  language: gem
+  gloss: "day"
+  parents: [pie-dyew]
+  source: wiktionary
+
+- id: day
+  word: day
+  language: en
+  gloss: "24-hour period"
+  parents: [gem-daeg]
+  source: wiktionary
+
+- id: gem-niht
+  word: "niht"
+  language: gem
+  gloss: "night"
+  parents: [pie-nokt]
+  source: wiktionary
+
+- id: night
+  word: night
+  language: en
+  gloss: "dark part of day"
+  parents: [gem-niht]
+  source: wiktionary
+
+- id: gem-heorte
+  word: "heorte"
+  language: gem
+  gloss: "heart"
+  parents: [pie-kerd]
+  source: wiktionary
+
+- id: heart
+  word: heart
+  language: en
+  gloss: "organ that pumps blood"
+  parents: [gem-heorte]
+  source: wiktionary
+
+- id: gem-fot
+  word: "fōt"
+  language: gem
+  gloss: "foot"
+  parents: [pie-pod]
+  source: wiktionary
+
+- id: foot
+  word: foot
+  language: en
+  gloss: "lower extremity"
+  parents: [gem-fot]
+  source: wiktionary
+
+- id: gem-sunne
+  word: "sunne"
+  language: gem
+  gloss: "sun"
+  parents: [pie-solo]
+  source: wiktionary
+
+- id: sun
+  word: sun
+  language: en
+  gloss: "star at center of solar system"
+  parents: [gem-sunne]
+  source: wiktionary
+
+- id: gem-mona
+  word: "mōna"
+  language: gem
+  gloss: "moon"
+  parents: [pie-mens]
+  source: wiktionary
+
+- id: moon
+  word: moon
+  language: en
+  gloss: "Earth's satellite"
+  parents: [gem-mona]
+  source: wiktionary
+
+- id: gem-star
+  word: "steorra"
+  language: gem
+  gloss: "star"
+  parents: [pie-ster]
+  source: wiktionary
+
+- id: star
+  word: star
+  language: en
+  gloss: "luminous celestial body"
+  parents: [gem-star]
+  source: wiktionary
+
+- id: gem-nama
+  word: "nama"
+  language: gem
+  gloss: "name"
+  parents: []
+  source: wiktionary
+
+- id: name
+  word: name
+  language: en
+  gloss: "word identifying a person"
+  parents: [gem-nama]
+  source: wiktionary
+
+- id: gem-freond
+  word: "frēond"
+  language: gem
+  gloss: "friend"
+  parents: []
+  source: wiktionary
+
+- id: friend
+  word: friend
+  language: en
+  gloss: "companion"
+  parents: [gem-freond]
+  source: wiktionary
+
+- id: gem-weorc
+  word: "weorc"
+  language: gem
+  gloss: "work, deed"
+  parents: []
+  source: wiktionary
+
+- id: work
+  word: work
+  language: en
+  gloss: "labor, task"
+  parents: [gem-weorc]
+  source: wiktionary
+
+# =====================================================================
+# Old French roots
+# =====================================================================
+
+- id: fro-chef
+  word: "chef"
+  language: fro
+  gloss: "head, chief"
+  parents: [caput]
+  source: wiktionary
+
+- id: caput
+  word: caput
+  language: la
+  gloss: "head"
+  parents: []
+  source: wiktionary
+
+- id: chief
+  word: chief
+  language: en
+  gloss: "head, leader"
+  parents: [fro-chef]
+  source: wiktionary
+
+- id: chef
+  word: chef
+  language: en
+  gloss: "head cook"
+  parents: [fro-chef]
+  source: wiktionary
+
+- id: chapter
+  word: chapter
+  language: en
+  gloss: "head (section) of a book"
+  parents: [caput]
+  source: wiktionary
+
+- id: capital
+  word: capital
+  language: en
+  gloss: "principal, head"
+  parents: [caput]
+  source: wiktionary
+
+- id: fro-jour
+  word: "jour"
+  language: fro
+  gloss: "day"
+  parents: [diurnus]
+  source: wiktionary
+
+- id: diurnus
+  word: diurnus
+  language: la
+  gloss: "daily"
+  parents: []
+  source: wiktionary
+
+- id: journey
+  word: journey
+  language: en
+  gloss: "a day's travel"
+  parents: [fro-jour]
+  source: wiktionary
+
+- id: journal
+  word: journal
+  language: en
+  gloss: "daily record"
+  parents: [fro-jour]
+  source: wiktionary
+
+- id: fro-boef
+  word: "boef"
+  language: fro
+  gloss: "ox, beef"
+  parents: [bos]
+  source: wiktionary
+
+- id: bos
+  word: bos
+  language: la
+  gloss: "ox, cow"
+  parents: []
+  source: wiktionary
+
+- id: beef
+  word: beef
+  language: en
+  gloss: "meat of cattle"
+  parents: [fro-boef]
+  source: wiktionary
+
+- id: fro-porc
+  word: "porc"
+  language: fro
+  gloss: "pig"
+  parents: [porcus]
+  source: wiktionary
+
+- id: porcus
+  word: porcus
+  language: la
+  gloss: "pig"
+  parents: []
+  source: wiktionary
+
+- id: pork
+  word: pork
+  language: en
+  gloss: "meat of pig"
+  parents: [fro-porc]
+  source: wiktionary
+
+- id: fro-mouton
+  word: "mouton"
+  language: fro
+  gloss: "sheep"
+  parents: []
+  source: wiktionary
+
+- id: mutton
+  word: mutton
+  language: en
+  gloss: "meat of sheep"
+  parents: [fro-mouton]
+  source: wiktionary
+
+- id: fro-veal
+  word: "veel"
+  language: fro
+  gloss: "calf"
+  parents: [vitulus]
+  source: wiktionary
+
+- id: vitulus
+  word: vitulus
+  language: la
+  gloss: "calf"
+  parents: []
+  source: wiktionary
+
+- id: veal
+  word: veal
+  language: en
+  gloss: "meat of calf"
+  parents: [fro-veal]
+  source: wiktionary
+
+- id: fro-fleur
+  word: "flour"
+  language: fro
+  gloss: "flower, blossom"
+  parents: [flos]
+  source: wiktionary
+
+- id: flos
+  word: flos
+  language: la
+  gloss: "flower"
+  parents: []
+  source: wiktionary
+
+- id: flower
+  word: flower
+  language: en
+  gloss: "bloom of a plant"
+  parents: [fro-fleur]
+  source: wiktionary
+
+- id: flour
+  word: flour
+  language: en
+  gloss: "ground grain"
+  parents: [fro-fleur]
+  source: wiktionary
+
+- id: fro-guerre
+  word: "guerre"
+  language: fro
+  gloss: "war"
+  parents: []
+  source: wiktionary
+
+- id: war
+  word: war
+  language: en
+  gloss: "armed conflict"
+  parents: [fro-guerre]
+  source: wiktionary
+
+- id: fro-chevalier
+  word: "chevalier"
+  language: fro
+  gloss: "horseman, knight"
+  parents: [caballus]
+  source: wiktionary
+
+- id: caballus
+  word: caballus
+  language: la
+  gloss: "horse"
+  parents: []
+  source: wiktionary
+
+- id: cavalier
+  word: cavalier
+  language: en
+  gloss: "horseman; haughty"
+  parents: [fro-chevalier]
+  source: wiktionary
+
+- id: chivalry
+  word: chivalry
+  language: en
+  gloss: "knightly code"
+  parents: [fro-chevalier]
+  source: wiktionary
+
+# =====================================================================
+# Sanskrit roots and loan words
+# =====================================================================
+
+- id: sa-yoga
+  word: "योग (yoga)"
+  language: sa
+  gloss: "union, yoking"
+  parents: []
+  featured: true
+  source: wiktionary
+
+- id: yoga
+  word: yoga
+  language: en
+  gloss: "Hindu spiritual practice"
+  parents: [sa-yoga]
+  source: wiktionary
+
+- id: sa-karma
+  word: "कर्म (karma)"
+  language: sa
+  gloss: "action, deed"
+  parents: []
+  source: wiktionary
+
+- id: karma
+  word: karma
+  language: en
+  gloss: "fate from deeds"
+  parents: [sa-karma]
+  source: wiktionary
+
+- id: sa-mantra
+  word: "मन्त्र (mantra)"
+  language: sa
+  gloss: "instrument of thought"
+  parents: []
+  source: wiktionary
+
+- id: mantra
+  word: mantra
+  language: en
+  gloss: "sacred utterance"
+  parents: [sa-mantra]
+  source: wiktionary
+
+- id: sa-avatara
+  word: "अवतार (avatāra)"
+  language: sa
+  gloss: "descent (of a deity)"
+  parents: []
+  source: wiktionary
+
+- id: avatar
+  word: avatar
+  language: en
+  gloss: "incarnation; digital persona"
+  parents: [sa-avatara]
+  source: wiktionary
+
+- id: sa-guru
+  word: "गुरु (guru)"
+  language: sa
+  gloss: "heavy, venerable, teacher"
+  parents: []
+  source: wiktionary
+
+- id: guru
+  word: guru
+  language: en
+  gloss: "spiritual teacher; expert"
+  parents: [sa-guru]
+  source: wiktionary
+
+- id: sa-veda
+  word: "वेद (veda)"
+  language: sa
+  gloss: "knowledge"
+  parents: [pie-weid]
+  source: wiktionary
+
+- id: veda
+  word: Veda
+  language: en
+  gloss: "ancient Hindu scriptures"
+  parents: [sa-veda]
+  source: wiktionary
+
+- id: sa-chakra
+  word: "चक्र (chakra)"
+  language: sa
+  gloss: "wheel"
+  parents: []
+  source: wiktionary
+
+- id: chakra
+  word: chakra
+  language: en
+  gloss: "energy center of the body"
+  parents: [sa-chakra]
+  source: wiktionary
+
+- id: sa-dharma
+  word: "धर्म (dharma)"
+  language: sa
+  gloss: "law, duty, right way"
+  parents: []
+  source: wiktionary
+
+- id: dharma
+  word: dharma
+  language: en
+  gloss: "righteous duty"
+  parents: [sa-dharma]
+  source: wiktionary
+
+- id: sa-nirvana
+  word: "निर्वाण (nirvāṇa)"
+  language: sa
+  gloss: "blown out, extinguished"
+  parents: []
+  source: wiktionary
+
+- id: nirvana
+  word: nirvana
+  language: en
+  gloss: "final liberation"
+  parents: [sa-nirvana]
+  source: wiktionary
+
+- id: sa-jangala
+  word: "जङ्गल (jaṅgala)"
+  language: sa
+  gloss: "dry, wilderness"
+  parents: []
+  source: wiktionary
+
+- id: jungle
+  word: jungle
+  language: en
+  gloss: "dense tropical forest"
+  parents: [sa-jangala]
+  source: wiktionary
+
+- id: sa-champo
+  word: "चाँपो (chāmpo)"
+  language: sa
+  gloss: "to press, massage"
+  parents: []
+  source: wiktionary
+
+- id: shampoo
+  word: shampoo
+  language: en
+  gloss: "hair-washing preparation"
+  parents: [sa-champo]
+  source: wiktionary
+
+- id: sa-mahatma
+  word: "महात्मा (mahātmā)"
+  language: sa
+  gloss: "great soul"
+  parents: []
+  source: wiktionary
+
+- id: mahatma
+  word: mahatma
+  language: en
+  gloss: "holy person (honorific)"
+  parents: [sa-mahatma]
+  source: wiktionary
+
+- id: sa-pandita
+  word: "पण्डित (paṇḍita)"
+  language: sa
+  gloss: "learned, scholar"
+  parents: []
+  source: wiktionary
+
+- id: pundit
+  word: pundit
+  language: en
+  gloss: "expert commentator"
+  parents: [sa-pandita]
+  source: wiktionary
+
+- id: sa-cita
+  word: "चीता (cītā)"
+  language: sa
+  gloss: "spotted, variegated"
+  parents: []
+  source: wiktionary
+
+- id: cheetah
+  word: cheetah
+  language: en
+  gloss: "large spotted wild cat"
+  parents: [sa-cita]
+  source: wiktionary
+
+- id: sa-pita
+  word: "पिता (pitṛ)"
+  language: sa
+  gloss: "father"
+  parents: [pie-pater]
+  source: wiktionary
+
+- id: sa-matri
+  word: "माता (mātṛ)"
+  language: sa
+  gloss: "mother"
+  parents: [pie-mater]
   source: wiktionary
