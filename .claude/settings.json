@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -sI https://finbytes.streamlit.app/Churros)",
+      "Bash(curl -sI https://finbytes.streamlit.app/Admin)",
+      "Read(//c/Users/manis/.claude/plugins/cache/claude-plugins-official/superpowers/5.0.7/skills/subagent-driven-development/**)",
+      "Bash(ruby -ryaml -e \"p YAML.load_file\\('docs/_data/etymology.yml'\\).length\")",
+      "Bash(ruby -ryaml -e \"puts YAML.load_file\\('c:/codebase/finbytes_git/docs/_data/etymology.yml'\\).inspect\")",
+      "Bash(ruby)",
+      "Bash(ruby scripts/test_validate_etymology.rb)",
+      "Bash(ruby scripts/validate_etymology.rb)",
+      "Bash(ruby -e \"require './scripts/validate_etymology.rb'; puts EtymologyValidator::KNOWN_LANGUAGES.inspect\")",
+      "Bash(ruby -e \"require './scripts/validate_etymology.rb'; r1 = EtymologyValidator::Result.new\\([]\\); r2 = EtymologyValidator::Result.new\\(['error']\\); puts \\\\\"Empty: #{r1.ok?}\\\\\"; puts \\\\\"With error: #{r2.ok?}\\\\\"\")",
+      "Bash(ruby scripts/validate_etymology.rb scripts/fixtures/duplicate_id.yml)",
+      "Bash(echo \"Exit code: $?\")",
+      "Bash(ruby scripts/validate_etymology.rb scripts/fixtures/valid_etymology.yml)",
+      "Bash(ruby scripts/validate_etymology.rb scripts/fixtures/cycle.yml)",
+      "Bash(ruby scripts/test_validate_etymology.rb -v)",
+      "Bash(ruby -r minitest/autorun)"
+    ],
+    "additionalDirectories": [
+      "C:\\SP"
+    ]
+  }
+}

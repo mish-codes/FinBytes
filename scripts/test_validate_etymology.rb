@@ -37,4 +37,10 @@ class TestValidateEtymology < Minitest::Test
     assert result.errors.any? { |e| e.include?("cycle") }
     refute result.ok?
   end
+
+  def test_non_array_parents_is_error
+    result = validate("non_array_parents.yml")
+    assert result.errors.any? { |e| e.include?("parents must be a list") }
+    refute result.ok?
+  end
 end

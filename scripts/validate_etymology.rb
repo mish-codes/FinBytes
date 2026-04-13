@@ -49,7 +49,14 @@ class EtymologyValidator
 
     # Check parent references
     by_id.each do |id, entry|
-      parents = entry["parents"] || []
+      parents = entry["parents"]
+      if parents.nil?
+        next
+      end
+      unless parents.is_a?(Array)
+        errors << "entry '#{id}': parents must be a list, got #{parents.class}"
+        next
+      end
       parents.each do |pid|
         unless by_id.key?(pid)
           errors << "entry '#{id}': unknown parent '#{pid}'"
@@ -58,6 +65,13 @@ class EtymologyValidator
     end
 
     # Three-color DFS cycle detection (white=unvisited, grey=on stack, black=done)
+    # Build sanitized parents map so DFS always iterates arrays
+    parents_of = {}
+    by_id.each do |id, entry|
+      p = entry["parents"]
+      parents_of[id] = p.is_a?(Array) ? p : []
+    end
+
     color = {}
     by_id.each_key { |id| color[id] = :white }
 
@@ -79,7 +93,7 @@ class EtymologyValidator
         end
         color[id] = :grey
         dfs_stack.push([id, true])  # push return marker
-        parents = (by_id[id] || {})["parents"] || []
+        parents = parents_of[id] || []
         parents.each do |pid|
           next unless by_id.key?(pid)
           if color[pid] == :grey

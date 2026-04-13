@@ -1,0 +1,45 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -1 /c/codebase/quant_lab/dashboard/tests/test_*.py)",
+      "Bash(python -m pytest tests/ -v --tb=short)",
+      "Bash(python -m pytest tests/test_stock_tracker.py -v --tb=long)",
+      "Bash(python:*)",
+      "Read(//c/codebase/quant_lab/**)",
+      "Bash(gh run:*)",
+      "Bash(gh pr create --title 'fix: CI test failures from environment differences' --body ':*)",
+      "Bash(gh pr create --title 'refactor: top-level App/Tests tabs on mini projects' --body ':*)",
+      "Bash(gh pr create --title 'ci: auto-commit test_results.json on master' --body ':*)",
+      "Bash(gh pr create --title 'ci: use PR for test_results.json \\(branch protection\\)' --body ':*)",
+      "Bash(gh pr create --title 'fix\\(ci\\): add pull-requests permission for test results PR' --body ':*)",
+      "Bash(gh pr:*)",
+      "Bash(cat)",
+      "Bash(chmod +x .git/hooks/pre-commit)",
+      "Bash(grep -E \"\\\\.\\(html|md\\)$\")",
+      "Bash(grep -E \"\\\\.\\(md|yml|yaml\\)$\")",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git fetch:*)",
+      "Bash(git pull:*)",
+      "Bash(sed -i 's|page_icon=\"📊\"|page_icon=\"assets/logo.png\"|' dashboard/pages/1_Stock_Risk_Scanner.py)",
+      "Bash(sed -i 's|page_icon=\"🔒\"|page_icon=\"assets/logo.png\"|' dashboard/pages/99_Admin.py)",
+      "Bash(git remote:*)",
+      "Bash(git commit:*)",
+      "Bash(curl -s -o /dev/null -w \"FinBytes old URL: %{http_code} -> %{redirect_url}\\\\n\" https://mishcodesfinbytes.github.io/FinBytes/)",
+      "Bash(curl -s -o /dev/null -w \"FinBytes new URL: %{http_code}\\\\n\" https://mish-codes.github.io/FinBytes/)",
+      "Bash(curl -s -o /dev/null -w \"Streamlit app: %{http_code}\\\\n\" https://finbytes.streamlit.app/)",
+      "Bash(curl -s -o /dev/null -w \"FinBytes site: %{http_code}\\\\n\" https://mish-codes.github.io/FinBytes/)",
+      "Bash(curl -sL https://finbytes.streamlit.app/)",
+      "Bash(git branch:*)",
+      "Bash(git mv:*)",
+      "Bash(ls dashboard/pages/99*)",
+      "Bash(ls dashboard/tests/test_*.py)"
+    ],
+    "additionalDirectories": [
+      "C:\\codebase\\quant_lab\\dashboard\\pages"
+    ]
+  }
+}

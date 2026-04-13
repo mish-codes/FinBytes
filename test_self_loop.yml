@@ -1,0 +1,5 @@
+- id: self
+  word: self
+  language: en
+  gloss: "self"
+  parents: [self]
