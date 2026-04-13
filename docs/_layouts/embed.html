@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" data-mode="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{ page.title }}</title>
+  <link rel="stylesheet" href="{{ '/assets/css/etymology.css' | relative_url }}">
+  <style>
+    :root {
+      --main-bg: #ffffff;
+      --card-bg: #ffffff;
+      --text-color: #333333;
+      --text-muted-color: #888888;
+      --border-color: #dddddd;
+      --hover-bg: #f4f6f8;
+      --link-color: #2a7ae2;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #ffffff;
+      color: #333333;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      color-scheme: light;
+    }
+    .etym-page { padding: 16px; max-width: 100%; }
+    .etym-legend {
+      position: static;
+      display: flex;
+      flex-direction: row;
+      flex-wrap: wrap;
+      margin-top: 12px;
+      background: rgba(255,255,255,0.95);
+    }
+  </style>
+</head>
+<body>
+  {{ content }}
+</body>
+</html>
