@@ -46,6 +46,27 @@
     panel:      document.getElementById('etym-panel')
   };
 
+  // --- Tooltip (created lazily on first hover) ---
+  var tooltip = null;
+  function showTooltip(d, ev) {
+    if (!tooltip) {
+      tooltip = document.createElement('div');
+      tooltip.className = 'etym-tooltip';
+      els.canvas.appendChild(tooltip);
+    }
+    tooltip.innerHTML =
+      '<strong>' + escapeHtml(d.word) + '</strong> · ' +
+      (LANG_LABEL[d.language] || 'Unknown') + '<br>' +
+      '<em>' + escapeHtml(d.gloss || '') + '</em>';
+    var rect = els.canvas.getBoundingClientRect();
+    tooltip.style.left = (ev.clientX - rect.left + 12) + 'px';
+    tooltip.style.top  = (ev.clientY - rect.top + 12) + 'px';
+    tooltip.style.display = 'block';
+  }
+  function hideTooltip() {
+    if (tooltip) tooltip.style.display = 'none';
+  }
+
   // --- State ---
   var state = {
     mode: 'landing',  // 'landing' | 'focus'
@@ -198,6 +219,28 @@
           if (!ev.active) simulation.alphaTarget(0);
           d.fx = null; d.fy = null;
         }));
+
+    nodeGroup
+      .on('mouseover', function (ev, d) { showTooltip(d, ev); })
+      .on('mousemove', function (ev, d) { showTooltip(d, ev); })
+      .on('mouseout', hideTooltip)
+      .on('click', function (ev, d) {
+        ev.stopPropagation();
+        hideTooltip();
+        if (d.isFocus) {
+          // Center-click = go back one step
+          if (state.history.length > 0) {
+            var prev = state.history.pop();
+            state.focusId = prev;
+            history.pushState({ focusId: prev }, '', '?w=' + encodeURIComponent(prev));
+            render();
+          } else {
+            showLanding();
+          }
+        } else {
+          focusOn(d.id);
+        }
+      });
 
     nodeGroup.append('circle')
       .attr('r', function (d) {
