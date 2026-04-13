@@ -65,3 +65,105 @@
   gloss: "seeing, sight"
   parents: []
   source: wiktionary
+
+# --- philo- cluster expansion ---
+
+- id: philology
+  word: philology
+  language: en
+  gloss: "love of learning, words"
+  parents: [philo, logos]
+  source: wiktionary
+
+- id: philharmonic
+  word: philharmonic
+  language: en
+  gloss: "loving harmony"
+  parents: [philo, harmonia]
+  source: wiktionary
+
+- id: bibliophile
+  word: bibliophile
+  language: en
+  gloss: "book lover"
+  parents: [biblion, philo]
+  source: wiktionary
+
+- id: logos
+  word: "λόγος (logos)"
+  language: grc
+  gloss: "word, reason, speech"
+  parents: []
+  source: wiktionary
+
+- id: harmonia
+  word: "ἁρμονία (harmonia)"
+  language: grc
+  gloss: "joint, agreement, harmony"
+  parents: []
+  source: wiktionary
+
+- id: biblion
+  word: "βιβλίον (biblion)"
+  language: grc
+  gloss: "book"
+  parents: []
+  source: wiktionary
+
+# --- tele- cluster ---
+
+- id: telephone
+  word: telephone
+  language: en
+  gloss: "far voice"
+  parents: [tele, phone-grc]
+  source: wiktionary
+
+- id: telescope
+  word: telescope
+  language: en
+  gloss: "far-seeing"
+  parents: [tele, skopein]
+  source: wiktionary
+
+- id: telepathy
+  word: telepathy
+  language: en
+  gloss: "far feeling"
+  parents: [tele, pathos]
+  source: wiktionary
+
+- id: telegraph
+  word: telegraph
+  language: en
+  gloss: "far writing"
+  parents: [tele, graphein]
+  source: wiktionary
+
+- id: phone-grc
+  word: "φωνή (phōnē)"
+  language: grc
+  gloss: "sound, voice"
+  parents: []
+  source: wiktionary
+
+- id: skopein
+  word: "σκοπεῖν (skopein)"
+  language: grc
+  gloss: "to look at, examine"
+  parents: []
+  source: wiktionary
+
+- id: pathos
+  word: "πάθος (pathos)"
+  language: grc
+  gloss: "suffering, feeling"
+  parents: []
+  source: wiktionary
+
+- id: graphein
+  word: "γράφειν (graphein)"
+  language: grc
+  gloss: "to write, scratch"
+  parents: []
+  source: wiktionary
