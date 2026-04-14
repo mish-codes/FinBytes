@@ -1,0 +1,309 @@
+---
+layout: quant-lab-mini
+title: "Rent vs Buy — London: A Data-Driven Calculator"
+date: 2026-04-14
+tags: [finance, london, property, calculator, streamlit, python, mortgages]
+section: quant-lab
+permalink: /quant-lab/rent-vs-buy/
+---
+
+<style>
+.rvb-lede { color:var(--text-muted-color, #666); font-size:.98rem; margin-bottom:2rem; line-height:1.7; }
+.rvb-h2 { font-size:1.3rem; margin-top:2rem; margin-bottom:.8rem; }
+</style>
+
+<p class="rvb-lede">
+Should you rent or buy a London home? It's one of the most consequential
+financial decisions most adults make, and the honest answer depends on
+about twenty variables interacting in non-obvious ways. I built a
+calculator that does the math for you using real London data.
+</p>
+
+<p>
+The inspiration was the <a href="https://www.nytimes.com/2024/05/13/briefing/a-new-rent-versus-buy-calculator.html" target="_blank">New York Times rent vs buy calculator</a>,
+originally launched in 2014 and updated in 2024. It's a brilliant tool —
+sliders, live feedback, and a "breakeven rent" headline that cuts through
+all the noise. But it's built for the US market, and applying its logic
+directly to London produces wrong answers for five or six structural
+reasons. This post walks through what I changed, what I kept, and what
+the calculator is honest about not knowing.
+</p>
+
+<p>
+<strong>Try it here:</strong> <a href="https://finbytes-quantlab.streamlit.app">finbytes-quantlab.streamlit.app</a> → Mini Projects → Rent vs Buy London.
+</p>
+
+<h2 class="rvb-h2">Why the NYT formula needed adapting</h2>
+
+<p>Five biggest differences between the US and UK markets:</p>
+
+<ol>
+  <li><strong>SDLT is tiered, not percentage.</strong> UK Stamp Duty Land Tax applies progressively: 0% up to £250k, 5% on £250k–£925k, 10% on £925k–£1.5M, 12% above. First-time buyers get a different schedule (0% up to £425k) but only below £625k total. The NYT uses a single "transfer tax percentage" field, which produces wildly wrong SDLT estimates on £600k+ purchases.</li>
+
+  <li><strong>No mortgage interest tax deduction.</strong> The UK abolished mortgage interest relief in 2000. The NYT calculator has an entire column for "tax savings on mortgage interest" — that column is zero in a UK calculator. Removing it actually makes buying look worse relative to the US.</li>
+
+  <li><strong>Council tax is a flat pound amount, not a percentage.</strong> NYT uses "property tax %" which is how US jurisdictions charge (1-2% of assessed value). UK council tax is set at a flat £ per year by borough and band — Wandsworth band D is ~£900 while Kingston band D is ~£2,320. These are valuations frozen in 1991, not tracked to current prices.</li>
+
+  <li><strong>UK mortgages are short-fix, not 30-year fixed.</strong> A typical UK mortgage has a 2- or 5-year fixed period, then reverts to a variable rate. When the fix ends you usually remortgage, paying £1-2k in fees. The NYT assumes one fixed rate for the whole term.</li>
+
+  <li><strong>Leasehold flats.</strong> Most London flats are leasehold, which means you own the flat for a fixed term (often 99-999 years from the original grant) and pay annual service charge + ground rent to the freeholder. As the lease runs down, the value declines — and below ~80 years, mortgage availability dries up and lease extension can cost tens of thousands. The NYT has no equivalent concept.</li>
+</ol>
+
+<h2 class="rvb-h2">The core math</h2>
+
+<p>
+The fundamental idea is the same on both sides: sum up all the cash
+flowing out of your wallet over N years, then subtract what you get back.
+</p>
+
+<p><strong>Buying:</strong></p>
+
+<pre><code>total_cost_of_buying = deposit + SDLT + legal + moving
+                      + monthly_mortgage * 12 * N
+                      + council_tax * N
+                      + maintenance * N
+                      + buildings_insurance * N
+                      + (service_charge + ground_rent) * N   [flats only]
+                      + remortgage_fees_per_fix_cycle
+                      - home_value_at_sale
+                      + remaining_mortgage
+                      + selling_fee
+                      - investment_return_on_excess_starting_cash</code></pre>
+
+<p><strong>Renting:</strong></p>
+
+<pre><code>total_cost_of_renting = rent_with_annual_growth_over_N_years
+                       + moving_cost * num_moves
+                       + renters_insurance * N
+                       - investment_return_on_money_not_spent_on_deposit</code></pre>
+
+<p>
+The mortgage formula is the standard amortization equation, straight
+out of any finance textbook:
+</p>
+
+<pre><code>def monthly_mortgage_payment(principal, annual_rate, years):
+    if annual_rate == 0:
+        return principal / (years * 12)
+    r = annual_rate / 12
+    n = years * 12
+    return principal * r * (1 + r) ** n / ((1 + r) ** n - 1)</code></pre>
+
+<p>
+SDLT is slightly more fun — a bracket function with different thresholds
+for first-time buyers:
+</p>
+
+<pre><code>STANDARD_BANDS = [
+    (  250_000,      0.00),
+    (  925_000,      0.05),
+    (1_500_000,      0.10),
+    (float("inf"),   0.12),
+]
+
+def calculate_sdlt(price, first_time_buyer=False):
+    if first_time_buyer and price <= 625_000:
+        return _tiered_tax(price, FTB_BANDS)
+    return _tiered_tax(price, STANDARD_BANDS)</code></pre>
+
+<p>
+The breakeven rent is what makes the whole thing useful. If you know
+the total net cost of buying over N years, you can solve for the monthly
+rent at which the two sides tie:
+</p>
+
+<pre><code>breakeven_monthly = (buy_net_cost + rent_investment_income
+                    - non_rent_outflows) / (12 * growth_sum)</code></pre>
+
+<p>
+Where <code>growth_sum</code> is the discounted rent accumulator
+<code>sum((1+g)^y for y in 0..N-1)</code>. If you can rent for less
+than this, renting wins. If not, buying wins.
+</p>
+
+<h2 class="rvb-h2">LTV tiering — the detail that matters most in the UK</h2>
+
+<p>
+Here's a thing I didn't appreciate until I started building this:
+<strong>UK mortgage rates step down in brackets based on your loan-to-value ratio</strong>.
+At 95% LTV you might pay 6.0%; at 60% LTV you might pay 4.3%. That's a
+1.5 percentage point gap, and over a 25-year £500k mortgage it's worth
+about <strong>£160,000</strong> in interest.
+</p>
+
+<p>
+This makes "save more before you buy" into one of the most impactful
+financial decisions a prospective UK buyer can make — and it's much
+sharper than the US equivalent.
+</p>
+
+<p>
+The Bank of England publishes the typical quoted rates across lenders
+in <strong>Bankstats table G1.4 "Quoted household interest rates"</strong>,
+by fix length (2/3/5/10 years) and LTV bracket (60/75/85/90/95%). The
+series codes are <code>IUMBV*</code> and you can fetch them as CSV from
+the BoE Interactive Statistical Database with no API key or login.
+</p>
+
+<p>
+My calculator bundles a snapshot CSV and uses it to auto-suggest the
+mortgage rate based on the user's LTV. Drag the deposit slider left
+and the rate bumps up; drag it right and the rate drops. Watching the
+total cost of buying change in real time as you add another £10k to
+your deposit is the most concrete argument for saving more that I've
+seen in any calculator.
+</p>
+
+<h2 class="rvb-h2">London-specific quirks</h2>
+
+<p><strong>New build premium.</strong> New-build flats in London
+typically sell at a 10–20% premium to equivalent older properties.
+That premium often erodes over the first 5 years of ownership as the
+"new" stops being new. The calculator doesn't explicitly model this
+(it would need a depreciation curve) but warns about it in the UI.</p>
+
+<p><strong>Council tax bands.</strong> All UK residential property
+is in a council tax band (A–H) based on its 1991 valuation. Over 30
+years of property appreciation, the bands have become increasingly
+meaningless. Wandsworth and Westminster have dramatically lower council
+tax than outer boroughs — Wandsworth band D is ~£900/year while Kingston
+band D is ~£2,320. The calculator uses the actual band D for the
+selected borough, not a percentage of current value.</p>
+
+<p><strong>Service charges on leasehold flats.</strong> Service charges
+have exploded in recent years — some new-build developments in London
+charge £5k-10k/year on top of everything else. The calculator includes
+service charge as a separate input visible only when the property type
+is "Flat".</p>
+
+<p><strong>Buildings vs contents insurance.</strong> If you buy a
+freehold house, you pay buildings insurance (~£300-500/year) because
+you own the bricks. If you buy a leasehold flat, the freeholder pays
+buildings insurance from the service charge (usually). Either way,
+both renters and buyers can pay optional contents insurance for their
+stuff.</p>
+
+<p><strong>First-time buyer SDLT relief.</strong> FTB relief bumps the
+nil-rate band from £250k to £425k, and the 5% band from £250k–£925k to
+£425k–£625k. Above £625k, FTB relief disappears entirely and you pay
+the full standard bands. For London FTBs this is the difference between
+~£7,500 and £0 on a £450k flat.</p>
+
+<h2 class="rvb-h2">Data sources</h2>
+
+<p>
+Everything the calculator uses is free and freely available under the
+UK Open Government Licence.
+</p>
+
+<ul>
+  <li><strong>HM Land Registry Price Paid Data.</strong> 28 million
+  property transactions since 1995, released as free downloadable
+  CSVs. I filter to the most recent 3 years and group by (postcode
+  district × property type × new build flag) to compute sensible
+  median price defaults.</li>
+
+  <li><strong>ONS Private Rental Market Statistics.</strong> The
+  Office for National Statistics publishes monthly median rent by
+  local authority under "Private Rental Market Summary Statistics
+  in England". I bundle a static CSV of the 33 London boroughs and
+  update it annually.</li>
+
+  <li><strong>Council tax.</strong> Each London borough publishes
+  its annual council tax leaflet with band A-H rates. I aggregate
+  them into a single CSV — manual curation, refreshed annually as
+  boroughs set new rates each March.</li>
+
+  <li><strong>Bank of England G1.4.</strong> Monthly snapshot of
+  typical quoted household mortgage rates by fix length and LTV.
+  I fetch it via the IADB interactive database as CSV. A helper script
+  (<code>scripts/refresh_boe_rates.py</code>) pulls the latest values
+  and writes the bundled snapshot. The Streamlit app reads the bundled
+  file only — no network I/O at page load.</li>
+</ul>
+
+<h2 class="rvb-h2">What this calculator gets right, what it doesn't</h2>
+
+<p><strong>Right:</strong></p>
+<ul>
+  <li>Real data defaults — price from HM Land Registry, rent from ONS, rate from BoE</li>
+  <li>UK-specific costs: SDLT, council tax, service charge, ground rent</li>
+  <li>First-time buyer SDLT relief</li>
+  <li>LTV-tiered mortgage rates — the single biggest UK-specific factor</li>
+  <li>Opportunity cost of the deposit on both sides (buying and renting)</li>
+  <li>ISA protection toggle — the renter's investment return is less valuable if it's taxed</li>
+  <li>Multiple renter moves over a long horizon (offset by buyer remortgage fees)</li>
+  <li>All the formulas are open source and pytest-covered</li>
+</ul>
+
+<p><strong>Simplified or missing:</strong></p>
+<ul>
+  <li><strong>Deterministic single trajectory.</strong> House prices and investment returns are modeled as constant growth rates. Real markets have volatility. The 2008 crash was not a small event. A Monte Carlo version with confidence bands is on my list.</li>
+  <li><strong>Borough-level rent.</strong> The ONS data is aggregated to borough, not postcode district. A £2,100/month default for "Camden" lumps Somers Town and Hampstead together. This is the biggest honest gap.</li>
+  <li><strong>Fixed rate for the whole term.</strong> If your plan-to-stay is 15 years but you're on a 5-year fix, you'll remortgage twice at unknown future rates. The calculator keeps the rate fixed for the whole stay, with a caption warning.</li>
+  <li><strong>No mortgage affordability stress test.</strong> Banks typically lend 4.5× income. If you earn £60k you can't actually get a £650k mortgage. The calculator doesn't check.</li>
+  <li><strong>Interest-only mortgages not modeled.</strong> Some UK mortgages are interest-only (you pay interest during the term and owe the full principal at the end). Not common for owner-occupiers post-2014 but worth flagging.</li>
+  <li><strong>Section 21 eviction risk.</strong> Until the Renters Reform Bill fully lands, UK tenants can be asked to leave with 2 months' notice for no reason. Not quantifiable but a real non-financial reason some people prefer buying.</li>
+  <li><strong>Shared ownership.</strong> Buying 25–75% of a home and renting the rest — common in London, totally different math. Out of scope for this calculator but worth a dedicated tool.</li>
+  <li><strong>LISA / Help to Buy bonuses.</strong> A Lifetime ISA gives a 25% government bonus on up to £4k/year of savings for first-time buyers. That effectively boosts your starting cash. The calculator's "starting cash" input is whatever number you type — it doesn't differentiate between cash saved in an ISA vs a normal savings account.</li>
+  <li><strong>Emotional factors.</strong> Paint the walls. Stability for kids. Pride of ownership. Flexibility of renting. The NYT calculator acknowledges these in its footnotes. So do I: no calculator can tell you how much these are worth to you.</li>
+</ul>
+
+<h2 class="rvb-h2">Try it yourself</h2>
+
+<p>
+<a href="https://finbytes-quantlab.streamlit.app" target="_blank">
+Live calculator on Streamlit Cloud →
+</a>
+</p>
+
+<p>
+Play with the <strong>plan-to-stay slider</strong> — it's the single
+biggest lever. Short stays favor renting because upfront costs dominate.
+Long stays favor buying because equity accumulates. The crossover year
+is different for every borough, every property type, and every starting
+cash amount.
+</p>
+
+<h2 class="rvb-h2">What I learned</h2>
+
+<p>
+Three things I hadn't fully internalized before I built this:
+</p>
+
+<ol>
+  <li>
+    <strong>LTV matters more than the base mortgage rate.</strong>
+    A 10-point deposit shift (from 5% to 15% down) can save you more
+    money than a 0.5 percentage point base rate change. It's counterintuitive
+    until you realize the 10-point shift also moves you into a completely
+    different rate tier.
+  </li>
+  <li>
+    <strong>Council tax is invisibly huge.</strong> £2,000/year is
+    £50,000 over a 25-year mortgage. That's the deposit for a parking
+    space. Almost no one factors it in when thinking about "can I afford
+    this flat".
+  </li>
+  <li>
+    <strong>Nobody talks about the opportunity cost correctly.</strong>
+    Every rent-vs-buy debate online eventually devolves into "but you're
+    throwing money away on rent!" — which ignores that the alternative
+    is throwing money into a house-shaped illiquid asset instead of
+    a diversified investment portfolio. The honest comparison is total
+    cost with opportunity cost on both sides, which is exactly what the
+    NYT calculator gets right and what I tried to preserve.
+  </li>
+</ol>
+
+<p>
+<strong>Next steps:</strong> a borough heatmap of breakeven rent (which
+boroughs are currently the best places to buy vs rent?), and an
+integration with the existing London House Prices page so you can
+jump from a postcode's historical trend straight into the calculator.
+</p>
+
+<p><em>Not financial advice. Model assumptions documented in the
+<a href="https://github.com/mish-codes/QuantLab" target="_blank">QuantLab repo</a>.
+Data snapshots refreshed periodically — check the source links on
+each input's tooltip.</em></p>

@@ -99,6 +99,12 @@ permalink: /quant-lab/
     <span class="ql-desc">Income vs expenses, spending breakdown, surplus/deficit</span>
     <span class="ql-tech">Python &middot; Plotly &middot; Streamlit</span>
   </li>
+  <li>
+    <a href="{{ "/quant-lab/rent-vs-buy/" | relative_url }}">Rent vs Buy London</a>
+    <span class="ql-badges"><span class="ql-badge ql-badge-mini">Mini Project</span><span class="ql-badge ql-badge-calc">Calculator</span></span>
+    <span class="ql-desc">Should you rent or buy a London home? Data-driven calculator using HM Land Registry prices, ONS rents, and Bank of England mortgage rates</span>
+    <span class="ql-tech">Python &middot; Streamlit &middot; pandas &middot; Plotly &middot; HM Land Registry &middot; ONS &middot; Bank of England</span>
+  </li>
 </ul>
 
 <div class="ql-section">Mini Projects &mdash; Dashboards</div>
