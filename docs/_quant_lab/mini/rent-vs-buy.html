@@ -238,6 +238,66 @@ UK Open Government Licence.
   file only — no network I/O at page load.</li>
 </ul>
 
+<h2 class="rvb-h2">Keeping it current — refreshing the data</h2>
+
+<p>
+Every data source above is a snapshot bundled in the repo. The
+calculator never hits the network at page load, which makes it fast
+and resilient but means the snapshots get stale unless I refresh
+them manually. The Streamlit app's <em>System Health → Bundled Data</em>
+tab shows the snapshot date for every file at a glance, so I can
+spot what's drifted. Each source has its own cadence and refresh
+procedure:
+</p>
+
+<ul>
+  <li><strong>HM Land Registry PPD</strong> publishes a new
+  monthly increment on the third Friday of each month at
+  <a href="https://www.gov.uk/government/statistical-data-sets/price-paid-data-downloads" target="_blank">gov.uk</a>.
+  To refresh, I download the latest London-only CSV, replace
+  <code>dashboard/data/london_ppd.parquet</code>, then re-run the
+  EPC join so the bedroom-enriched parquet rebuilds:
+  <code>python dashboard/scripts/build_ppd_with_bedrooms.py --refresh-epc</code>.
+  Takes ~5 minutes including the EPC re-fetch.</li>
+
+  <li><strong>EPC Open Data</strong> updates continuously as new
+  certificates are lodged. The build script above re-pulls all 32
+  London local authorities from the
+  <a href="https://epc.opendatacommunities.org/" target="_blank">EPC API</a>
+  via free credentials stored locally in <code>.env.local</code>.
+  About 70% of recent London sales pick up a real bedroom band
+  via this join.</li>
+
+  <li><strong>ONS Private Rental Market Statistics</strong> is
+  released annually each spring covering the previous calendar
+  year. To refresh, I download the latest publication
+  (<a href="https://www.ons.gov.uk/peoplepopulationandcommunity/housing/datasets/privaterentalmarketsummarystatisticsinengland" target="_blank">ons.gov.uk</a>),
+  open the Excel workbook, and copy the borough rows from Table
+  2.1 into <code>london_borough_rents.csv</code> and Table 2.7
+  (bedroom-segmented) into <code>london_borough_rents_by_bedroom.csv</code>.
+  ~10 minutes once a year.</li>
+
+  <li><strong>Bank of England G1.4</strong> publishes monthly
+  rate snapshots. To refresh, I run
+  <code>python dashboard/scripts/refresh_boe_rates.py</code> —
+  the script pulls the latest values from the IADB CSV endpoint
+  and overwrites the bundled file. ~30 seconds.</li>
+
+  <li><strong>Council tax</strong> is set by each London borough
+  every March for the coming financial year. There's no single
+  download — each borough publishes its own leaflet. I aggregate
+  them by hand into <code>london_council_tax.csv</code> once a
+  year, usually April. ~1 hour of copy-paste.</li>
+</ul>
+
+<p>
+After any refresh the workflow is the same: re-run the test suite
+(<code>pytest dashboard/tests/</code>), commit the updated CSVs
+or parquet, and let Streamlit Cloud auto-deploy from master. The
+<em>System Health → Bundled Data</em> table will then show the
+new snapshot dates without any code change.
+</p>
+
 <h2 class="rvb-h2">What this calculator gets right, what it doesn't</h2>
 
 <p><strong>Right:</strong></p>
