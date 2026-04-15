@@ -258,7 +258,11 @@ procedure:
   <code>dashboard/data/london_ppd.parquet</code>, then re-run the
   EPC join so the bedroom-enriched parquet rebuilds:
   <code>python dashboard/scripts/build_ppd_with_bedrooms.py --refresh-epc</code>.
-  Takes ~5 minutes including the EPC re-fetch.</li>
+  Takes ~5 minutes including the EPC re-fetch. Note: the enriched
+  parquet is ~6 MB and gets committed each refresh, so the repo
+  will grow ~70 MB/year. If that becomes a problem I'll move it
+  to Git LFS or fetch it as a release asset on Streamlit startup
+  instead of committing the binary.</li>
 
   <li><strong>EPC Open Data</strong> updates continuously as new
   certificates are lodged. The build script above re-pulls all 32
