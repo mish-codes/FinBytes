@@ -43,7 +43,7 @@ permalink: /math-finance/
     </li>
     <li>
       <a href="{{ "/math-finance/benchmark-rates-libor-transition/" | relative_url }}">Interest Rate Benchmarks: From LIBOR to Risk-Free Rates</a>
-      <span class="mf-desc">SONIA, EONIA / &euro;STR, SOFR &mdash; what they are, the LIBOR transition, fallback spreads, worked PnL example &middot; <a href="https://finbytes.streamlit.app/Benchmark_Rates" style="color:var(--link-color,#2a7ae2)">live demo</a></span>
+      <span class="mf-desc">SONIA, EONIA / &euro;STR, SOFR &mdash; what they are, the LIBOR transition, fallback spreads, worked PnL example &middot; <a href="https://quantlabs.streamlit.app/Benchmark_Rates" style="color:var(--link-color,#2a7ae2)">live demo</a></span>
     </li>
   </ul>
 </div>

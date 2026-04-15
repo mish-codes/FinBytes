@@ -14,7 +14,7 @@ permalink: "/quant-lab/stock-risk-scanner-architecture/"
 
 <div class="mermaid">
 graph LR
-    A[User Browser] --> B[Streamlit Cloud\nfinbytes.streamlit.app]
+    A[User Browser] --> B[Streamlit Cloud\nquantlabs.streamlit.app]
     B -->|POST /api/scan\nGET /api/scans/id| C[Render API\nfinbytes-scanner.onrender.com]
     B -->|chart data| D[yfinance\nexternal]
     C -->|persist scan records| E[PostgreSQL\nRender managed]

@@ -40,8 +40,8 @@ order: 8
 
 <div class="demo-bar">
   <span>Stock Risk Scanner &mdash; live on Streamlit Cloud</span>
-  <a href="https://finbytes.streamlit.app" target="_blank">Open in new tab &#8599;</a>
+  <a href="https://quantlabs.streamlit.app" target="_blank">Open in new tab &#8599;</a>
 </div>
 <div class="demo-container">
-  <iframe src="https://finbytes.streamlit.app/?embedded=true" allow="clipboard-write"></iframe>
+  <iframe src="https://quantlabs.streamlit.app/?embedded=true" allow="clipboard-write"></iframe>
 </div>
