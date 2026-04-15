@@ -807,7 +807,7 @@ Then 6 content divs, each following this pattern:
 ```
 
 Each tab should contain:
-- **Intro:** What benchmarks are, who uses them (banks, funds, corporates), the IBOR family, why reference rates matter for pricing/discounting/PnL. Callout linking to the live dashboard demo at `https://finbytes.streamlit.app/Benchmark_Rates`.
+- **Intro:** What benchmarks are, who uses them (banks, funds, corporates), the IBOR family, why reference rates matter for pricing/discounting/PnL. Callout linking to the live dashboard demo at `https://quantlabs.streamlit.app/Benchmark_Rates`.
 - **SONIA:** Bank of England administered, unsecured overnight GBP lending, backward-looking, daily publication by 9am, trimmed volume-weighted median, ~£50bn daily volume. Table summarizing key facts. Formula for compounded SONIA over N days.
 - **EONIA/€STR:** EONIA history (ECB panel-bank weighted average, 1999-2022), why replaced (low volume, panel shrinkage), €STR (money market statistical reporting, ~€30bn volume), fixed spread EONIA = €STR + 8.5bp, ECB publication by 8am CET. Comparison table.
 - **SOFR:** NY Fed, secured (US Treasury repo), ~$1tn daily volume, published by 8am ET, key difference from LIBOR (secured vs unsecured, backward vs forward-looking). Comparison table: LIBOR vs SOFR side-by-side.
@@ -838,7 +838,7 @@ In `docs/_tabs/math-finance.md`, find the "Yield Curves &amp; Rates" section's `
 ```html
     <li>
       <a href="{{ "/math-finance/benchmark-rates-libor-transition/" | relative_url }}">Interest Rate Benchmarks: From LIBOR to Risk-Free Rates</a>
-      <span class="mf-desc">SONIA, EONIA / €STR, SOFR &mdash; what they are, the LIBOR transition, fallback spreads, worked PnL example &middot; <a href="https://finbytes.streamlit.app/Benchmark_Rates" style="color:var(--link-color,#2a7ae2)">live demo</a></span>
+      <span class="mf-desc">SONIA, EONIA / €STR, SOFR &mdash; what they are, the LIBOR transition, fallback spreads, worked PnL example &middot; <a href="https://quantlabs.streamlit.app/Benchmark_Rates" style="color:var(--link-color,#2a7ae2)">live demo</a></span>
     </li>
 ```
 

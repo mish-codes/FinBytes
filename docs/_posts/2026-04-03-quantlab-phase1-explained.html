@@ -14,7 +14,7 @@ permalink: "/quant-lab/phase1-explained/"
 
 <p>QuantLab Phase 1 is eight exercises (01&ndash;08) that each teach one Python tool or concept, building on the last, until they all snap together into a working application: the <strong>Stock Risk Scanner</strong>.</p>
 
-<p>The scanner is a real, deployed app. You type in a list of stock tickers, and it fetches live market data, crunches a suite of risk metrics, asks an AI to write a human-readable risk narrative, saves everything to a database, and displays it on a dashboard. It lives at <a href="https://finbytes.streamlit.app">finbytes.streamlit.app</a>.</p>
+<p>The scanner is a real, deployed app. You type in a list of stock tickers, and it fetches live market data, crunches a suite of risk metrics, asks an AI to write a human-readable risk narrative, saves everything to a database, and displays it on a dashboard. It lives at <a href="https://quantlabs.streamlit.app">quantlabs.streamlit.app</a>.</p>
 
 <p>The full tech stack:</p>
 
@@ -260,7 +260,7 @@ permalink: "/quant-lab/phase1-explained/"
 
 <p>Streamlit lets you build a web dashboard using nothing but Python. No HTML, no CSS, no JavaScript. You write <code>st.title("Stock Risk Scanner")</code> and a title appears. You write <code>st.line_chart(data)</code> and a chart appears. It's the fastest way to go from "I have some data" to "I have a web app."</p>
 
-<p>Streamlit Cloud hosts it for free. Push code to GitHub, and Streamlit deploys it automatically. The dashboard lives at <a href="https://finbytes.streamlit.app">finbytes.streamlit.app</a>. If you've ever built something in a Jupyter notebook and wished you could share it as a real website, Streamlit is the answer.</p>
+<p>Streamlit Cloud hosts it for free. Push code to GitHub, and Streamlit deploys it automatically. The dashboard lives at <a href="https://quantlabs.streamlit.app">quantlabs.streamlit.app</a>. If you've ever built something in a Jupyter notebook and wished you could share it as a real website, Streamlit is the answer.</p>
 
 <h3>FastAPI &mdash; The Backend Brain</h3>
 
@@ -305,7 +305,7 @@ permalink: "/quant-lab/phase1-explained/"
 <p>Now let's see how all these pieces connect. Here's how a scan request flows through the entire system, from the moment you click "Scan" to the moment results appear on screen:</p>
 
 <pre>
-User opens finbytes.streamlit.app
+User opens quantlabs.streamlit.app
        |
        v
   +------------+     POST /api/scan      +--------------+
@@ -496,5 +496,5 @@ async def start_scan(request: ScanRequest):
 
 <p><a href="https://github.com/mish-codes/quant_lab">github.com/mish-codes/quant_lab</a></p>
 
-<p>And the live scanner is at <a href="https://finbytes.streamlit.app">finbytes.streamlit.app</a>. Try scanning a few tickers and watch the architecture from this post come to life. Start with something you know &mdash; maybe AAPL and MSFT &mdash; and read the results through the lens of the finance concepts explained in Part 3. Every number on that dashboard now means something to you.
+<p>And the live scanner is at <a href="https://quantlabs.streamlit.app">quantlabs.streamlit.app</a>. Try scanning a few tickers and watch the architecture from this post come to life. Start with something you know &mdash; maybe AAPL and MSFT &mdash; and read the results through the lens of the finance concepts explained in Part 3. Every number on that dashboard now means something to you.
 That is the whole point of QuantLab Phase 1.</p>
