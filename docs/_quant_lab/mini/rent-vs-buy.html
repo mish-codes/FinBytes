@@ -200,14 +200,30 @@ UK Open Government Licence.
   <li><strong>HM Land Registry Price Paid Data.</strong> 28 million
   property transactions since 1995, released as free downloadable
   CSVs. I filter to the most recent 3 years and group by (postcode
-  district × property type × new build flag) to compute sensible
-  median price defaults.</li>
+  district × property type × new build flag × bedrooms) to compute
+  sensible median price defaults. Land Registry doesn't record
+  bedroom counts itself — see the EPC join below for how I derive
+  them.</li>
+
+  <li><strong>EPC (Energy Performance Certificates).</strong> Every
+  rental and sale in the UK requires an EPC, and the dataset is
+  free to download per local authority via the
+  <a href="https://epc.opendatacommunities.org/" target="_blank">EPC Open Data API</a>.
+  Each certificate records the number of habitable rooms, which I
+  bucket into bedroom bands (Studio / 1 / 2 / 3 / 4+). A build
+  script (<code>scripts/build_ppd_with_bedrooms.py</code>) downloads
+  certificates for all 32 London local authorities, aggregates
+  bedrooms by postcode, and joins them onto Land Registry. About
+  70% of recent London sales pick up a real bedroom band this way;
+  the rest fall through to the legacy property-type filter.</li>
 
   <li><strong>ONS Private Rental Market Statistics.</strong> The
-  Office for National Statistics publishes monthly median rent by
-  local authority under "Private Rental Market Summary Statistics
-  in England". I bundle a static CSV of the 33 London boroughs and
-  update it annually.</li>
+  Office for National Statistics publishes annual median rent by
+  London borough under "Private Rental Market Summary Statistics
+  in England", broken down further into Studio / 1-bed / 2-bed /
+  3-bed / 4+ bed bands (Table 2.7). I bundle two CSVs of the 33
+  London boroughs — one with the single median, one with the
+  bedroom-segmented values — and update both annually.</li>
 
   <li><strong>Council tax.</strong> Each London borough publishes
   its annual council tax leaflet with band A-H rates. I aggregate
@@ -227,6 +243,7 @@ UK Open Government Licence.
 <p><strong>Right:</strong></p>
 <ul>
   <li>Real data defaults — price from HM Land Registry, rent from ONS, rate from BoE</li>
+  <li>Bedroom-aware defaults on both sides — a 1-bed flat in Camden defaults to a different price and rent than a 4+ bed terrace in the same borough</li>
   <li>UK-specific costs: SDLT, council tax, service charge, ground rent</li>
   <li>First-time buyer SDLT relief</li>
   <li>LTV-tiered mortgage rates — the single biggest UK-specific factor</li>
@@ -239,7 +256,7 @@ UK Open Government Licence.
 <p><strong>Simplified or missing:</strong></p>
 <ul>
   <li><strong>Deterministic single trajectory.</strong> House prices and investment returns are modeled as constant growth rates. Real markets have volatility. The 2008 crash was not a small event. A Monte Carlo version with confidence bands is on my list.</li>
-  <li><strong>Borough-level rent.</strong> The ONS data is aggregated to borough, not postcode district. A £2,100/month default for "Camden" lumps Somers Town and Hampstead together. This is the biggest honest gap.</li>
+  <li><strong>Borough-level rent.</strong> The ONS data is aggregated to borough × bedroom band, not postcode district. A 2-bed default for "Camden" lumps Somers Town and Hampstead together. The bedroom split helps but it's still a borough-wide median; postcode-district granularity would be the next step.</li>
   <li><strong>Fixed rate for the whole term.</strong> If your plan-to-stay is 15 years but you're on a 5-year fix, you'll remortgage twice at unknown future rates. The calculator keeps the rate fixed for the whole stay, with a caption warning.</li>
   <li><strong>No mortgage affordability stress test.</strong> Banks typically lend 4.5× income. If you earn £60k you can't actually get a £650k mortgage. The calculator doesn't check.</li>
   <li><strong>Interest-only mortgages not modeled.</strong> Some UK mortgages are interest-only (you pay interest during the term and owe the full principal at the end). Not common for owner-occupiers post-2014 but worth flagging.</li>
@@ -252,7 +269,7 @@ UK Open Government Licence.
 <h2 class="rvb-h2">Try it yourself</h2>
 
 <p>
-<a href="https://finbytes-quantlab.streamlit.app" target="_blank">
+<a href="https://quantlabs.streamlit.app" target="_blank">
 Live calculator on Streamlit Cloud →
 </a>
 </p>
