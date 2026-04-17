@@ -2,86 +2,76 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## What is FinBytes
+## What this repo is
 
-FinBytes is an educational repository with two main parts:
-1. **Python modules** (`FinBytes/`) — standalone financial/Python teaching examples (not an installable package)
-2. **Jekyll blog** (`docs/`) — GitHub Pages site at https://mish-codes.github.io/FinBytes/
+A Jekyll blog published to GitHub Pages at https://mish-codes.github.io/FinBytes/. Python/C++ examples referenced in posts live in sibling repos (e.g. `quant_lab`) — **this repo contains no executable Python code**, only the blog source in `docs/` and Ruby validation scripts in `scripts/`.
 
-License: CC0 1.0 Universal
+License: CC0 1.0 Universal.
 
 ## Commands
 
-### Jekyll blog (local dev)
+### Local Jekyll dev
 ```bash
 cd docs && bundle exec jekyll serve --future
 ```
+`future: true` in `_config.yml` means posts dated ahead of today still render locally (they're live on the site too — the blog is currently being backfilled with post-dated entries).
 
-### Running Python modules
-Each module is self-contained — run directly:
+### Etymology data
+The etymology graph at `/etymology.html` is powered by `docs/_data/etymology.yml`. Validate after edits:
 ```bash
-python FinBytes/CurrencyDashboard.py
-python FinBytes/pers_fin_dashboard/dashboard.py --file data.csv --month 2023-03
+ruby scripts/validate_etymology.rb docs/_data/etymology.yml
 ```
+Minitest suite lives in `scripts/test_validate_etymology.rb` (run with `ruby scripts/test_validate_etymology.rb`). Schema + language codes are documented in `docs/_data/etymology.README.md`.
 
-### Tests
-```bash
-# pytest-based tests exist in several modules
-pytest FinBytes/test_samples/
-pytest FinBytes/TestingWithMocks/
-pytest FinBytes/pers_fin_dashboard/
-
-# Run a single test
-pytest FinBytes/test_samples/test_foo.py::test_name
-```
-
-## Python dependencies (no requirements.txt)
-
-There is no requirements.txt or pyproject.toml. Key libraries used across modules:
-- **Data**: pandas, numpy, scipy, statsmodels
-- **Visualization**: matplotlib, plotly, dash
-- **Finance**: yfinance, ta (technical analysis), prophet
-- **ML**: scikit-learn, torch, tensorflow
-- **APIs**: requests (CoinMarketCap, CoinGecko)
-- **NLP**: nltk
-- **Testing**: pytest
-- **Other**: redis, click, flask
+### Deploy
+Pushing to `master` triggers `.github/workflows/pages-deploy.yml` (Ruby 3.3, builds `docs/` with `JEKYLL_ENV=production`, deploys via `actions/deploy-pages@v4`). No manual step.
 
 ## Architecture
 
-### Python modules (`FinBytes/`)
+### Theme
+`jekyll-theme-chirpy ~> 7.0` (see `docs/Gemfile`). **Do not hand-roll nav, sidebar, or post chrome** — Chirpy provides them. The only custom includes are `comments.html`, `graph-overlay.html`, `metadata-hook.html`, and `sidebar.html` (augmenting, not replacing, the theme).
 
-Each subdirectory is an independent, self-contained example — not a shared library. There are no cross-module imports. Common pattern: Load data → Process → Visualize → Predict.
+### Collections (`docs/_config.yml`)
+Four custom collections beyond `_posts`:
 
-Key module groups:
-- **Financial analysis**: `InvestmentPortfolioAnalysis/`, `StockAnalysis/`, `RiskMetrics/`, `PredictStockPrices/`, `Timeseries/`
-- **Personal finance tools**: `ExpenseTracker/`, `pers_fin_dashboard/`, `RetirementCalc/`, `CreditCardRepaymentCalculator/`, `MiniPersonalBudgetTracker/`
-- **Trading/crypto**: `AlgoTrading_MovingAvg_Momentum.py`, `CryptoPortfolioAnalysis_APIs/`, `RealtimeStockPriceTracker.py`
-- **Teaching patterns**: `ArgParseCLI/` (CLI patterns), `TestingWithMocks/` (pytest fixtures), `redis_sample/` (Redis demos), `test_samples/` (pytest demos), `ExampleDecorators.py`
-- **Data science**: `AnomalyDetection/`, `Clustering/`, `SentimentAnalysis.py`
+| Collection | Dir | Permalink |
+|---|---|---|
+| `tabs` | `_tabs/` | theme default (sort_by: order) |
+| `cpp` | `_cpp/` | `/cpp/:name/` — defaults to `layout: cpp-post` |
+| `quant_lab` | `_quant_lab/` | `/quant-lab/:name/` |
+| `private` | `_private/` | `/private/:name/` |
 
-### Jekyll blog (`docs/`)
+`_posts/` defaults to `layout: post`, `comments: true`, `toc: true`.
 
-- **Config**: `docs/_config.yml` — collections: `cpp`, `quant_lab`, `private`; `future: true`
-- **Posts**: `docs/_posts/` (Python/misc/notes), `docs/_cpp/` (C++ series A–J), `docs/_quant_lab/`, `docs/_private/`
-- **Layouts**: `docs/_layouts/` — `post.html`, `cpp-post.html` (tabbed), `quant-lab-project.html`
-- **Nav**: `docs/_includes/header.html` — dropdowns with CSS embedded as `<style>` block (no separate CSS file). Right-side dropdowns use `nav-submenu-left` class.
-- **Index pages**: `python.html`, `cpp.html` (password gated), `misc.html`, `notes.html`, `cheatsheets.html`, `quant-lab.html`, `private.html`
+### Key layouts (`docs/_layouts/`)
+- `cpp-post.html` — tabbed layout for C++ series posts
+- `quant-lab-project.html` — five-tab layout: concept / python / cpp / csharp / comparative. Each tab body comes from a front-matter field (`page.concept_content`, `page.python_content`, …).
+- `quant-lab-mini.html`, `quant-lab-capstone.html` — sibling variants
+- `embed.html` — minimal chrome for embeddable pages (etymology graph etc.)
 
-### Liquid date comparisons
-All date comparisons must use `{% assign pd = p.date | date: "%Y-%m-%d" %}` then compare as strings — never compare `p.date` directly to a string.
+### Tabs / index pages
+Top-nav index pages live in `_tabs/` (`python.md`, `cpp.md`, `quant-lab.md`, `math-finance.md`, `comparisons.md`, `demo.md`, `design.md`, `github.md`, `misc.md`, `about.md`). `_pages/` holds standalone legal pages.
+
+### Liquid date gotcha
+When filtering/comparing post dates in Liquid, always normalize first:
+```liquid
+{% assign pd = p.date | date: "%Y-%m-%d" %}
+{% if pd >= "2026-01-01" %}...{% endif %}
+```
+Never compare `p.date` (a Time object) directly to a string. Currently used in `docs/cpp.html`, `docs/notes.html`, `docs/_tabs/design.md`.
+
+### Drafts
+`docs/_drafts/` holds long-form idea stubs with deliberately ugly slugs — they're skipped by default. Don't rename or promote them without an explicit ask.
 
 ## Git workflow
-Branch strategy: always work on `working` branch, merge to `master` after
-Commit sequence:
-1. git add .
-2. git commit -m "<descriptive message>"
-3. git push origin working
-4. git checkout master
-5. git merge working --no-verify -m "<same message>"
-6. git push origin master
-7. git checkout working
 
-When asked to "commit and deploy", run all 7 steps in order.
-Never commit files in docs/_site/
-Always stay on working branch when done.
+Work on `working`, merge to `master`, let GitHub Pages redeploy. Full "commit and deploy" sequence:
+1. `git add .`
+2. `git commit -m "<message>"`
+3. `git push origin working`
+4. `git checkout master`
+5. `git merge working --no-verify -m "<same message>"` — `--no-verify` is required because a global pre-commit hook blocks direct master activity in repos that have a `working` branch
+6. `git push origin master`
+7. `git checkout working` — always end on `working`
+
+**Never commit `docs/_site/`** (it's the Jekyll build output).
