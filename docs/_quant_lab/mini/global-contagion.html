@@ -1,0 +1,90 @@
+---
+layout: quant-lab-mini
+title: "Global Contagion Command Center"
+description: "Replay geopolitical shocks on an interactive 3D globe — watch rolling correlations between a Middle East risk index and global markets animate across a timeline."
+date: 2026-04-19
+permalink: /quant-lab/global-contagion/
+tech: [Python, deck.gl, pydeck, pandas, yfinance, FRED]
+demo_url: "https://quantlabs.streamlit.app/Global_Contagion"
+category: dashboards
+tech_stack:
+  - name: Python
+    role: Core language
+  - name: pandas
+    role: Rolling correlations — Pearson window over aligned price series
+  - name: yfinance
+    role: Market data — ETF and futures closing prices
+  - name: FRED API
+    role: Macro data — sovereign 10-year yield series
+  - name: pydeck / deck.gl
+    role: 3D globe — GlobeView with GeoJsonLayer + ArcLayer stack
+  - name: Parquet
+    role: Data storage — pre-fetched event data cached locally
+  - name: Streamlit
+    role: Web dashboard framework with playback loop
+---
+
+<div id="tab-concept" class="ql-tab-content active">
+  <h3>What it does</h3>
+  <p>Replays two geopolitical shock events — the 2020 US-Iran escalation and the 2024–2026 Strait of Hormuz tensions — day by day on a 3D globe. Each frame shows how tightly five destination markets (India, Turkey, Germany, US, UK) were moving with a composite Middle East risk index at that moment in time.</p>
+  <p>Arc colour encodes the direction of contagion: red arcs mean the destination market was co-moving with the shock (risk-on spillover), green means decoupling or safe-haven bid, and the arc thickness scales with correlation magnitude so weak signals fade into the background.</p>
+
+  <h3>The math</h3>
+  <p><strong>Middle East index:</strong> simple daily mean of three epicenter-region assets (Israel ETF, Saudi ETF, UAE ETF) — a composite proxy for regional risk appetite on each trading day.</p>
+  <p><strong>Rolling correlation:</strong> 7-trading-day Pearson correlation between the ME index and each destination asset's daily return series. Pearson r ∈ [−1, +1] is mapped to a diverging colour ramp (green → slate → red) so the globe becomes a live heat map of contagion spread.</p>
+  <pre><code class="language-python">corr = s1.rolling(window=7).corr(s2)  # aligned daily return series</code></pre>
+  <p>A 7-day window is short enough to show how correlations shift within a single week of headlines, while being long enough to avoid single-day noise dominating the signal.</p>
+
+  <h3>When to use it</h3>
+  <p>Use this to build intuition about how geopolitical shocks propagate — which markets decouple, which get pulled in, and how quickly the correlation signal decays after the acute phase. Not a trading signal: rolling 7-day correlations are noisy and highly sensitive to window choice. Treat the arcs as qualitative direction, not quantitative edge.</p>
+</div>
+
+<div id="tab-code" class="ql-tab-content" style="display:none">
+  <h3>Middle East risk index</h3>
+  <pre><code class="language-python">import pandas as pd
+
+
+def middle_east_index(events: pd.DataFrame) -> pd.Series:
+    """Daily mean of epicenter-tagged closing values.
+
+    events columns: date, ticker, asset_role, close
+    Returns a Series indexed by date.
+    """
+    epi = events[events["asset_role"] == "epicenter"]
+    wide = epi.pivot_table(index="date", columns="ticker", values="close")
+    return wide.mean(axis=1)
+  </code></pre>
+
+  <h3>Rolling correlation per destination</h3>
+  <pre><code class="language-python">def correlations_for_date(
+    events: pd.DataFrame,
+    selected_date: date,
+    window: int = 7,
+) -> dict[str, float]:
+    """Pearson correlation between ME index and each destination on selected_date."""
+    me_index = middle_east_index(events)
+    result = {}
+    for country_code, meta in DESTINATION_CITIES.items():
+        dest = events[events["ticker"] == meta["ticker"]]
+        aligned = pd.concat(
+            [me_index, dest.set_index("date")["close"]], axis=1
+        ).dropna()
+        corr_series = aligned.iloc[:, 0].rolling(window).corr(aligned.iloc[:, 1])
+        result[country_code] = float(corr_series.get(selected_date, 0.0) or 0.0)
+    return result
+  </code></pre>
+
+  <h3>Arc colour ramp</h3>
+  <pre><code class="language-python">from lib.globe.color import diverging_color
+
+def correlation_to_color(corr: float) -> tuple[int, int, int, int]:
+    """Green (−1 / decoupling) → slate (0) → red (+1 / contagion)."""
+    return diverging_color(
+        corr,
+        neg_anchor=(50, 140, 80),    # muted sage
+        zero_anchor=(71, 85, 105),   # #475569 slate
+        pos_anchor=(180, 70, 70),    # muted rose
+        alpha_range=(70, 150),
+    )
+  </code></pre>
+</div>
