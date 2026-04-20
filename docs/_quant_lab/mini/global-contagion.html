@@ -4,7 +4,7 @@ title: "Global Risk Contagion"
 description: "Replay geopolitical shocks on an interactive 3D globe — watch rolling correlations between a Middle East risk index and global markets animate across a timeline."
 date: 2026-04-19
 permalink: /quant-lab/global-contagion/
-tech: [Python, deck.gl, pydeck, pandas, yfinance, FRED]
+tech: [Python, Plotly, pandas, yfinance, FRED]
 demo_url: "https://quantlabs.streamlit.app/Global_Contagion"
 category: dashboards
 tech_stack:
@@ -15,25 +15,47 @@ tech_stack:
   - name: yfinance
     role: Market data — ETF and futures closing prices
   - name: FRED API
-    role: Macro data — sovereign 10-year yield series
-  - name: pydeck / deck.gl
-    role: 3D globe — GlobeView with GeoJsonLayer + ArcLayer stack
+    role: Macro data — sovereign 10-year yield series (India, Germany)
+  - name: Plotly
+    role: 3D globe — orthographic choropleth + Scattergeo arc layers
   - name: Parquet
-    role: Data storage — pre-fetched event data cached locally
+    role: Data storage — pre-fetched event data, zero network I/O at runtime
   - name: Streamlit
-    role: Web dashboard framework with playback loop
+    role: Web dashboard framework with month-by-month playback loop
 ---
 
 <div id="tab-concept" class="ql-tab-content active">
   <h3>What it does</h3>
-  <p>Replays two geopolitical shock events — the 2020 US-Iran escalation and the 2024–2026 Strait of Hormuz tensions — day by day on a 3D globe. Each frame shows how tightly five destination markets (India, Turkey, Germany, US, UK) were moving with a composite Middle East risk index at that moment in time.</p>
-  <p>Arc colour encodes the direction of contagion: red arcs mean the destination market was co-moving with the shock (risk-on spillover), green means decoupling or safe-haven bid, and the arc thickness scales with correlation magnitude so weak signals fade into the background.</p>
+  <p>Replays two geopolitical shock events — the 2020 US–Iran escalation and the 2024–2026 Strait of Hormuz tensions — month by month on a 3D globe. Each frame shows how tightly five destination markets (India, Turkey, Germany, US, UK) were moving with a composite Middle East risk index at that moment in time.</p>
+  <p>Arc colour encodes the direction of contagion: <strong>red arcs</strong> mean the destination market was co-moving with the shock (risk-on spillover), <strong>green</strong> means decoupling or safe-haven bid, <strong>amber</strong> is a weak or ambiguous signal, and <strong>slate</strong> is noise. Country fills on the globe use the same colour ramp so you can read the correlation field at a glance without focusing on individual arcs.</p>
+  <p>A side panel tracks four stress-signal instruments — Brent Crude, Baltic Dry shipping, Gold, and VIX — with sparklines that advance in sync with the globe, so you can see the transmission chain: Middle East shock → oil spike → shipping rerouting → safe-haven bid → equity fear.</p>
 
   <h3>The math</h3>
-  <p><strong>Middle East index:</strong> simple daily mean of three epicenter-region assets (Israel ETF, Saudi ETF, UAE ETF) — a composite proxy for regional risk appetite on each trading day.</p>
-  <p><strong>Rolling correlation:</strong> 7-trading-day Pearson correlation between the ME index and each destination asset's daily return series. Pearson r ∈ [−1, +1] is mapped to a diverging colour ramp (green → slate → red) so the globe becomes a live heat map of contagion spread.</p>
+  <p><strong>Middle East risk index:</strong> simple daily mean of three epicenter-region ETF closes (Israel <code>EIS</code>, Saudi Arabia <code>KSA</code>, UAE <code>UAE</code>). Bond-yield series for those sovereigns aren't cleanly available via free data, so equity ETFs proxy the same risk premium. Their daily mean becomes the ME index used as the left-hand side of every correlation.</p>
+  <p><strong>Rolling correlation:</strong> 7-trading-day Pearson r between the ME index and each destination asset. Pearson r ∈ [−1, +1] maps to the diverging colour ramp. A 7-day window is short enough to show how correlations shift within a single week of headlines, while being long enough to avoid single-day noise dominating the signal.</p>
   <pre><code class="language-python">corr = s1.rolling(window=7).corr(s2)  # aligned daily return series</code></pre>
-  <p>A 7-day window is short enough to show how correlations shift within a single week of headlines, while being long enough to avoid single-day noise dominating the signal.</p>
+  <p><strong>Two correlation regimes:</strong> FRED monthly yield series (India 10Y, Germany 10Y) cannot be mixed into a 7-day window — forward-filling monthly data onto a daily calendar produces zero-variance stretches that blow up to ±∞ correlations. Those tickers use a 3-month rolling window on the monthly cadence instead. Values update once per month rather than daily, but the numbers are real.</p>
+
+  <h3>Tickers</h3>
+  <table>
+    <thead>
+      <tr><th>Role</th><th>Ticker</th><th>Instrument</th><th>Source</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Epicenter — ME risk index</strong></td><td><code>EIS</code></td><td>iShares MSCI Israel ETF</td><td>yfinance</td></tr>
+      <tr><td></td><td><code>KSA</code></td><td>iShares MSCI Saudi Arabia ETF</td><td>yfinance</td></tr>
+      <tr><td></td><td><code>UAE</code></td><td>iShares MSCI UAE ETF</td><td>yfinance</td></tr>
+      <tr><td><strong>Contagion — destination markets</strong></td><td><code>FRED:INDIRLTLT01STM</code></td><td>India 10Y yield (monthly)</td><td>FRED CSV API</td></tr>
+      <tr><td></td><td><code>TUR</code></td><td>iShares MSCI Turkey ETF (yield series discontinued)</td><td>yfinance</td></tr>
+      <tr><td></td><td><code>FRED:IRLTLT01DEM156N</code></td><td>Germany 10Y yield (monthly)</td><td>FRED CSV API</td></tr>
+      <tr><td></td><td><code>^TNX</code></td><td>CBOE US 10Y Treasury Yield Index</td><td>yfinance</td></tr>
+      <tr><td><strong>Stress signals — side panel</strong></td><td><code>BZ=F</code></td><td>ICE Brent front-month future</td><td>yfinance</td></tr>
+      <tr><td></td><td><code>BDRY</code></td><td>Breakwave Dry Bulk Shipping ETF</td><td>yfinance</td></tr>
+      <tr><td></td><td><code>GC=F</code></td><td>COMEX gold front-month future</td><td>yfinance</td></tr>
+      <tr><td></td><td><code>^VIX</code></td><td>CBOE Volatility Index</td><td>yfinance</td></tr>
+    </tbody>
+  </table>
+  <p>The stress-signal panel uses polarity-aware colouring: rising Brent, shipping rates, or VIX is red (stress-on); rising Gold is green (safe-haven bid working). All values are measured as cumulative % change from the period start, with an amber band at ±2% treated as noise rather than signal.</p>
 
   <h3>When to use it</h3>
   <p>Use this to build intuition about how geopolitical shocks propagate — which markets decouple, which get pulled in, and how quickly the correlation signal decays after the acute phase. Not a trading signal: rolling 7-day correlations are noisy and highly sensitive to window choice. Treat the arcs as qualitative direction, not quantitative edge.</p>
@@ -59,32 +81,90 @@ def middle_east_index(events: pd.DataFrame) -> pd.Series:
   <pre><code class="language-python">def correlations_for_date(
     events: pd.DataFrame,
     selected_date: date,
-    window: int = 7,
 ) -> dict[str, float]:
-    """Pearson correlation between ME index and each destination on selected_date."""
+    """Pearson r between ME index and each destination on selected_date.
+
+    Daily tickers use a 7-day window; FRED monthly tickers use 3 months.
+    Mixing monthly data into a 7-day daily window produces zero-variance
+    stretches → ±inf correlations, so each ticker gets the window that
+    matches its native cadence.
+    """
     me_index = middle_east_index(events)
     result = {}
     for country_code, meta in DESTINATION_CITIES.items():
-        dest = events[events["ticker"] == meta["ticker"]]
-        aligned = pd.concat(
-            [me_index, dest.set_index("date")["close"]], axis=1
-        ).dropna()
-        corr_series = aligned.iloc[:, 0].rolling(window).corr(aligned.iloc[:, 1])
-        result[country_code] = float(corr_series.get(selected_date, 0.0) or 0.0)
+        ticker = meta["ticker"]
+        window = 3 if ticker.startswith("FRED:") else 7
+        dest = events[events["ticker"] == ticker].set_index("date")["close"]
+        aligned = pd.concat([me_index, dest], axis=1, join="inner").dropna()
+        corr_series = (
+            aligned.iloc[:, 0]
+            .rolling(window)
+            .corr(aligned.iloc[:, 1])
+            .replace([float("inf"), float("-inf")], float("nan"))
+            .dropna()
+        )
+        mask = corr_series.index <= pd.Timestamp(selected_date).date()
+        result[country_code] = float(corr_series[mask].iloc[-1]) if mask.any() else 0.0
     return result
   </code></pre>
 
   <h3>Arc colour ramp</h3>
-  <pre><code class="language-python">from lib.globe.color import diverging_color
+  <pre><code class="language-python">def corr_arc_color(v: float, alpha: float) -> str:
+    """Diverging rgba string: green (decoupling) → slate (noise) → red (contagion).
 
-def correlation_to_color(corr: float) -> tuple[int, int, int, int]:
-    """Green (−1 / decoupling) → slate (0) → red (+1 / contagion)."""
-    return diverging_color(
-        corr,
-        neg_anchor=(50, 140, 80),    # muted sage
-        zero_anchor=(71, 85, 105),   # #475569 slate
-        pos_anchor=(180, 70, 70),    # muted rose
-        alpha_range=(70, 150),
-    )
+    Thresholds:
+      |v| >= 0.5  → strong signal  (red or green)
+      |v| >= 0.2  → weak signal    (amber)
+      |v| <  0.2  → noise          (slate)
+    """
+    if v >= 0.5:
+        return f"rgba(180,70,70,{alpha:.2f})"    # muted rose — contagion
+    if v <= -0.5:
+        return f"rgba(50,140,80,{alpha:.2f})"    # muted sage — decoupling
+    if abs(v) >= 0.2:
+        return f"rgba(200,140,40,{alpha:.2f})"   # amber — weak signal
+    return f"rgba(71,85,105,{alpha:.2f})"        # #475569 slate — noise
+  </code></pre>
+
+  <h3>Plotly globe — choropleth + arc layers</h3>
+  <pre><code class="language-python">import plotly.graph_objects as go
+
+fig = go.Figure()
+
+# Country fills — correlation drives the colour scale
+fig.add_trace(go.Choropleth(
+    locations=["IND", "TUR", "DEU", "USA", "GBR"],
+    z=[corr_by_country[k] for k in ["IN", "TR", "DE", "US", "GB"]],
+    locationmode="ISO-3",
+    colorscale=[
+        [0.0, "rgba(50,140,80,0.75)"],   # green — decoupling
+        [0.5, "rgba(71,85,105,0.55)"],   # slate — neutral
+        [1.0, "rgba(180,70,70,0.75)"],   # red — contagion
+    ],
+    zmin=-1, zmax=1,
+    showscale=False,
+))
+
+# Three-layer glow arc per destination (outer bloom → mid → core)
+for width, alpha in [(14, 0.05), (5, 0.20), (2, 0.92)]:
+    fig.add_trace(go.Scattergeo(
+        lon=[epi_lon, dest_lon],
+        lat=[epi_lat, dest_lat],
+        mode="lines",
+        line=dict(width=width, color=corr_arc_color(corr, alpha)),
+        showlegend=False, hoverinfo="skip",
+    ))
+
+fig.update_layout(
+    geo=dict(
+        projection_type="orthographic",
+        showland=True, landcolor="#1a2a4a",
+        showocean=True, oceancolor="#0d1b35",
+        bgcolor="rgba(0,0,0,0)",
+    ),
+    paper_bgcolor="rgba(0,0,0,0)",
+    margin=dict(l=0, r=0, t=0, b=0),
+    height=650,
+)
   </code></pre>
 </div>
