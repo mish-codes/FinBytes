@@ -4,7 +4,36 @@ title: Private Notes
 permalink: /notes/
 ---
 
-{% assign private_posts = site.private | sort: "title" %}
-{% for post in private_posts %}
-- [{{ post.title }}]({{ post.permalink }})
-{% endfor %}
+<style>
+.notes-section { margin: 1.8rem 0; }
+.notes-section h2 { font-size: 1rem; font-weight: 600; color: #6b7280;
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.75rem;
+  padding-bottom: 0.3rem; border-bottom: 1px solid #e5e7eb; }
+.notes-list { list-style: none; padding: 0; margin: 0; }
+.notes-list li { padding: 0.35rem 0; border-bottom: 1px solid #f3f4f6; }
+.notes-list li:last-child { border-bottom: none; }
+.notes-list a { text-decoration: none; color: #1f2937; font-size: 0.93rem; }
+.notes-list a:hover { color: #2563eb; }
+</style>
+
+<div class="notes-section">
+  <h2>Python Reference</h2>
+  <ul class="notes-list">
+    {% assign python_posts = site.private | where_exp: "p", "p.tags contains 'python'" | sort: "title" %}
+    {% for p in python_posts %}
+    <li><a href="{{ p.permalink }}">{{ p.title | remove: "Python: " }}</a></li>
+    {% endfor %}
+  </ul>
+</div>
+
+{% assign other_posts = site.private | where_exp: "p", "p.tags contains 'python' == false" | sort: "title" %}
+{% if other_posts.size > 0 %}
+<div class="notes-section">
+  <h2>Other</h2>
+  <ul class="notes-list">
+    {% for p in other_posts %}
+    <li><a href="{{ p.permalink }}">{{ p.title }}</a></li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
