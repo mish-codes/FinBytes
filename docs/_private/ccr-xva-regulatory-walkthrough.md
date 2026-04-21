@@ -2,7 +2,7 @@
 layout: post
 title: "CCR/XVA: Counterparty Credit Risk and the Regulatory Framework"
 date: 2026-04-21
-tags: [finance, ccr, xva, cva, dva, fva, pva, mva, kva, isda, csa, netting, mpor, ee, ene, pfe, epe, eepe, imm, sa-ccr, frtb, egim, basel, regulation, derivatives, wrong-way-risk, wwrr, lgd, ead, irb, cet1]
+tags: [finance, ccr, xva, cva, dva, fva, pva, mva, kva, isda, csa, netting, mpor, ee, ene, pfe, epe, eepe, imm, sa-ccr, frtb, egim, basel, regulation, derivatives, wrong-way-risk, wwrr, lgd, ead, irb, cet1, ecb, pra, fca, bcbs, bis, eba, esma, fsb, ssm, emir, umr, crd, crr, ifrs, aana, occ, fed, fdic]
 math: true
 permalink: /private/ccr-xva-regulatory-walkthrough/
 ---
@@ -461,3 +461,115 @@ A bank books a derivative. The ISDA and CSA define the legal container (netting 
 - BCBS d507 — FRTB-CVA.
 - ECB Guide to Internal Models, CCR chapter (February 2024 revision) — the supervisory expectations for IMM.
 - EBA RTS on Prudent Valuation — for PVA mechanics including the nine AVA categories.
+
+---
+
+## Glossary: Regulatory Bodies and Frameworks
+
+### Global
+
+**BIS — Bank for International Settlements**
+The central bank for central banks, based in Basel, Switzerland. BIS hosts the committees that write global rules but has no direct supervisory power over individual banks. When people say "Basel rules," the source documents are BIS publications. BIS provides the secretariat for BCBS.
+
+**BCBS — Basel Committee on Banking Supervision**
+A committee of supervisors and central banks from 28 jurisdictions, secretariat at the BIS. BCBS writes the Basel Accords — the global minimum standards for bank capital and liquidity. Key documents for CCR/XVA: BCBS d279 (SA-CCR), BCBS d507 (FRTB-CVA). BCBS standards are not law until a jurisdiction transposes them — the EU does this via CRR/CRD, the UK via the PRA Rulebook, the US via Fed/OCC rules. There are always timing gaps and local carve-outs between BCBS publication and national implementation.
+
+**FSB — Financial Stability Board**
+Monitors systemic risk and coordinates national financial authorities. Post-2008, FSB drove the G20 mandate to centrally clear OTC derivatives and impose mandatory margin on uncleared trades — which is the origin of UMR and its direct effect on MPOR and IM requirements in CCR.
+
+---
+
+### European
+
+**ECB — European Central Bank**
+The ECB has two distinct roles. In a methodology and capital context you almost always mean the supervisory role, not the monetary one:
+
+1. **Monetary policy**: sets interest rates for the Eurozone. This is the role most people know.
+2. **Prudential supervision (SSM)**: since November 2014, the ECB directly supervises the ~110 most significant banks in the Eurozone under the Single Supervisory Mechanism. A bank is "significant" if assets > €30bn or if it is systemically important in its home country.
+
+In the Albion Bank story, the ECB supervises Albion because it is a significant institution. The ECB conducts Internal Model Investigations (IMIs) — deep-dive reviews of a bank's models. IMI findings become mandatory remediation items that the methodology team owns on agreed timelines.
+
+**SSM — Single Supervisory Mechanism**
+The ECB's supervisory arm, created in 2014. Directly supervises significant institutions (SIs). Less significant institutions (LSIs) — smaller banks — are supervised by national competent authorities (NCAs) such as the Bundesbank or Banca d'Italia, with the ECB in oversight.
+
+**EBA — European Banking Authority**
+An EU agency (Paris) that produces binding technical standards and guidelines applying across all EU member states. EBA sits between BCBS (global) and national supervisors. Key EBA outputs for CCR/XVA: the RTS on Prudent Valuation (nine AVA categories for PVA), RTS on IMM, and supervisory reporting templates. EBA does not supervise individual banks — it sets the technical rules that supervisors enforce.
+
+**ESMA — European Securities and Markets Authority**
+The EU securities regulator (Paris). Less central to CCR methodology than EBA, but relevant for trade reporting and clearing obligations under EMIR. EMIR is ESMA's primary rulebook for OTC derivatives.
+
+**EGIM — ECB Guide to Internal Models**
+Not a separate body — it is the ECB's supervisory guidance document for how IMM (and other internal models) must be built and maintained. The CCR chapter (updated February 2024) specifies ECB expectations on risk factor coverage, calibration, MPOR, backtesting, governance, and proxy methodology. "EGIM compliance" in practice means your methodology documentation can point to a specific EGIM paragraph for every modelling choice. A methodology change that cannot be mapped to EGIM risks generating a supervisory finding.
+
+---
+
+### UK
+
+**PRA — Prudential Regulation Authority**
+The UK's prudential supervisor. A subsidiary of the Bank of England (it sits inside the Bank's governance structure). The PRA authorises and supervises banks, building societies, credit unions, insurers, and major investment firms. Before Brexit, large UK banks with significant EU subsidiaries were jointly supervised by the ECB (EU entities) and the PRA (UK entity). Post-Brexit, UK entities are PRA-supervised only; EU subsidiaries fall to the ECB.
+
+The PRA transposes Basel rules into UK law via the PRA Rulebook and Supervisory Statements (SSs). SS12/13 on IMM is the PRA's CCR-specific supervisory statement — the UK equivalent of EGIM. The UK is currently implementing Basel IV under the label "UK Basel 3.1," with a phased timeline that differs from the EU's CRR3.
+
+**FCA — Financial Conduct Authority**
+The UK's conduct regulator, a separate body from the PRA. Where the PRA cares about financial soundness (prudential), the FCA cares about how firms treat customers and whether markets are fair (conduct). For CCR/XVA methodology, FCA is not a primary stakeholder — that is the PRA. FCA matters more in retail, asset management, and market conduct contexts.
+
+---
+
+### US (for reference)
+
+**Fed — Federal Reserve**
+Supervises bank holding companies and state member banks; sets US capital rules (US Basel implementation, which is still catching up to FRTB).
+
+**OCC — Office of the Comptroller of the Currency**
+Supervises nationally chartered banks — those with "National" or "N.A." in their name (JPMorgan Chase N.A., Bank of America N.A.).
+
+**FDIC — Federal Deposit Insurance Corporation**
+Supervises state-chartered non-member banks. Also provides deposit insurance and handles failed-bank resolution.
+
+---
+
+### Key Frameworks
+
+**Basel I / II / III / IV**
+The iterative sequence of global capital accords. Basel I (1988): simple risk weights. Basel II (2004): introduced IRB and IMM. Basel III (2010–2017): post-crisis response — LCR, NSFR, leverage ratio, CVA capital, SA-CCR. Basel IV (2017 finalisation): adds the 72.5% output floor, revises SA and IRB floors, finalises FRTB. "Basel IV" is industry terminology; BCBS calls it "Basel III finalisation."
+
+**CRR / CRD — Capital Requirements Regulation / Directive**
+The EU's transposition of Basel rules into law. CRR is directly applicable across all EU member states; CRD is implemented via national legislation. CRR3/CRD VI (2024) transposes Basel IV including the output floor, phased from January 2025.
+
+**FRTB — Fundamental Review of the Trading Book**
+A comprehensive overhaul of market risk capital (BCBS d457, 2019). FRTB-CVA is the new CVA capital framework within FRTB, replacing the Basel III CVA capital charge. Two approaches: BA-CVA (formula-driven, simpler, more punitive) and SA-CVA (sensitivity-based, lower capital, requires capable CVA engine and regulatory approval).
+
+**EMIR — European Market Infrastructure Regulation**
+The EU regulation implementing the G20 OTC derivatives reforms: mandatory central clearing for standardised derivatives, mandatory margin for uncleared trades (UMR), and trade reporting. Directly affects CCR because cleared trades have lower MPOR (5 days vs 10 days uncleared), and UMR introduces mandatory IM for large counterparties.
+
+**UMR — Uncleared Margin Rules**
+Phase-in rules requiring bilateral initial margin for non-cleared OTC derivatives above an AANA (Average Aggregate Notional Amount) threshold. Phased in from 2016 to 2022 across six phases, AANA threshold falling from €3tn (Phase 1) to €8bn (Phase 6). Banks above threshold must exchange IM under ISDA's SIMM model. Meridian in the walkthrough is below Phase 6 — hence no IM required.
+
+**IFRS 13 — Fair Value Measurement**
+The accounting standard requiring CVA and DVA to be included in the fair value of derivatives. This is why DVA produces accounting P&L (a gain when a bank's own credit worsens) even though it is stripped out from regulatory capital by the "DVA filter."
+
+---
+
+### Quick reference table
+
+| Acronym | Full name | What it does |
+|---|---|---|
+| BIS | Bank for International Settlements | Hosts BCBS; no direct supervisory power |
+| BCBS | Basel Committee on Banking Supervision | Writes global capital standards |
+| FSB | Financial Stability Board | Systemic risk monitoring; drove OTC derivatives reform |
+| ECB | European Central Bank | Supervises ~110 significant Eurozone banks (SSM); monetary policy |
+| SSM | Single Supervisory Mechanism | ECB's supervisory arm for significant institutions |
+| EBA | European Banking Authority | EU technical standards (BTS, RTS); no direct supervision |
+| ESMA | European Securities Markets Authority | EU securities regulation; EMIR enforcement |
+| EGIM | ECB Guide to Internal Models | ECB's detailed IMM expectations document |
+| PRA | Prudential Regulation Authority | UK prudential supervisor (subsidiary of Bank of England) |
+| FCA | Financial Conduct Authority | UK conduct regulator (separate from PRA) |
+| Fed | Federal Reserve | US monetary policy + holding company supervision |
+| OCC | Office of the Comptroller of the Currency | US nationally chartered bank supervisor |
+| FDIC | Federal Deposit Insurance Corporation | US state bank supervisor + deposit insurance |
+| CRR/CRD | Capital Requirements Regulation/Directive | EU Basel transposition |
+| FRTB | Fundamental Review of the Trading Book | Market risk + CVA capital overhaul |
+| EMIR | European Market Infrastructure Regulation | EU OTC derivatives reform |
+| UMR | Uncleared Margin Rules | Mandatory bilateral IM for large counterparties |
+| AANA | Average Aggregate Notional Amount | Threshold metric that determines UMR applicability |
+| IFRS 13 | Fair Value Measurement | Accounting standard requiring CVA/DVA in fair value |
