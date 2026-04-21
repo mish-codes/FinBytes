@@ -14,6 +14,9 @@ permalink: /notes/
 .notes-list li:last-child { border-bottom: none; }
 .notes-list a { text-decoration: none; color: #1f2937; font-size: 0.93rem; }
 .notes-list a:hover { color: #2563eb; }
+.note-tags { margin-top: 0.15rem; }
+.note-tag { display: inline-block; font-size: 0.72rem; color: #6b7280; background: #f3f4f6;
+  padding: 0.05rem 0.35rem; border-radius: 3px; margin-right: 0.25rem; margin-bottom: 0.15rem; }
 </style>
 
 {% assign python_slugs = "python-mro,python-gil,python-descriptors,python-data-model,python-attribute-lookup,python-scoping,python-asyncio,python-generators,python-context-managers,python-gc,python-slots,python-metaclasses,python-import-system,python-dataclasses,python-type-system,python-footguns" | split: "," %}
@@ -39,7 +42,10 @@ permalink: /notes/
   <ul class="notes-list">
     {% for p in all_posts %}
       {% unless p.tags contains 'python' %}
-    <li><a href="{{ p.url | prepend: site.baseurl }}">{{ p.title }}</a></li>
+    <li>
+      <a href="{{ p.url | prepend: site.baseurl }}">{{ p.title }}</a>
+      <div class="note-tags">{% for tag in p.tags %}<span class="note-tag">{{ tag }}</span>{% endfor %}</div>
+    </li>
       {% endunless %}
     {% endfor %}
   </ul>
