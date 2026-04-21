@@ -26,13 +26,17 @@ permalink: /notes/
   </ul>
 </div>
 
-{% assign other_posts = site.private | where_exp: "p", "p.tags contains 'python' == false" | sort: "title" %}
-{% if other_posts.size > 0 %}
+{% assign all_posts = site.private | sort: "title" %}
+{% assign has_other = false %}
+{% for p in all_posts %}{% unless p.tags contains 'python' %}{% assign has_other = true %}{% endunless %}{% endfor %}
+{% if has_other %}
 <div class="notes-section">
   <h2>Other</h2>
   <ul class="notes-list">
-    {% for p in other_posts %}
+    {% for p in all_posts %}
+      {% unless p.tags contains 'python' %}
     <li><a href="{{ p.permalink }}">{{ p.title }}</a></li>
+      {% endunless %}
     {% endfor %}
   </ul>
 </div>
