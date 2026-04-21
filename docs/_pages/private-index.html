@@ -24,7 +24,7 @@ permalink: /notes/
       {% assign wanted = "/private/" | append: slug | append: "/" %}
       {% assign p = site.private | where: "permalink", wanted | first %}
       {% if p %}
-    <li><a href="{{ p.permalink }}">{{ p.title | remove: "Python: " }}</a></li>
+    <li><a href="{{ p.url | prepend: site.baseurl }}">{{ p.title | remove: "Python: " }}</a></li>
       {% endif %}
     {% endfor %}
   </ul>
@@ -39,7 +39,7 @@ permalink: /notes/
   <ul class="notes-list">
     {% for p in all_posts %}
       {% unless p.tags contains 'python' %}
-    <li><a href="{{ p.permalink }}">{{ p.title }}</a></li>
+    <li><a href="{{ p.url | prepend: site.baseurl }}">{{ p.title }}</a></li>
       {% endunless %}
     {% endfor %}
   </ul>
