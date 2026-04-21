@@ -16,12 +16,16 @@ permalink: /notes/
 .notes-list a:hover { color: #2563eb; }
 </style>
 
+{% assign python_slugs = "python-mro,python-gil,python-descriptors,python-data-model,python-attribute-lookup,python-scoping,python-asyncio,python-generators,python-context-managers,python-gc,python-slots,python-metaclasses,python-import-system,python-dataclasses,python-type-system,python-footguns" | split: "," %}
 <div class="notes-section">
   <h2>Python Reference</h2>
   <ul class="notes-list">
-    {% assign python_posts = site.private | where_exp: "p", "p.tags contains 'python'" | sort: "title" %}
-    {% for p in python_posts %}
+    {% for slug in python_slugs %}
+      {% assign wanted = "/private/" | append: slug | append: "/" %}
+      {% assign p = site.private | where: "permalink", wanted | first %}
+      {% if p %}
     <li><a href="{{ p.permalink }}">{{ p.title | remove: "Python: " }}</a></li>
+      {% endif %}
     {% endfor %}
   </ul>
 </div>
