@@ -19,6 +19,22 @@ A self-contained walkthrough of how a large bank manages counterparty credit ris
 
 Meridian sells tickets in GBP but pays for jet fuel and USD-denominated aircraft debt in USD. The structural mismatch means a weakening pound directly inflates their fuel bill. They want a multi-year hedge.
 
+**Why the mismatch exists.** The USD exposure is not a choice — it is baked into the airline business. Two costs dominate:
+
+*Jet fuel.* Oil is a USD-denominated commodity globally. Brent crude, kerosene futures, and physical jet fuel contracts are all quoted and settled in USD. An airline refuelling at any airport — London, Dubai, Singapore — is effectively converting GBP to USD continuously. There is no GBP-denominated alternative market.
+
+*Aircraft financing.* Boeing prices in USD. Airbus prices internationally in USD even though it is a European manufacturer — USD is the aircraft industry's convention. Fleet debt and operating leases are almost universally USD. Meridian's quarterly debt service is a fixed USD cashflow regardless of what GBP/USD does.
+
+So the mismatch is structural:
+
+```
+Revenue:     GBP  (UK ticket sales, UK passengers)
+Fuel cost:   USD  (spot market, refuelled at every airport)
+Debt cost:   USD  (aircraft leases, fleet financing)
+```
+
+If GBP weakens 10% against USD, Meridian's fuel bill and debt payments just became 10% more expensive in GBP terms — with no corresponding uplift in GBP revenue. That is a direct hit to operating margin that management cannot restructure away without changing the underlying business. The hedge converts that floating GBP/USD risk into a known, fixed exchange rate for the swap's life, so Meridian can price tickets and plan capacity without implicitly betting on the currency.
+
 ### The deal
 
 Albion's Front Office pitches a **5-year cross-currency swap**:
