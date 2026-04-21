@@ -7,13 +7,41 @@ math: true
 permalink: /private/ccr-xva-regulatory-walkthrough/
 ---
 
-A self-contained walkthrough of how a large bank manages counterparty credit risk on a single derivative, from the moment the trade is priced to the moment it matures five years later. Every term you'll encounter in CCR methodology — ISDA, CSA, netting set, MPOR, EE, PFE, EEPE, CVA, DVA, FVA, SA-CCR, IMM, FRTB-CVA, EGIM, PVA, wrong-way risk — appears inside one continuous story.
+A self-contained walkthrough of how a large bank manages counterparty credit risk on a single derivative, from the moment the trade is priced to the moment it matures five years later. Every term — ISDA, CSA, MPOR, EE, PFE, EEPE, CVA, DVA, FVA, SA-CCR, IMM, FRTB-CVA, EGIM, PVA, wrong-way risk — appears inside one continuous story.
 
 **Albion Bank** is a large London-based investment bank, supervised by the ECB and the PRA. **Meridian Airlines** is a mid-sized UK airline with a USD/GBP currency mismatch it wants to hedge.
 
----
+<style>
+.ccr-tabs { margin: 1.5rem 0 0; }
+.ccr-tab-nav { display: flex; flex-wrap: wrap; gap: 0.3rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0; margin-bottom: 1.5rem; }
+.ccr-tab-btn { background: none; border: none; padding: 0.45rem 0.85rem; font-size: 0.82rem; font-weight: 500; color: #6b7280; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; transition: color 0.15s, border-color 0.15s; border-radius: 3px 3px 0 0; }
+.ccr-tab-btn:hover { color: #1f2937; }
+.ccr-tab-btn.active { color: #2563eb; border-bottom-color: #2563eb; }
+.ccr-tab-pane { display: none; }
+.ccr-tab-pane.active { display: block; }
+@media (prefers-color-scheme: dark) {
+  .ccr-tab-btn { color: #9ca3af; }
+  .ccr-tab-btn:hover { color: #f3f4f6; }
+  .ccr-tab-btn.active { color: #60a5fa; border-bottom-color: #60a5fa; }
+  .ccr-tab-nav { border-bottom-color: #374151; }
+}
+</style>
 
-## 1 — The Trade
+<div class="ccr-tabs">
+<div class="ccr-tab-nav">
+  <button class="ccr-tab-btn active" data-tab="trade">The Trade</button>
+  <button class="ccr-tab-btn" data-tab="legal">Legal Layer</button>
+  <button class="ccr-tab-btn" data-tab="engine">Exposure Engine</button>
+  <button class="ccr-tab-btn" data-tab="xva">XVA Metrics</button>
+  <button class="ccr-tab-btn" data-tab="regulation">Regulation</button>
+  <button class="ccr-tab-btn" data-tab="life">Life &amp; WWR</button>
+  <button class="ccr-tab-btn" data-tab="summary">Summary</button>
+  <button class="ccr-tab-btn" data-tab="glossary">Glossary</button>
+</div>
+
+<div class="ccr-tab-pane active" id="ccr-trade" markdown="1">
+
+## The Trade
 
 ### Meridian's problem
 
@@ -40,11 +68,11 @@ If GBP weakens 10% against USD, Meridian's fuel bill and debt payments just beca
 Albion's Front Office pitches a **5-year cross-currency swap**:
 
 ```
-Notional:          £200,000,000 vs $250,000,000
-Meridian pays:     fixed GBP quarterly
-Meridian receives: fixed USD quarterly
+Notional:           £200,000,000 vs $250,000,000
+Meridian pays:      fixed GBP quarterly
+Meridian receives:  fixed USD quarterly
 Principal exchange: at maturity, notionals are re-exchanged
-Initial MtM:       ≈ £0 to both sides (priced at par)
+Initial MtM:        ≈ £0 to both sides (priced at par)
 ```
 
 On day one the swap is worth roughly zero to both parties — that's how swaps are priced. But its mark-to-market (MtM) will move as GBP/USD and the two yield curves evolve.
@@ -55,9 +83,11 @@ Three years from now, if GBP has weakened materially, the swap could be worth £
 
 This is **Counterparty Credit Risk (CCR)**: the risk that a counterparty defaults owing you a positive mark-to-market. Unlike loan credit risk, where exposure equals the outstanding balance, derivative exposure is stochastic — it wanders up and down over the life of the trade.
 
----
+</div>
 
-## 2 — The Legal Layer
+<div class="ccr-tab-pane" id="ccr-legal" markdown="1">
+
+## The Legal Layer
 
 Before the trade is booked, Albion's legal team ensures two contracts are in place.
 
@@ -100,11 +130,13 @@ Independent Amount:      None (Meridian below UMR IM threshold)
 
 The combination of {all trades under the ISDA} + {this CSA} defines a **netting set**. Every new trade between Albion and Meridian under this legal framework joins the same netting set, and exposure is computed on the net portfolio, not trade-by-trade.
 
----
+</div>
 
-## 3 — The Exposure Simulation Engine
+<div class="ccr-tab-pane" id="ccr-engine" markdown="1">
 
-From day one, the swap is loaded into Albion's CCR engine. This is the system your interview team (Group Strategic Analytics) designs and maintains. It runs overnight, every business day, across every netting set in the bank.
+## The Exposure Simulation Engine
+
+From day one, the swap is loaded into Albion's CCR engine. It runs overnight, every business day, across every netting set in the bank.
 
 ### What the engine does
 
@@ -192,9 +224,11 @@ EEPE:                 £14m
 
 These numbers scatter to different downstream users, each asking a different question of the same underlying simulation.
 
----
+</div>
 
-## 4 — Who Uses Which Metric
+<div class="ccr-tab-pane" id="ccr-xva" markdown="1">
+
+## Who Uses Which Metric
 
 ### Credit Risk team: PFE for limits
 
@@ -288,9 +322,11 @@ Every number above has embedded uncertainty from modelling choices, calibration 
 
 **PVA on XVA** is the specific workstream of quantifying uncertainty in CVA/DVA/FVA themselves. This is frontier methodology work; approaches vary significantly across banks.
 
----
+</div>
 
-## 5 — The Regulatory Layer
+<div class="ccr-tab-pane" id="ccr-regulation" markdown="1">
+
+## The Regulatory Layer
 
 ### Two ways to compute EAD
 
@@ -355,21 +391,23 @@ The ECB Guide to Internal Models is not a new set of rules — it is the ECB's d
 
 When Albion proposes a methodology change, the methodology document maps the change to EGIM requirements, Model Validation reviews it against EGIM, and — if material — the ECB conducts an **Internal Model Investigation (IMI)** to assess it.
 
----
+</div>
 
-## 6 — Life of the Trade
+<div class="ccr-tab-pane" id="ccr-life" markdown="1">
+
+## Life of the Trade
 
 ### Year 1: collateral flows
 
 GBP weakens by 8%. Swap MtM rises to £15m in Albion's favour. The CSA fires:
 
 ```
-MtM:                    +£15m
-Threshold:               £5m
-Required collateral:     £10m
-Meridian posts:          £10m cash GBP
+MtM:                       +£15m
+Threshold:                  £5m
+Required collateral:        £10m
+Meridian posts:             £10m cash GBP
 
-Exposure-after-collateral: £5m (the residual threshold amount)
+Exposure-after-collateral:  £5m (the residual threshold amount)
 ```
 
 ### Year 2: netting set grows
@@ -404,7 +442,7 @@ Final cashflows settle. The netting set empties. Capital against Meridian drops 
 
 ---
 
-## 7 — Wrong-Way Risk
+## Wrong-Way Risk
 
 Suppose the counterparty had been **Ferro Mineração** — a Brazilian iron-ore exporter with USD debt, hedging via a BRL/USD cross-currency swap with Albion.
 
@@ -430,9 +468,11 @@ The conditional expectation `E[EE | default]` is higher than the unconditional `
 
 **Specific Wrong-Way Risk (SWWR)** is a direct legal link rather than a statistical correlation. Example: a repo where the counterparty posts its own issued bonds as collateral. On default, both the unsecured claim and the collateral collapse together. Basel mandates punitive treatment (higher alpha, or explicit bilateral adjustment) for SWWR trades.
 
----
+</div>
 
-## 8 — How It All Connects
+<div class="ccr-tab-pane" id="ccr-summary" markdown="1">
+
+## How It All Connects
 
 ```
 Trade booked
@@ -464,21 +504,21 @@ Methodology team:
      └─ Remediates findings on agreed timelines
 ```
 
-### The one-paragraph summary
-
 A bank books a derivative. The ISDA and CSA define the legal container (netting set, collateral rules). The CCR engine simulates thousands of futures, reprices the portfolio along each, applies collateral with an MPOR gap, and produces exposure statistics. Those statistics scatter to different teams: PFE for limits, EE for CVA/DVA/FVA, EEPE for regulatory capital. Basel IV sets the capital rules (SA-CCR standardised vs IMM internal model, with a 72.5% output floor). FRTB-CVA sets the CVA capital rules. EGIM sets the ECB's detailed expectations for how IMM must be implemented. The methodology team owns every modelling choice along this chain and defends those choices to regulators.
 
 ---
 
 ## References
 
-- Jon Gregory, *The xVA Challenge* (4th ed.) — the canonical practitioner reference for Sections 3–5.
+- Jon Gregory, *The xVA Challenge* (4th ed.) — the canonical practitioner reference.
 - BCBS d279 — the SA-CCR standard.
 - BCBS d507 — FRTB-CVA.
-- ECB Guide to Internal Models, CCR chapter (February 2024 revision) — the supervisory expectations for IMM.
+- ECB Guide to Internal Models, CCR chapter (February 2024 revision).
 - EBA RTS on Prudent Valuation — for PVA mechanics including the nine AVA categories.
 
----
+</div>
+
+<div class="ccr-tab-pane" id="ccr-glossary" markdown="1">
 
 ## Glossary: Regulatory Bodies and Frameworks
 
@@ -566,7 +606,7 @@ The accounting standard requiring CVA and DVA to be included in the fair value o
 
 ---
 
-### Quick reference table
+### Quick reference
 
 | Acronym | Full name | What it does |
 |---|---|---|
@@ -589,3 +629,29 @@ The accounting standard requiring CVA and DVA to be included in the fair value o
 | UMR | Uncleared Margin Rules | Mandatory bilateral IM for large counterparties |
 | AANA | Average Aggregate Notional Amount | Threshold metric that determines UMR applicability |
 | IFRS 13 | Fair Value Measurement | Accounting standard requiring CVA/DVA in fair value |
+
+</div>
+</div>
+
+<script>
+(function () {
+  var btns = document.querySelectorAll('.ccr-tab-btn');
+  var map = {
+    trade: 'ccr-trade', legal: 'ccr-legal', engine: 'ccr-engine',
+    xva: 'ccr-xva', regulation: 'ccr-regulation', life: 'ccr-life',
+    summary: 'ccr-summary', glossary: 'ccr-glossary'
+  };
+  btns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      btns.forEach(function (b) { b.classList.remove('active'); });
+      Object.values(map).forEach(function (id) {
+        var el = document.getElementById(id);
+        if (el) el.classList.remove('active');
+      });
+      btn.classList.add('active');
+      var pane = document.getElementById(map[btn.dataset.tab]);
+      if (pane) pane.classList.add('active');
+    });
+  });
+}());
+</script>
