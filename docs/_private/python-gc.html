@@ -1,0 +1,63 @@
+---
+layout: python-reference-post
+title: "Python: Reference counting and the cyclic garbage collector"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-gc/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>CPython tracks object lifetime through reference counting. Every object carries a count of how many references point to it. The count increments when you assign the object to a variable, pass it to a function, or store it in a container; it decrements when a reference is removed. When the count reaches zero, the object is deallocated immediately and deterministically — no pause, no delay.</p>
+
+  <p>Reference counting is fast and predictable, but it has one fundamental flaw: reference cycles. If object A holds a reference to B and B holds a reference back to A, their counts never reach zero even after all external references are gone. Neither can be freed by reference counting alone.</p>
+
+  <p>CPython's cyclic garbage collector handles this. It runs periodically using a generational scheme — three generations, with new objects in generation 0. The collector identifies isolated cycles (groups of objects reachable only from each other, with no external references) and deallocates them. You can inspect and control it via the <code>gc</code> module, or disable it for short-lived processes where you know you're not creating cycles.</p>
+
+  <pre><code class="language-python">import gc
+
+class Node:
+    def __init__(self, val):
+        self.val = val
+        self.ref = None
+
+a = Node(1)
+b = Node(2)
+a.ref = b
+b.ref = a    # cycle: a → b → a
+
+del a, b     # external references gone, but refcounts still > 0 due to cycle
+gc.collect() # cyclic GC finds the isolated cycle and frees both objects
+
+print(gc.get_count())   # (gen0_count, gen1_count, gen2_count)</code></pre>
+
+  <p>Watch out: <code>__del__</code> finalizers on objects in cycles have historically prevented the cyclic GC from collecting them — since Python 3.4 (PEP 442) this is no longer a hard blocker, but objects with <code>__del__</code> in cycles are still a code smell. Prefer context managers or <code>weakref</code> for cleanup involving cyclically referenced objects.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>Every object in Python carries a tally: how many things are pointing at it. When that tally hits zero, the object is deleted immediately — like a library book that gets reshelved the moment the last person returns their copy.</p>
+
+  <p>The problem: if two objects point at each other, their tallies never hit zero, even if nobody else in the program can reach them. This is a reference cycle. Python has a second system — the cyclic garbage collector — that periodically hunts for these stranded groups and cleans them up.</p>
+
+  <pre><code class="language-python">import gc
+
+class Node:
+    def __init__(self, val):
+        self.val = val
+        self.ref = None
+
+a = Node(1)
+b = Node(2)
+a.ref = b     # a points at b
+b.ref = a     # b points at a — now they form a cycle
+
+del a, b      # the names are gone, but both objects still have refcount > 0
+              # neither gets deleted yet
+
+gc.collect()  # cyclic GC finds the isolated loop and frees both</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> reference counting handles normal cleanup instantly; the cyclic GC is the backup that cleans up objects that are only pointing at each other.</div>
+
+</div>

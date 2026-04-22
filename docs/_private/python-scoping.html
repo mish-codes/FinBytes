@@ -1,0 +1,65 @@
+---
+layout: python-reference-post
+title: "Python: Name binding and scoping"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-scoping/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>Python resolves names using LEGB: Local → Enclosing → Global → Built-in. At any point in code, Python searches those four scopes in order and uses the first match. A name is "local" to a function if it appears on the left side of an assignment anywhere in that function's body — even if the assignment comes after the reference.</p>
+
+  <p>Closures capture variables by reference, not by value. The enclosing scope's variable is shared, not copied at the time the closure is created. This causes the classic late-binding problem: closures created in a loop all see the loop variable's <em>final</em> value when called, not the value at the moment each closure was defined.</p>
+
+  <p><code>nonlocal</code> lets an inner function rebind a variable in its enclosing scope. <code>global</code> does the same for module scope. Without these keywords, any assignment in an inner function creates a new local variable, shadowing the outer one rather than rebinding it.</p>
+
+  <pre><code class="language-python"># Late-binding gotcha
+fns = [lambda: i for i in range(3)]
+print([f() for f in fns])    # [2, 2, 2] — all closures share the same i
+
+# Fix: capture current value as a default argument
+fns = [lambda i=i: i for i in range(3)]
+print([f() for f in fns])    # [0, 1, 2]
+
+# nonlocal
+def counter():
+    count = 0
+    def increment():
+        nonlocal count
+        count += 1
+        return count
+    return increment
+
+c = counter()
+print(c(), c(), c())   # 1, 2, 3</code></pre>
+
+  <p>Watch out: if you assign to a name anywhere in a function body, Python treats it as local <em>throughout</em> the entire function — reading it before the assignment raises <code>UnboundLocalError</code>, not a lookup in the enclosing scope. This catches people who add an assignment to an existing function and suddenly break a line above it.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>Python looks for a name like you'd look for your keys — first in your own pockets (local), then in the last jacket you borrowed (enclosing function), then in the house (module globals), then in the junk drawer everyone shares (built-ins). First match wins.</p>
+
+  <p>There's one nasty surprise: if you assign to a name <em>anywhere</em> in a function body, Python treats it as local <em>throughout the entire function</em> — even lines above the assignment. So reading it before assigning raises an error, not a look-up in the outer scope.</p>
+
+  <p>Closures capture the variable itself, not its value at the moment the closure was created. In loops this bites hard: every closure ends up seeing the loop variable's final value.</p>
+
+  <pre><code class="language-python"># Surprise: assignment makes x local for the whole function
+x = 10
+def f():
+    print(x)   # UnboundLocalError — x is local because of the line below
+    x = 20
+
+# Late-binding closure gotcha
+fns = [lambda: i for i in range(3)]
+print([f() for f in fns])    # [2, 2, 2] — all closures share the same i
+
+# Fix: capture the value now as a default argument
+fns = [lambda i=i: i for i in range(3)]
+print([f() for f in fns])    # [0, 1, 2]</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> any assignment in a function makes that name local for the whole function — there's no such thing as "local from here down."</div>
+
+</div>

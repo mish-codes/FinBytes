@@ -1,0 +1,67 @@
+---
+layout: python-reference-post
+title: "Python: __slots__ — what it does and when it matters"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-slots/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>By default every Python instance has a <code>__dict__</code> — a hash table that stores its attributes. <code>__dict__</code> is flexible (you can add arbitrary attributes at runtime) but carries overhead: memory for the dict structure itself, even for objects with just two or three attributes.</p>
+
+  <p>Defining <code>__slots__</code> as a class-level tuple tells Python to allocate a fixed set of named slots for instances instead of a <code>__dict__</code>. Each slot becomes a data descriptor on the class, and the slot value is stored directly in the object's memory layout rather than in a separate hash table. The result: no per-instance <code>__dict__</code>, lower memory (often 30–50% for small objects), and slightly faster attribute access because the slot's offset is fixed.</p>
+
+  <p>Use <code>__slots__</code> when you have many instances of a small, fixed-schema object — nodes in a tree, records in a streaming pipeline, ticks in a market data feed — where the memory saving is meaningful. It also prevents accidentally adding attributes not in the schema, which is occasionally useful as a lightweight interface guard.</p>
+
+  <pre><code class="language-python">import sys
+
+class WithDict:
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+class WithSlots:
+    __slots__ = ('x', 'y')
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+a = WithDict(1, 2)
+b = WithSlots(1, 2)
+
+print(sys.getsizeof(a.__dict__))   # ~200 bytes dict overhead
+# b has no __dict__ — no per-instance dict allocated at all
+print(hasattr(b, '__dict__'))      # False</code></pre>
+
+  <p>Watch out: if a subclass of a slotted class does not define its own <code>__slots__</code>, it gets a <code>__dict__</code> anyway, negating the memory benefit for subclass instances. Also, <code>__slots__</code> prevents weak references unless <code>'__weakref__'</code> is explicitly included in the tuple.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>By default every Python object gets a filing cabinet (<code>__dict__</code>) where you can stuff any attribute you like. <code>__slots__</code> replaces the cabinet with a fixed set of labelled hooks on the wall — faster to access, much less space, but you can only hang what's listed.</p>
+
+  <p>By declaring <code>__slots__</code>, you tell Python exactly which attributes instances will have. Python ditches the per-instance dictionary and stores the values directly in the object's memory. For classes where you create millions of instances — price ticks, tree nodes, data records — this can cut memory use by 30–50%.</p>
+
+  <p>The trade-off: you can no longer add surprise attributes at runtime, and subclasses that don't also declare <code>__slots__</code> get a dict anyway.</p>
+
+  <pre><code class="language-python">import sys
+
+class WithDict:
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+class WithSlots:
+    __slots__ = ('x', 'y')   # only these two attributes are allowed
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+a = WithDict(1, 2)
+b = WithSlots(1, 2)
+
+print(sys.getsizeof(a.__dict__))   # ~200 bytes — the hidden dict structure
+print(hasattr(b, '__dict__'))      # False — no dict at all
+# b.z = 99                         # would raise AttributeError</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> <code>__slots__</code> only saves memory if every class in the inheritance chain also defines <code>__slots__</code> — one class without it adds a dict back.</div>
+
+</div>

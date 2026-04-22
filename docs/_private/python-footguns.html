@@ -1,0 +1,87 @@
+---
+layout: python-reference-post
+title: "Python: Common footguns"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-footguns/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>Three problems appear consistently in code reviews because they are non-obvious and produce bugs that are hard to trace.</p>
+
+  <p><strong>Mutable default arguments.</strong> Default argument values are evaluated once at function definition time, not on each call. If you use a mutable object — a list, dict, or set — as a default, all calls that omit the argument share the same object. Append to it in one call, and every future call without an explicit argument sees the accumulated state. The fix is to default to <code>None</code> and create the mutable object inside the function body.</p>
+
+  <p><strong>Late binding in closures.</strong> Closures capture the variable, not its value at the time the closure was created. In a loop that builds closures, all of them share the same loop variable — when called, they see its final value. The idiomatic fix is to capture the current value as a default argument, which is evaluated at closure-creation time.</p>
+
+  <p><strong><code>is</code> vs <code>==</code>.</strong> <code>is</code> tests object identity — whether two names point to the same object in memory. <code>==</code> tests equality — whether two objects have the same value. CPython interns small integers (−5 to 256) and some short strings, which makes <code>is</code> appear to work for those values, but this is an implementation detail with no language guarantee.</p>
+
+  <pre><code class="language-python"># Mutable default
+def append_to(val, lst=[]):
+    lst.append(val)
+    return lst
+
+print(append_to(1))   # [1]
+print(append_to(2))   # [1, 2] — same list object, not a new one
+
+def append_to(val, lst=None):   # correct
+    if lst is None:
+        lst = []
+    lst.append(val)
+    return lst
+
+# Late binding
+fns = [lambda: i for i in range(3)]
+print([f() for f in fns])      # [2, 2, 2]
+
+fns = [lambda i=i: i for i in range(3)]
+print([f() for f in fns])      # [0, 1, 2]
+
+# is vs ==
+a, b = 1000, 1000
+print(a == b)    # True
+print(a is b)    # False — outside the interning range, two separate objects</code></pre>
+
+  <p>Watch out: <code>is None</code> is the correct idiom for None checks (<code>if x is None:</code>), because <code>None</code> is a guaranteed singleton — the identity test is both correct and marginally faster than <code>==</code>. For everything else, use <code>==</code>.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>These are the three classic traps that even experienced Python developers step into — not because the language is broken, but because the behaviour is consistent with Python's rules, just not what you'd intuitively expect.</p>
+
+  <p><strong>Mutable default arguments</strong> are evaluated once when the function is defined, not on each call. So a list default accumulates across every call that doesn't pass its own list.</p>
+
+  <p><strong>Late-binding closures</strong> capture the variable, not its value. A loop that builds closures will have all of them see the loop variable's <em>final</em> value, not the value at creation time.</p>
+
+  <p><strong><code>is</code> vs <code>==</code></strong>: <code>is</code> checks whether two names point to the exact same object in memory. <code>==</code> checks whether they're equal in value. CPython happens to reuse objects for small integers, which makes <code>is</code> look like it works — until it doesn't.</p>
+
+  <pre><code class="language-python"># Mutable default — accumulates across calls
+def append_to(val, lst=[]):
+    lst.append(val)
+    return lst
+
+print(append_to(1))   # [1]
+print(append_to(2))   # [1, 2] — same list!
+
+def append_to(val, lst=None):   # correct version
+    if lst is None:
+        lst = []
+    lst.append(val)
+    return lst
+
+# Late-binding closure
+fns = [lambda: i for i in range(3)]
+print([f() for f in fns])      # [2, 2, 2] — all see final i
+
+fns = [lambda i=i: i for i in range(3)]   # fix: default captures value now
+print([f() for f in fns])      # [0, 1, 2]
+
+# is vs ==
+a, b = 1000, 1000
+print(a == b)    # True — same value
+print(a is b)    # False — different objects (outside CPython's interning range)</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> use <code>is</code> only for <code>None</code>, <code>True</code>, and <code>False</code> — for everything else, use <code>==</code>.</div>
+
+</div>

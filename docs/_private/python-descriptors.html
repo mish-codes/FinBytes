@@ -1,0 +1,74 @@
+---
+layout: python-reference-post
+title: "Python: Descriptors — data, non-data, and what they power"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-descriptors/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>A descriptor is any object that defines <code>__get__</code>, and optionally <code>__set__</code> or <code>__delete__</code>. When an attribute lookup finds a descriptor stored on a class (not an instance), Python calls the descriptor's methods instead of returning the object directly. This single mechanism powers <code>@property</code>, instance methods, <code>@classmethod</code>, and <code>@staticmethod</code>.</p>
+
+  <p>A <em>data descriptor</em> defines both <code>__get__</code> and <code>__set__</code> (or <code>__delete__</code>). It takes priority over the instance's <code>__dict__</code>. A <em>non-data descriptor</em> defines only <code>__get__</code> — the instance <code>__dict__</code> takes priority over it, which is why you can shadow a method by setting an instance attribute with the same name.</p>
+
+  <p>Functions are non-data descriptors. When you access <code>obj.method</code>, Python calls <code>function.__get__(obj, type(obj))</code>, which returns a bound method. That is how <code>self</code> gets bound — not by any special syntax, but because the function object's <code>__get__</code> wraps itself with the instance. <code>classmethod</code> and <code>staticmethod</code> work the same way but bind differently.</p>
+
+  <pre><code class="language-python">class Validated:
+    def __set_name__(self, owner, name):
+        self._name = name
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self          # accessed on the class itself
+        return obj.__dict__.get(self._name)
+
+    def __set__(self, obj, value):
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"{self._name} must be numeric")
+        obj.__dict__[self._name] = value
+
+class Price:
+    amount = Validated()   # descriptor lives on the class, shared by all instances
+
+p = Price()
+p.amount = 9.99    # calls Validated.__set__
+print(p.amount)    # calls Validated.__get__ → 9.99
+p.amount = "free"  # raises TypeError</code></pre>
+
+  <p>Watch out: store per-instance data in <code>obj.__dict__</code> keyed by <code>self._name</code>, never on the descriptor instance itself — the descriptor is one object shared across every instance of the class.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>A descriptor is like a smart doorbell. Instead of just ringing when pressed, it can run a custom action — log who rang, check if the time is allowed, play a different sound. Attach one to a class attribute and Python calls the doorbell's logic instead of just handing over the value.</p>
+
+  <p>When Python finds a descriptor sitting on a class (not on an instance), it calls the descriptor's <code>__get__</code> method instead of returning the object directly. This is how <code>@property</code> works — it's just a built-in descriptor. Functions are descriptors too: that's how <code>self</code> gets bound when you call a method.</p>
+
+  <p>A <em>data descriptor</em> also defines <code>__set__</code>, so it controls both reading and writing. It beats the instance's own dictionary, which is why a <code>@property</code> setter can't be bypassed by writing to the instance directly.</p>
+
+  <pre><code class="language-python">class Validated:
+    def __set_name__(self, owner, name):
+        self._name = name   # remembers which attribute name it's attached to
+
+    def __get__(self, obj, objtype=None):
+        if obj is None:
+            return self                      # accessed on the class, not an instance
+        return obj.__dict__.get(self._name)  # read from the instance's own storage
+
+    def __set__(self, obj, value):
+        if not isinstance(value, (int, float)):
+            raise TypeError(f"{self._name} must be a number")
+        obj.__dict__[self._name] = value     # store on the instance, not the descriptor
+
+class Price:
+    amount = Validated()   # one descriptor, shared by every Price instance
+
+p = Price()
+p.amount = 9.99    # calls __set__ → passes validation
+p.amount = "free"  # raises TypeError</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> store per-instance data in <code>obj.__dict__</code>, never on the descriptor itself — the descriptor is one object shared by every instance.</div>
+
+</div>

@@ -1,0 +1,68 @@
+---
+layout: python-reference-post
+title: "Python: Dataclasses vs attrs vs plain classes"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-dataclasses/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>All three define data-holding classes. The choice is about how much boilerplate Python generates for you and how much validation and transformation logic you need alongside it.</p>
+
+  <p>A plain class gives you full control: you write <code>__init__</code>, <code>__repr__</code>, <code>__eq__</code>, and any other methods yourself. That is correct and often enough for one-off objects, or when the generated defaults do not fit.</p>
+
+  <p><code>@dataclass</code> (stdlib, Python 3.7+) auto-generates <code>__init__</code>, <code>__repr__</code>, and <code>__eq__</code> from class-level annotations. Optional flags generate <code>__hash__</code>, <code>__lt__</code>, and frozen (immutable) variants. Fields with mutable defaults must use <code>field(default_factory=...)</code> — a naked mutable default is caught at class definition time with a <code>ValueError</code>. <code>__post_init__</code> runs after the generated <code>__init__</code> and is where you put validation logic. Zero dependencies, readable, and correct for most use cases.</p>
+
+  <p><code>attrs</code> (third-party) covers the same ground but with more built-in power: validators run automatically in <code>__init__</code>, converters transform values on assignment, and the configuration API is richer. It predated dataclasses and directly influenced their design. Reach for <code>attrs</code> when you need per-field validators, converters, or are already in a codebase that depends on it.</p>
+
+  <pre><code class="language-python">from dataclasses import dataclass, field
+
+@dataclass
+class Order:
+    id: int
+    items: list[str] = field(default_factory=list)   # mutable default — must use field()
+    total: float = 0.0
+
+    def __post_init__(self):
+        if self.total &lt; 0:
+            raise ValueError("total cannot be negative")
+
+o1 = Order(id=1, items=["widget"])
+o2 = Order(id=1, items=["widget"])
+print(o1 == o2)   # True — __eq__ compares field values
+print(repr(o1))   # Order(id=1, items=['widget'], total=0.0)</code></pre>
+
+  <p>Watch out: <code>@dataclass</code> fields are ordered — a field with a default cannot be followed by a field without one (same rule as function arguments). If you hit this constraint with inheritance, use <code>field(default=...)</code> or restructure the class hierarchy.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>You want a box that holds a few named values. A plain class is building the box from scratch with a saw and nails. <code>@dataclass</code> is a flat-pack kit — most of the work is done for you. <code>attrs</code> is a smarter kit with optional built-in checks that snap together as you assemble.</p>
+
+  <p>All three do the same job. The difference is how much boilerplate you write and how much built-in help you get.</p>
+
+  <p><code>@dataclass</code> is in the standard library and handles 90% of cases: it auto-generates <code>__init__</code>, <code>__repr__</code>, and <code>__eq__</code> from your field annotations. Use <code>field(default_factory=list)</code> whenever a default value is mutable (a list, dict, or set) — otherwise every instance shares the same object.</p>
+
+  <pre><code class="language-python">from dataclasses import dataclass, field
+
+@dataclass
+class Order:
+    id: int
+    items: list[str] = field(default_factory=list)   # each instance gets its own list
+    total: float = 0.0
+
+    def __post_init__(self):
+        if self.total &lt; 0:
+            raise ValueError("total can't be negative")   # validation goes here
+
+o1 = Order(id=1, items=["widget"])
+o2 = Order(id=1, items=["widget"])
+
+print(o1 == o2)    # True — __eq__ compares field values automatically
+print(repr(o1))    # Order(id=1, items=['widget'], total=0.0)</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> mutable defaults (<code>list</code>, <code>dict</code>, <code>set</code>) must use <code>field(default_factory=...)</code> — a bare <code>items: list = []</code> is caught at class definition time with a <code>ValueError</code>.</div>
+
+</div>

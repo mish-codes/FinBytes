@@ -1,0 +1,69 @@
+---
+layout: python-reference-post
+title: "Python: Generator and iterator protocol"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-generators/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>Python's iterator protocol requires two methods: <code>__iter__</code> (returns the iterator itself) and <code>__next__</code> (returns the next value or raises <code>StopIteration</code>). Any object implementing these can be used in a <code>for</code> loop. An iterable only needs <code>__iter__</code> — it returns a fresh iterator each time, which carries the traversal state.</p>
+
+  <p>A generator function contains <code>yield</code>. Calling it does not execute the body; it returns a generator object that implements the iterator protocol automatically. Execution resumes from the last <code>yield</code> each time <code>__next__</code> is called. This gives you lazy evaluation — values are produced on demand, which matters when a sequence is large or infinite.</p>
+
+  <p>Generator expressions (<code>(x*x for x in range(n))</code>) are syntactic sugar for simple generators and produce one value at a time. For anything more complex — state between yields, early termination, infinite sequences — a generator function is cleaner than a class implementing <code>__iter__</code> and <code>__next__</code> by hand.</p>
+
+  <p>Generators also support <code>send(value)</code>, which resumes the generator and passes a value back in as the result of the <code>yield</code> expression, enabling two-way communication between the caller and the generator.</p>
+
+  <pre><code class="language-python">def fibonacci():
+    a, b = 0, 1
+    while True:          # infinite — safe because it's lazy
+        yield a
+        a, b = b, a + b
+
+gen = fibonacci()
+print([next(gen) for _ in range(8)])   # [0, 1, 1, 2, 3, 5, 8, 13]
+
+# Two-way communication with send()
+def accumulator():
+    total = 0
+    while True:
+        value = yield total   # sends total out, receives the next value in
+        total += value
+
+acc = accumulator()
+next(acc)            # prime: run to the first yield
+print(acc.send(10))  # 10
+print(acc.send(5))   # 15</code></pre>
+
+  <p>Watch out: a generator can only be iterated once. After <code>StopIteration</code> is raised, further calls to <code>next()</code> keep raising it. If you need to iterate a generator multiple times, collect it into a list first, or write a class whose <code>__iter__</code> creates a fresh generator each call.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>A regular list gives you all the items at once — like printing every page of a book and handing them over. A generator is more like a storyteller reading one page at a time: you get the next page only when you ask. Nothing is produced until it's needed.</p>
+
+  <p>The magic word is <code>yield</code>. When Python sees it in a function, the function becomes a generator. Calling the function doesn't run the body at all — it just creates the storyteller. Each time you call <code>next()</code> on it, the function runs until the next <code>yield</code>, pauses, and hands you the value. When there's nothing left, it stops.</p>
+
+  <p>This matters for large or infinite sequences: you never store everything in memory at once.</p>
+
+  <pre><code class="language-python">def fibonacci():
+    a, b = 0, 1
+    while True:        # infinite loop — safe because nothing runs until you ask
+        yield a        # pause here, hand out the value, wait for next()
+        a, b = b, a + b
+
+gen = fibonacci()
+
+print(next(gen))   # 0
+print(next(gen))   # 1
+print(next(gen))   # 1
+
+# or ask for a batch
+print([next(gen) for _ in range(5)])   # [2, 3, 5, 8, 13]</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> a generator can only be walked through once — after it runs out, it's empty for good. Collect it into a list if you need to loop over it more than once.</div>
+
+</div>
