@@ -1,0 +1,61 @@
+---
+layout: python-reference-post
+title: "Python: Context managers and the with protocol"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-context-managers/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>A context manager defines <code>__enter__</code> and <code>__exit__</code>. When Python executes <code>with expr as x:</code>, it calls <code>expr.__enter__()</code> and binds the return value to <code>x</code>. When the block exits — whether normally or via exception — Python calls <code>expr.__exit__(exc_type, exc_val, exc_tb)</code>. If those three arguments are <code>None</code>, the block exited cleanly; if they are set, an exception occurred.</p>
+
+  <p><code>__exit__</code> decides what to do with the exception. Returning a truthy value suppresses it and execution continues after the <code>with</code> block. Returning <code>None</code> or <code>False</code> lets it propagate. This is what makes context managers reliable for resource cleanup: the exit method runs regardless of whether an exception was raised.</p>
+
+  <p><code>contextlib.contextmanager</code> lets you write a context manager as a generator function, avoiding the need for a class. Everything before <code>yield</code> is the <code>__enter__</code> logic; the yielded value becomes the <code>as</code> target; everything in the <code>finally</code> block is the <code>__exit__</code> logic and runs even on exception.</p>
+
+  <pre><code class="language-python">from contextlib import contextmanager
+import time
+
+@contextmanager
+def timer(label):
+    start = time.perf_counter()
+    try:
+        yield                    # control passes into the with block here
+    finally:
+        elapsed = time.perf_counter() - start
+        print(f"{label}: {elapsed:.4f}s")   # always runs
+
+with timer("build index"):
+    index = {v: i for i, v in enumerate(range(1_000_000))}</code></pre>
+
+  <p>Watch out: if you suppress an exception in <code>__exit__</code> (by returning <code>True</code>), execution continues after the <code>with</code> block, not inside it. If you only want to suppress specific exception types, check <code>exc_type</code> before returning <code>True</code> — a bare <code>return True</code> swallows every exception, including <code>KeyboardInterrupt</code>.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>A context manager is like a changing room attendant. They hand you a key when you enter (<code>__enter__</code>), and take it back when you leave (<code>__exit__</code>) — whether you walked out calmly or were carried out. The door is always locked behind you.</p>
+
+  <p>This is useful for anything that needs guaranteed cleanup: open a file → do work → close it, even if the work crashes. The <code>with</code> statement does this automatically. You can write your own with <code>contextlib.contextmanager</code> using a generator: everything before <code>yield</code> is the setup, everything after is the teardown.</p>
+
+  <pre><code class="language-python">from contextlib import contextmanager
+import time
+
+@contextmanager
+def timer(label):
+    start = time.perf_counter()
+    try:
+        yield               # hands control into the with block
+    finally:
+        elapsed = time.perf_counter() - start
+        print(f"{label}: {elapsed:.3f}s")   # runs whether or not an exception happened
+
+with timer("sorting"):
+    data = sorted(range(1_000_000), reverse=True)
+
+# prints: sorting: 0.083s  (or similar)</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> <code>__exit__</code> runs even if an exception is raised — but if you return <code>True</code> from it, the exception is silently swallowed, so be deliberate about that.</div>
+
+</div>
