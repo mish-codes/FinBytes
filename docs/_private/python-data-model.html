@@ -1,0 +1,70 @@
+---
+layout: python-reference-post
+title: "Python: Data model dunders"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-data-model/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>Python's data model lets you hook into the language's core operations by defining special methods. Three areas come up most often.</p>
+
+  <p><code>__repr__</code> vs <code>__str__</code>: <code>__repr__</code> is the unambiguous, developer-facing representation — ideally something you could <code>eval()</code> back to an equivalent object. <code>__str__</code> is the readable, end-user-facing representation. <code>str()</code> falls back to <code>__repr__</code> if <code>__str__</code> is not defined, so implementing <code>__repr__</code> is the higher-value of the two.</p>
+
+  <p><code>__eq__</code> and <code>__hash__</code>: defining <code>__eq__</code> causes Python to set <code>__hash__</code> to <code>None</code>, making instances unhashable — they cannot be used in sets or as dict keys. If you want both value equality and hashability, define <code>__hash__</code> explicitly. The rule is that objects which compare equal must have the same hash; violating this silently corrupts dictionaries and sets.</p>
+
+  <p><code>__getattr__</code> vs <code>__getattribute__</code>: <code>__getattribute__</code> is called on <em>every</em> attribute access without exception. <code>__getattr__</code> is called only after normal lookup has <em>failed</em>. Override <code>__getattr__</code> as a fallback for missing attributes; override <code>__getattribute__</code> only when you need to intercept all access, and always delegate to <code>object.__getattribute__(self, name)</code> to avoid infinite recursion.</p>
+
+  <pre><code class="language-python">class Point:
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+    def __repr__(self):
+        return f"Point({self.x!r}, {self.y!r})"   # eval-able
+
+    def __eq__(self, other):
+        return isinstance(other, Point) and (self.x, self.y) == (other.x, other.y)
+
+    def __hash__(self):
+        return hash((self.x, self.y))   # required because __eq__ is defined
+
+    def __getattr__(self, name):        # only reached for missing attributes
+        raise AttributeError(f"Point has no attribute {name!r}")</code></pre>
+
+  <p>Watch out: <code>__getattr__</code> is not called when the attribute <em>exists</em> — it is the last-resort fallback. If you want to intercept access to attributes that <em>do</em> exist, you need <code>__getattribute__</code>.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>Python has a list of "magic words" — if you define a method with one of those names on your class, Python calls it automatically at the right moment. <code>__repr__</code> is called when Python wants to show your object, <code>__eq__</code> when it wants to compare two objects, and so on.</p>
+
+  <p><code>__repr__</code> gives the developer-friendly display: ideally something you could paste into a Python prompt to recreate the object. <code>__str__</code> gives the user-friendly display. If you only write one, write <code>__repr__</code> — Python falls back to it when <code>__str__</code> is missing.</p>
+
+  <p><code>__eq__</code> lets you define what "equal" means. But defining it wipes out hashability by default, meaning you can't put instances in a set or use them as dict keys. Fix it by also defining <code>__hash__</code>.</p>
+
+  <pre><code class="language-python">class Point:
+    def __init__(self, x, y):
+        self.x, self.y = x, y
+
+    def __repr__(self):
+        return f"Point({self.x}, {self.y})"   # shown in the REPL, tracebacks, everywhere
+
+    def __eq__(self, other):
+        # two Points are equal if their coordinates match
+        return isinstance(other, Point) and (self.x, self.y) == (other.x, other.y)
+
+    def __hash__(self):
+        # required because we defined __eq__ — use the same fields
+        return hash((self.x, self.y))
+
+p1 = Point(1, 2)
+p2 = Point(1, 2)
+print(p1 == p2)           # True — __eq__ compared coordinates
+print({p1, p2})           # one item — same hash, same equality
+print(repr(p1))           # Point(1, 2)</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> if you define <code>__eq__</code>, always define <code>__hash__</code> too — otherwise your objects silently become unusable in sets and dicts.</div>
+
+</div>
