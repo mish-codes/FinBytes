@@ -1,0 +1,69 @@
+---
+layout: python-reference-post
+title: "Python: MRO and how super() resolves"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-mro/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>Python's method resolution order (MRO) determines the sequence in which base classes are searched when you access a method or attribute. It is computed once at class creation time using the C3 linearisation algorithm and stored in <code>ClassName.__mro__</code>.</p>
+
+  <p>C3 works by merging the MROs of each base class left-to-right, always picking the first class that does not appear later in any other base's MRO. The practical result: Python respects the order you write your base classes, never visits a class twice, and always places a class before its bases.</p>
+
+  <p><code>super()</code> is not "call the parent class". It returns a proxy that starts the MRO walk at the class <em>after</em> the one where <code>super()</code> appears. In a chain <code>C → A → B → object</code>, calling <code>super()</code> inside <code>A</code> looks in <code>B</code> next, then <code>object</code>. This is what makes cooperative multiple inheritance work: every class in the chain calls <code>super()</code>, so the call propagates all the way up rather than stopping at the first base.</p>
+
+  <p>The implication is that the class <code>super()</code> will delegate to depends on the <em>full</em> MRO of the instance being created, not just on what the class directly inherits from. You cannot know which class <code>super()</code> in <code>A</code> will call without knowing what <code>A</code> is mixed into.</p>
+
+  <pre><code class="language-python">class A:
+    def greet(self):
+        print("A")
+        super().greet()   # keeps the chain going
+
+class B:
+    def greet(self):
+        print("B")
+        super().greet()
+
+class C(A, B):
+    def greet(self):
+        print("C")
+        super().greet()
+
+# C.__mro__ → (C, A, B, object)
+C().greet()   # prints C, A, B</code></pre>
+
+  <p>Watch out: if any class in the chain does not call <code>super().__init__()</code>, initialisation silently stops there — base classes further along the MRO never run.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>Imagine Python keeps a ranked to-do list for every class: "if you can't find the method here, check this one next, then that one." That list is the MRO.</p>
+
+  <p><code>super()</code> doesn't just call your parent class. It says "go to the next name on the list." So if the list is <code>C → A → B → object</code> and you call <code>super()</code> inside <code>A</code>, Python looks in <code>B</code> next — not back at <code>C</code>. This matters when you mix multiple classes together: the list changes based on the combination, so you can't know where <code>super()</code> lands without knowing the full list.</p>
+
+  <p>Every class in a cooperative chain passes the baton using <code>super()</code>. If one class drops it, the rest of the chain never runs.</p>
+
+  <pre><code class="language-python">class A:
+    def greet(self):
+        print("A")
+        super().greet()   # "pass it to whoever's next on the list"
+
+class B:
+    def greet(self):
+        print("B")
+        super().greet()   # B passes it along too
+
+class C(A, B):
+    def greet(self):
+        print("C")
+        super().greet()   # starts the chain
+
+# Python builds the list: C → A → B → object
+C().greet()   # prints C, A, B — walks the whole list</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> if one class skips <code>super()</code>, every class after it on the list is silently ignored.</div>
+
+</div>
