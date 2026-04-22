@@ -1,0 +1,67 @@
+---
+layout: python-reference-post
+title: "Python: Attribute lookup order end-to-end"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-attribute-lookup/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>When you write <code>obj.name</code>, Python calls <code>type(obj).__getattribute__(obj, 'name')</code>, which runs the following chain in order.</p>
+
+  <p>First, Python searches <code>type(obj).__mro__</code> — the class and all its bases. If it finds a <em>data descriptor</em> (an object defining both <code>__get__</code> and <code>__set__</code>), the descriptor's <code>__get__</code> is invoked immediately and lookup stops. Data descriptors win over everything else, including the instance dict.</p>
+
+  <p>If no data descriptor is found, Python checks <code>obj.__dict__</code>. If the name is there, that value is returned directly.</p>
+
+  <p>If not in the instance dict, Python searches the class hierarchy again for a <em>non-data descriptor</em> (defines only <code>__get__</code>). If found, its <code>__get__</code> is called.</p>
+
+  <p>If none of the above, the raw class attribute is returned as-is.</p>
+
+  <p>Finally, if every step fails, <code>__getattr__</code> is called if defined. If that also raises <code>AttributeError</code>, the lookup fails with the error the caller sees.</p>
+
+  <pre><code class="language-python">class WithProp:
+    @property              # @property is a data descriptor (__get__ + __set__)
+    def x(self):
+        return "from property"
+
+w = WithProp()
+w.__dict__['x'] = 99      # write directly into instance dict
+print(w.x)                # "from property" — data descriptor beats instance dict
+
+class Plain:
+    x = 10                # plain class attribute — non-data, no __get__
+
+p = Plain()
+p.__dict__['x'] = 99      # instance dict
+print(p.x)                # 99 — instance dict beats non-data class attribute</code></pre>
+
+  <p>Watch out: this ordering is why you cannot bypass a <code>@property</code> setter by writing <code>self.x = value</code> from outside the class — <code>__set__</code> on the property is called instead. If you genuinely need to write to <code>__dict__</code> directly from inside the class, use <code>self.__dict__['x'] = value</code>.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>When you ask Python for <code>obj.name</code>, Python runs through a priority queue — like a bouncer checking four different lists before deciding who gets in. The lists are checked in a fixed order, and the first match wins.</p>
+
+  <p>The order is: (1) data descriptor on the class, (2) the instance's own dictionary, (3) non-data descriptor or plain class attribute, (4) <code>__getattr__</code> as a last resort. A <code>@property</code> is a data descriptor, so it always beats whatever is in the instance's own dictionary — you can't shadow it by setting an instance attribute with the same name.</p>
+
+  <pre><code class="language-python">class WithProp:
+    @property              # @property is a data descriptor — highest priority
+    def x(self):
+        return "from property"
+
+w = WithProp()
+w.__dict__['x'] = 99      # written directly into the instance dict
+print(w.x)                # "from property" — data descriptor wins
+
+class Plain:
+    x = 10                # plain class attribute — lower priority than instance dict
+
+p = Plain()
+p.x = 99                  # stored in instance dict
+print(p.x)                # 99 — instance dict wins over plain class attribute</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> data descriptors (like <code>@property</code>) beat the instance dict; plain class attributes lose to it.</div>
+
+</div>
