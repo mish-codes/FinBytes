@@ -1,0 +1,57 @@
+---
+layout: python-reference-post
+title: "Python: The import system and module resolution"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-import-system/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>When you write <code>import foo</code>, Python first checks <code>sys.modules</code> — a cache of every module imported so far. If <code>foo</code> is there, the cached module object is returned immediately. This is why importing the same module in ten files does not re-execute the module code ten times.</p>
+
+  <p>If not cached, Python searches for the module using a sequence of <em>finders</em> stored in <code>sys.meta_path</code>. The default finders check built-in modules (compiled into the interpreter), frozen modules, and then the file system. For file system modules, Python searches directories in <code>sys.path</code> in order, looking for a <code>.py</code> file, a package directory (a directory with <code>__init__.py</code>), or a compiled extension.</p>
+
+  <p>Once found, a <em>loader</em> executes the module code in a fresh namespace. Crucially, the (partially-initialised) module object is added to <code>sys.modules</code> <em>before</em> the module code finishes running. This is what makes circular imports partially work — the importing module gets back a module object that exists, but attributes defined later in the circular dependency may not exist yet on that object.</p>
+
+  <pre><code class="language-python">import sys, importlib
+
+# sys.modules cache
+print('os' in sys.modules)          # True — already imported by Python startup
+print('my_module' in sys.modules)   # False if never imported
+
+# Search path
+print(sys.path[:3])                 # script dir, PYTHONPATH entries, stdlib
+
+# Force a reload during development (REPL / hot-reload scenarios)
+import my_module
+importlib.reload(my_module)</code></pre>
+
+  <p>Watch out: relative imports (<code>from . import util</code>) only work inside a package — a directory that Python recognises as a package. Running a file directly as a script (<code>python package/module.py</code>) breaks relative imports because the package context is not established. Use <code>python -m package.module</code> instead.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p><code>import foo</code> is like asking a librarian for a book. First they check the returns desk — maybe someone already brought it back today (<code>sys.modules</code> cache). If not, they go look it up on the shelves (<code>sys.path</code>). Once found, they read it into a record and put a card in the returns desk so the next person doesn't need to go to the shelves again.</p>
+
+  <p>The cache is why importing the same module in ten different files doesn't re-run the module code ten times. The module runs once, and after that everyone gets the same object back from the cache.</p>
+
+  <p>Circular imports — where A imports B and B imports A — partially work because the module object goes into the cache before its code finishes running. The risk: if you access something from the circular import before it's been defined, you get an <code>AttributeError</code>.</p>
+
+  <pre><code class="language-python">import sys
+
+# Check the cache
+print('os' in sys.modules)   # True — Python's startup already imported it
+
+# See where Python looks for files
+print(sys.path[:3])          # [script dir, PYTHONPATH entries, stdlib dirs, ...]
+
+# Force a fresh load (useful during development in a REPL)
+import importlib
+import my_module
+importlib.reload(my_module)  # re-reads the file and re-runs the module code</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> always run a file as part of its package (<code>python -m package.module</code>) rather than directly — running it directly breaks relative imports because Python doesn't know which package it belongs to.</div>
+
+</div>
