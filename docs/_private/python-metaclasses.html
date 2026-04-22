@@ -1,0 +1,67 @@
+---
+layout: python-reference-post
+title: "Python: Metaclasses"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-metaclasses/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>A metaclass is the class of a class. Just as an object is an instance of its class, a class is an instance of its metaclass. The default metaclass for every Python class is <code>type</code>. When Python executes a <code>class</code> statement, it calls the metaclass to construct the class object — passing the class name, tuple of base classes, and namespace dictionary. You can customise this by subclassing <code>type</code>.</p>
+
+  <p>Overriding <code>__new__</code> on a metaclass lets you intercept class creation before the class object exists. Overriding <code>__init__</code> runs after creation. Common legitimate uses: enforcing that subclasses implement certain methods, automatically registering subclasses in a plugin registry, or adding methods to every class in a hierarchy.</p>
+
+  <p>Before reaching for a metaclass, consider whether <code>__init_subclass__</code> or a class decorator solves the problem with less machinery. <code>__init_subclass__</code> runs whenever a class is subclassed and covers most registration and validation use cases with far less conceptual overhead. Metaclasses are rarely the right tool unless you need to modify the class namespace during construction, or you are building a framework where users should not have to inherit from a base class.</p>
+
+  <pre><code class="language-python">class RegistryMeta(type):
+    _registry = {}
+
+    def __new__(mcs, name, bases, namespace):
+        cls = super().__new__(mcs, name, bases, namespace)
+        if bases:            # skip the abstract base class itself
+            mcs._registry[name] = cls
+        return cls
+
+class Plugin(metaclass=RegistryMeta):
+    pass
+
+class AudioPlugin(Plugin): pass
+class VideoPlugin(Plugin): pass
+
+print(RegistryMeta._registry)
+# {'AudioPlugin': &lt;class 'AudioPlugin'&gt;, 'VideoPlugin': &lt;class 'VideoPlugin'&gt;}</code></pre>
+
+  <p>Watch out: metaclass conflicts occur when two base classes have different metaclasses. Python raises <code>TypeError: metaclass conflict</code>. The resolution is a combined metaclass that inherits from both — but reaching that point usually signals the design is overengineered.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>A class is a factory for objects. A metaclass is a factory for classes. Just as a class controls what its instances look like, a metaclass controls what the class itself looks like when Python creates it.</p>
+
+  <p>When Python sees a <code>class</code> statement, it calls the metaclass (normally <code>type</code>) with the class name, its base classes, and a dictionary of everything defined inside the body. The metaclass returns the finished class object. You can intercept that call to enforce rules, auto-register subclasses, or add methods that would otherwise need to be written by hand in every subclass.</p>
+
+  <p>Before writing a metaclass, check whether <code>__init_subclass__</code> does the job — it's simpler, runs whenever someone subclasses your class, and covers most registration and validation needs.</p>
+
+  <pre><code class="language-python">class RegistryMeta(type):
+    _registry = {}
+
+    def __new__(mcs, name, bases, namespace):
+        cls = super().__new__(mcs, name, bases, namespace)
+        if bases:                      # skip the base class itself
+            mcs._registry[name] = cls  # auto-register every subclass
+        return cls
+
+class Plugin(metaclass=RegistryMeta):
+    pass   # the base — not registered
+
+class AudioPlugin(Plugin): pass   # automatically added to the registry
+class VideoPlugin(Plugin): pass   # so is this one
+
+print(RegistryMeta._registry)
+# {'AudioPlugin': ..., 'VideoPlugin': ...}</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> reach for <code>__init_subclass__</code> first — if you still need to modify the class namespace during creation, then use a metaclass.</div>
+
+</div>
