@@ -1,0 +1,82 @@
+---
+layout: python-reference-post
+title: "Python: Type system basics — Protocol, TypeVar, Generic"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-type-system/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>Python's type hints are evaluated by static analysers (mypy, pyright) rather than at runtime. The three concepts that come up most in practice are <code>Protocol</code>, <code>TypeVar</code>, and <code>Generic</code>.</p>
+
+  <p><code>Protocol</code> enables structural subtyping — duck typing with static verification. A class satisfies a <code>Protocol</code> if it has the required methods and attributes, without needing to explicitly inherit from it. This lets you write functions that accept any object behaving a certain way, without imposing a class hierarchy on the caller.</p>
+
+  <p><code>TypeVar</code> defines a type variable: a placeholder that the type checker replaces with a concrete type at each call site. A function annotated with a <code>TypeVar</code> is generic — the checker can verify that input and output types are consistent with each other. <code>TypeVar('T', bound=Base)</code> constrains the variable to subclasses of <code>Base</code>.</p>
+
+  <p><code>Generic[T]</code> makes a class generic. Callers parameterise it with a concrete type, and the checker tracks what is stored inside — useful for containers, wrappers, and result types.</p>
+
+  <pre><code class="language-python">from typing import Protocol, TypeVar, Generic
+
+class Drawable(Protocol):
+    def draw(self) -> None: ...   # any class with draw() satisfies this, no inheritance needed
+
+def render(item: Drawable) -> None:
+    item.draw()
+
+T = TypeVar('T')
+
+class Stack(Generic[T]):
+    def __init__(self) -> None:
+        self._items: list[T] = []
+
+    def push(self, item: T) -> None:
+        self._items.append(item)
+
+    def pop(self) -> T:
+        return self._items.pop()
+
+s: Stack[int] = Stack()
+s.push(1)       # checker knows this is int
+val = s.pop()   # val inferred as int</code></pre>
+
+  <p>Watch out: at runtime, generics are erased — <code>Stack[int]</code> and <code>Stack[str]</code> are the same class object. Type parameters exist only for the static analyser. If you need to inspect type arguments at runtime, use <code>typing.get_args()</code> on an annotated variable, not on the class itself.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>Type hints are notes you leave for a spell-checker (mypy or pyright) that runs before your code does. The spell-checker reads your notes and tells you if something doesn't add up — but at runtime Python ignores the notes completely.</p>
+
+  <p><code>Protocol</code> is duck typing with a receipt: you write down exactly what methods something needs to have, and the checker verifies that anything passed in actually has them — without forcing you to inherit from a shared base class.</p>
+
+  <p><code>TypeVar</code> is a placeholder type: "whatever goes in must be the same type as what comes out." <code>Generic[T]</code> makes a whole class work that way — the checker tracks what's stored inside a container.</p>
+
+  <pre><code class="language-python">from typing import Protocol, TypeVar, Generic
+
+class Drawable(Protocol):
+    def draw(self) -> None: ...   # anything with draw() qualifies — no inheritance needed
+
+def render(item: Drawable) -> None:
+    item.draw()   # checker knows draw() exists; no runtime cost
+
+T = TypeVar('T')
+
+class Stack(Generic[T]):
+    def __init__(self) -> None:
+        self._items: list[T] = []
+
+    def push(self, item: T) -> None:
+        self._items.append(item)
+
+    def pop(self) -> T:
+        return self._items.pop()
+
+s: Stack[int] = Stack()
+s.push(1)        # checker: ok, 1 is int
+s.push("oops")   # checker: error — expected int
+val = s.pop()    # checker knows val is int</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> generics are erased at runtime — <code>Stack[int]</code> and <code>Stack[str]</code> are the same class object; the type information only exists for the checker.</div>
+
+</div>
