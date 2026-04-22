@@ -1,0 +1,61 @@
+---
+layout: python-reference-post
+title: "Python: The GIL and concurrency tradeoffs"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-gil/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p>The Global Interpreter Lock is a mutex in CPython that prevents more than one thread from executing Python bytecode at the same time. It exists because CPython's memory management — specifically reference counting — is not thread-safe without it. Rather than lock every individual object, CPython locks the interpreter itself and releases the lock periodically so other threads can run.</p>
+
+  <p>The consequence is that Python threads do not give you parallel CPU execution for pure Python code. Two threads on an eight-core machine still take turns. The GIL is released during I/O operations and by C extensions that opt out (NumPy, for instance), which is why threading still helps for network-bound or I/O-bound work: while one thread blocks waiting for a socket, the GIL is free and another thread runs.</p>
+
+  <p>For CPU-bound work you need <code>multiprocessing</code>. Each process has its own interpreter and its own GIL, so you get true parallelism. The cost is higher memory and slower communication between processes — you pass data via queues or shared memory rather than shared objects.</p>
+
+  <p><code>asyncio</code> is different from both. It is single-threaded, single-process, and achieves concurrency through cooperative scheduling. Coroutines yield control at <code>await</code> points; the event loop runs something else while the coroutine waits. No parallelism, but very efficient for handling thousands of concurrent I/O-bound operations.</p>
+
+  <p>Rule of thumb: many concurrent I/O operations → asyncio. Simple I/O-bound scripts → threads. CPU-bound work → multiprocessing.</p>
+
+  <pre><code class="language-python">import asyncio, threading, multiprocessing
+
+# asyncio: concurrent I/O, single thread, cooperative
+async def fetch(url): ...
+
+# threading: I/O-bound, GIL released during I/O waits
+t = threading.Thread(target=do_io_work)
+
+# multiprocessing: CPU-bound, each process gets its own GIL
+p = multiprocessing.Process(target=crunch_numbers)</code></pre>
+
+  <p>Watch out: mixing asyncio and threads is possible but error-prone — use <code>loop.run_in_executor()</code> to run blocking code in a thread pool from an async context rather than calling blocking functions directly inside a coroutine.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>Imagine a kitchen with one knife. Multiple chefs (threads) can all be in the kitchen, but only one can use the knife at a time. The GIL is that knife rule.</p>
+
+  <p>Python's threads don't run truly in parallel for Python code — they take turns. The lock releases when a thread is waiting for something (like a file download or database query), so threading still helps when you're mostly waiting, not computing.</p>
+
+  <p>If you need to actually run things at the same time on multiple CPU cores, you need separate processes — each gets its own kitchen, own knife. The downside is they can't easily share their cutting boards.</p>
+
+  <p><code>asyncio</code> is a third option: one chef, one knife, but the chef switches tasks the moment they're waiting for anything, so they're never standing around idle.</p>
+
+  <pre><code class="language-python">import asyncio
+
+async def fetch(n):
+    print(f"starting task {n}")
+    await asyncio.sleep(1)    # chef puts this task down and picks up another
+    print(f"finished task {n}")
+
+async def main():
+    # all three run "at the same time" — total wait is ~1s, not 3s
+    await asyncio.gather(fetch(1), fetch(2), fetch(3))
+
+asyncio.run(main())</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> threads share the GIL (take turns), processes bypass it (truly parallel), asyncio ignores it (one thread, cooperative switching).</div>
+
+</div>
