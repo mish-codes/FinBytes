@@ -1,0 +1,60 @@
+---
+layout: python-reference-post
+title: "Python: The asyncio execution model"
+date: 2026-04-21
+tags: [python, reference]
+permalink: /private/python-asyncio/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p><code>asyncio</code> runs on a single-threaded event loop. The loop maintains a queue of tasks — scheduled coroutines. On each iteration it picks a ready task, runs it until it hits an <code>await</code>, then suspends it and moves to the next ready task. There is no thread switching and no parallelism; concurrency comes from coroutines voluntarily yielding control.</p>
+
+  <p>A coroutine is a function defined with <code>async def</code>. Calling it does not execute it — it returns a coroutine object. To run it you either <code>await</code> it from another coroutine, or wrap it in a task with <code>asyncio.create_task()</code>, which schedules it on the event loop and lets it run concurrently with the caller. <code>await</code> suspends the current coroutine and hands control back to the event loop until the awaited thing completes.</p>
+
+  <p>The critical pitfall is blocking the event loop. Any call that does not release control — <code>time.sleep()</code>, synchronous file I/O, a <code>requests.get()</code>, a CPU-heavy loop — freezes every other coroutine for its entire duration. The event loop is cooperative; it cannot preempt you. Use <code>asyncio.sleep()</code> in place of <code>time.sleep()</code>, and <code>loop.run_in_executor()</code> to push genuinely blocking work into a thread pool.</p>
+
+  <pre><code class="language-python">import asyncio
+
+async def fetch(n):
+    print(f"start {n}")
+    await asyncio.sleep(1)   # yields control — other tasks run here
+    print(f"done {n}")
+    return n
+
+async def main():
+    # gather runs all three concurrently; total wall time ~1s, not 3s
+    results = await asyncio.gather(fetch(1), fetch(2), fetch(3))
+    print(results)   # [1, 2, 3]
+
+asyncio.run(main())</code></pre>
+
+  <p>Watch out: <code>asyncio.gather()</code> runs coroutines concurrently within the event loop, but they still execute one at a time — if any coroutine contains a blocking call with no <code>await</code>, it starves the others for the entire duration of that call.</p>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>Imagine one waiter serving many tables. The waiter doesn't clone themselves — they take an order, go put it in, then immediately serve another table while the kitchen works. They're always moving; they never stand waiting. That's asyncio: one thread, many tasks, switching whenever a task is waiting for something.</p>
+
+  <p>The key rule is that tasks have to <em>choose</em> to hand control back — they're not interrupted. An <code>await</code> is the waiter saying "I'm done with this table for now, let me go do something else." A task that never <code>await</code>s freezes every other task for its entire duration, because nobody else gets a turn.</p>
+
+  <pre><code class="language-python">import asyncio
+
+async def fetch(n):
+    print(f"start {n}")
+    await asyncio.sleep(1)   # hands control back — other tasks run here
+    print(f"done {n}")
+
+async def main():
+    # gather runs all three "at the same time"
+    # total time ~1s because all three wait concurrently
+    await asyncio.gather(fetch(1), fetch(2), fetch(3))
+
+asyncio.run(main())
+# start 1, start 2, start 3 ... (all start before any finish)
+# done 1, done 2, done 3</code></pre>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> if a function doesn't <code>await</code> anything, it blocks the whole event loop — use <code>asyncio.sleep(0)</code> to yield briefly, or push blocking work to a thread pool with <code>run_in_executor</code>.</div>
+
+</div>
