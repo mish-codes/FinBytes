@@ -3,3 +3,6 @@ _site/
 *.pyc
 __pycache__/
 .env
+
+# Superpowers plans/specs — keep locally, not in repo
+docs/superpowers/
