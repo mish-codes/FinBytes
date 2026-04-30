@@ -175,14 +175,64 @@ async def fetch(n):
     print(f"done {n}")
 
 async def main():
-    # gather runs all three "at the same time"
-    # total time ~1s because all three wait concurrently
     await asyncio.gather(fetch(1), fetch(2), fetch(3))
+    # start 1, start 2, start 3 ... then done 1, done 2, done 3
+    # total ~1s, not 3s
 
-asyncio.run(main())
-# start 1, start 2, start 3 ... (all start before any finish)
-# done 1, done 2, done 3</code></pre>
+asyncio.run(main())</code></pre>
 
   <div class="cpp-note"><strong>The trick to remember:</strong> if a function doesn't <code>await</code> anything, it blocks the whole event loop — use <code>asyncio.sleep(0)</code> to yield briefly, or push blocking work to a thread pool with <code>run_in_executor</code>.</div>
+
+  <hr>
+
+  <p><strong>Threading</strong> is like hiring multiple waiters. Each one can serve different tables at the same time — but there's only one order pad (the GIL), so they still have to take turns writing. When a waiter is just <em>waiting</em> for the kitchen they put the pad down, so someone else can grab it. That's why threading helps for I/O-bound work (lots of waiting) but not CPU-bound work (everyone needs the pad constantly).</p>
+
+  <p>A <strong>daemon thread</strong> is like the person whose job is to refill the napkin dispensers. They keep going in the background as long as the restaurant is open. When the restaurant closes for the night, they stop — you don't wait for them to finish their current round.</p>
+
+  <pre><code class="language-python">import threading, time
+
+def fetch(n):
+    time.sleep(1)    # waiting on the kitchen — pad is free for other waiters
+    return n
+
+threads = [threading.Thread(target=fetch, args=(i,)) for i in range(3)]
+for t in threads: t.start()
+for t in threads: t.join()   # ~1s wall time, not 3s</code></pre>
+
+  <hr>
+
+  <p><strong>Locks and Semaphores</strong> are about sharing one scarce resource safely.</p>
+
+  <p>A <strong>Lock</strong> is a single pen. Only one waiter can hold it at a time. If two waiters tried to write on the same ticket simultaneously, the order would be gibberish — so they queue for the pen, write, and pass it on.</p>
+
+  <p>A <strong>Semaphore</strong> is a box with N pens. Up to N waiters can write at once; the rest wait for a pen to be returned. Use it when you want to cap how many threads do something simultaneously — e.g. at most 3 waiters can place orders with the kitchen at once so they don't get overwhelmed.</p>
+
+  <pre><code class="language-python">import threading
+
+lock = threading.Lock()
+counter = 0
+
+def safe_increment():
+    global counter
+    with lock:       # grab the pen — nobody else can be here
+        counter += 1 # write — pen goes back automatically on exit</code></pre>
+
+  <hr>
+
+  <p><strong>Multiprocessing</strong> is opening multiple separate restaurants. Each has its own staff, its own kitchen, its own pen. Truly parallel — no sharing, no GIL, no queuing. Perfect when you need eight dishes cooked at the same time and each one maxes out a chef for the entire cooking time.</p>
+
+  <p>The downside: if restaurant A needs to send food to restaurant B, it can't just hand a plate across — it has to bag it up, call a courier (the Queue or Pipe), and unpack it at the other end. For small jobs the courier overhead costs more than just cooking it in one restaurant.</p>
+
+  <pre><code class="language-python">import multiprocessing
+
+def crunch(n):
+    return sum(i * i for i in range(n))
+
+if __name__ == "__main__":
+    with multiprocessing.Pool() as pool:
+        results = pool.map(crunch, [10_000_000] * 8)
+        # 8 chefs cooking 8 dishes simultaneously — ~8x faster</code></pre>
+
+  <div class="cpp-note"><strong>When to use which:</strong> asyncio for many concurrent I/O tasks in one thread &mdash; threading for simpler I/O-bound scripts that benefit from real threads &mdash; multiprocessing when you need multiple CPU cores working in parallel.</div>
 
 </div>
