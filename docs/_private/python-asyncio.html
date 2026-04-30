@@ -119,6 +119,46 @@ for t in threads: t.join()</code></pre>
 
   <p>Watch out: acquiring two locks in different orders in different code paths will eventually deadlock. If you need multiple locks, always acquire them in the same fixed order everywhere.</p>
 
+  <hr>
+
+  <h3>multiprocessing — true parallelism for CPU-bound work</h3>
+
+  <p>Each <code>multiprocessing.Process</code> is a separate OS process with its own Python interpreter and its own GIL. There is no shared GIL — processes run truly in parallel across CPU cores. Use multiprocessing for CPU-bound work (number crunching, image processing, data transformation) where threads would be serialised by the GIL.</p>
+
+  <p><code>Pool.map(fn, iterable)</code> distributes work across a pool of worker processes and returns results in input order. <code>ProcessPoolExecutor</code> from <code>concurrent.futures</code> is the equivalent higher-level API.</p>
+
+  <p>For inter-process communication, use <code>multiprocessing.Queue</code> (safe for multiple producers and consumers) or <code>Pipe</code> (two-endpoint channel for one producer / one consumer). Data crossing process boundaries must be picklable — lambdas, closures, and open file handles cannot be pickled.</p>
+
+  <p>The costs: each process copies the parent's memory space at startup (fork on Linux/macOS, spawn on Windows), startup is slower than a thread, and passing large objects between processes carries serialisation overhead. For small tasks the overhead exceeds any gain from parallelism.</p>
+
+  <pre><code class="language-python">import multiprocessing
+import time
+from concurrent.futures import ProcessPoolExecutor
+
+def crunch(n):
+    return sum(i * i for i in range(n))
+
+if __name__ == "__main__":   # required on Windows — guards the spawn entry point
+
+    numbers = [10_000_000] * 8
+
+    # Sequential — one core
+    start = time.time()
+    results = [crunch(n) for n in numbers]
+    print(f"sequential: {time.time() - start:.2f}s")
+
+    # Pool — distribute across all cores, truly parallel
+    start = time.time()
+    with multiprocessing.Pool() as pool:
+        results = pool.map(crunch, numbers)
+    print(f"pool: {time.time() - start:.2f}s")   # ~8x faster on 8 cores
+
+    # ProcessPoolExecutor — same result, futures API
+    with ProcessPoolExecutor() as exe:
+        results = list(exe.map(crunch, numbers))</code></pre>
+
+  <p>Watch out: always guard multiprocessing entry points with <code>if __name__ == "__main__":</code>. On Windows, each worker imports the module from scratch — without the guard, spawning workers triggers infinite recursive spawning.</p>
+
 </div>
 
 <div id="tab-elia12" class="ql-tab-content" style="display:none">
