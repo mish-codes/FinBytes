@@ -1,6 +1,6 @@
 ---
 layout: python-reference-post
-title: "Python: The asyncio execution model"
+title: "Python: Concurrency — asyncio, threading &amp; multiprocessing"
 date: 2026-04-21
 tags: [python, reference]
 permalink: /private/python-asyncio/
@@ -31,6 +31,134 @@ asyncio.run(main())</code></pre>
 
   <p>Watch out: <code>asyncio.gather()</code> runs coroutines concurrently within the event loop, but they still execute one at a time — if any coroutine contains a blocking call with no <code>await</code>, it starves the others for the entire duration of that call.</p>
 
+  <hr>
+
+  <h3>threading — concurrent I/O with real threads</h3>
+
+  <p><code>threading.Thread</code> runs a Python function in a separate OS thread. Unlike asyncio, thread switching is handled by the OS and the GIL — you don't write <code>await</code>. Create a thread with <code>target</code> and optional <code>args</code>, call <code>start()</code> to launch it, and <code>join()</code> to block until it finishes.</p>
+
+  <p><strong>Daemon threads.</strong> A thread created with <code>daemon=True</code> is killed automatically when the main thread exits — you don't wait for it. Use this for background housekeeping (heartbeat pings, log flushers, cache warmers) where it is acceptable for the work to be cut short. Non-daemon threads keep the process alive until they finish.</p>
+
+  <p>The GIL is released during I/O waits, so threading delivers real concurrency for network-bound or file-bound work. For CPU-bound work it provides no speedup — threads still take turns on the GIL. Use <code>ThreadPoolExecutor</code> from <code>concurrent.futures</code> for a higher-level API that handles pool sizing and result collection.</p>
+
+  <pre><code class="language-python">import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+def fetch(n):
+    print(f"start {n}")
+    time.sleep(1)          # simulates I/O — GIL released here
+    print(f"done {n}")
+    return n
+
+# Manual threads
+threads = [threading.Thread(target=fetch, args=(i,)) for i in range(3)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()               # wait for all to finish; ~1s wall time, not 3s
+
+# Daemon thread — lives in the background, dies when main thread exits
+def heartbeat():
+    while True:
+        print("ping")
+        time.sleep(5)
+
+t = threading.Thread(target=heartbeat, daemon=True)
+t.start()                  # no join needed; killed automatically on exit
+
+# ThreadPoolExecutor — same concurrency, higher-level API
+with ThreadPoolExecutor(max_workers=4) as pool:
+    results = list(pool.map(fetch, range(4)))</code></pre>
+
+  <p>Watch out: <code>join()</code> without a timeout will block forever if a thread hangs. Pass <code>timeout=</code> seconds and check <code>t.is_alive()</code> afterwards to detect stalls.</p>
+
+  <hr>
+
+  <h3>Synchronisation — Lock, RLock, Semaphore</h3>
+
+  <p>When multiple threads share mutable state, you get race conditions: two threads read-modify-write the same value and one overwrites the other's result. Synchronisation primitives coordinate access.</p>
+
+  <p><strong>Lock</strong> — a mutex: only one thread holds it at a time. Always use the context manager (<code>with lock:</code>) so the lock is released even if an exception is raised. A thread that calls <code>lock.acquire()</code> while another holds it blocks until the lock is released.</p>
+
+  <p><strong>RLock</strong> (reentrant lock) — like <code>Lock</code> but the same thread can acquire it multiple times without deadlocking. Useful when a locked method calls another method that acquires the same lock on the same object.</p>
+
+  <p><strong>Semaphore</strong> — allows up to <em>N</em> threads through simultaneously. The canonical use is rate-limiting: cap concurrent API calls or database connections to avoid overwhelming a downstream resource.</p>
+
+  <p><strong>Deadlock</strong> — thread A holds lock 1 and waits for lock 2; thread B holds lock 2 and waits for lock 1. Neither can proceed. Prevention: always acquire multiple locks in the same order across all threads, or use <code>lock.acquire(timeout=5)</code> and back off on failure.</p>
+
+  <pre><code class="language-python">import threading
+import time
+
+# Lock — fix a race condition on a shared counter
+counter = 0
+lock = threading.Lock()
+
+def increment():
+    global counter
+    for _ in range(100_000):
+        with lock:           # only one thread inside at a time
+            counter += 1     # safe — no lost updates
+
+threads = [threading.Thread(target=increment) for _ in range(5)]
+for t in threads: t.start()
+for t in threads: t.join()
+print(counter)               # always 500_000
+
+# Semaphore — limit to 3 concurrent API calls
+sem = threading.Semaphore(3)
+
+def call_api(n):
+    with sem:                # blocks if 3 threads are already inside
+        print(f"calling {n}")
+        time.sleep(0.5)
+
+threads = [threading.Thread(target=call_api, args=(i,)) for i in range(10)]
+for t in threads: t.start()
+for t in threads: t.join()</code></pre>
+
+  <p>Watch out: acquiring two locks in different orders in different code paths will eventually deadlock. If you need multiple locks, always acquire them in the same fixed order everywhere.</p>
+
+  <hr>
+
+  <h3>multiprocessing — true parallelism for CPU-bound work</h3>
+
+  <p>Each <code>multiprocessing.Process</code> is a separate OS process with its own Python interpreter and its own GIL. There is no shared GIL — processes run truly in parallel across CPU cores. Use multiprocessing for CPU-bound work (number crunching, image processing, data transformation) where threads would be serialised by the GIL.</p>
+
+  <p><code>Pool.map(fn, iterable)</code> distributes work across a pool of worker processes and returns results in input order. <code>ProcessPoolExecutor</code> from <code>concurrent.futures</code> is the equivalent higher-level API.</p>
+
+  <p>For inter-process communication, use <code>multiprocessing.Queue</code> (safe for multiple producers and consumers) or <code>Pipe</code> (two-endpoint channel for one producer / one consumer). Data crossing process boundaries must be picklable — lambdas, closures, and open file handles cannot be pickled.</p>
+
+  <p>The costs: each process copies the parent's memory space at startup (fork on Linux/macOS, spawn on Windows), startup is slower than a thread, and passing large objects between processes carries serialisation overhead. For small tasks the overhead exceeds any gain from parallelism.</p>
+
+  <pre><code class="language-python">import multiprocessing
+import time
+from concurrent.futures import ProcessPoolExecutor
+
+def crunch(n):
+    return sum(i * i for i in range(n))
+
+if __name__ == "__main__":   # required on Windows — guards the spawn entry point
+
+    numbers = [10_000_000] * 8
+
+    # Sequential — one core
+    start = time.time()
+    results = [crunch(n) for n in numbers]
+    print(f"sequential: {time.time() - start:.2f}s")
+
+    # Pool — distribute across all cores, truly parallel
+    start = time.time()
+    with multiprocessing.Pool() as pool:
+        results = pool.map(crunch, numbers)
+    print(f"pool: {time.time() - start:.2f}s")   # ~8x faster on 8 cores
+
+    # ProcessPoolExecutor — same result, futures API
+    with ProcessPoolExecutor() as exe:
+        results = list(exe.map(crunch, numbers))</code></pre>
+
+  <p>Watch out: always guard multiprocessing entry points with <code>if __name__ == "__main__":</code>. On Windows, each worker imports the module from scratch — without the guard, spawning workers triggers infinite recursive spawning.</p>
+
 </div>
 
 <div id="tab-elia12" class="ql-tab-content" style="display:none">
@@ -47,14 +175,64 @@ async def fetch(n):
     print(f"done {n}")
 
 async def main():
-    # gather runs all three "at the same time"
-    # total time ~1s because all three wait concurrently
     await asyncio.gather(fetch(1), fetch(2), fetch(3))
+    # start 1, start 2, start 3 ... then done 1, done 2, done 3
+    # total ~1s, not 3s
 
-asyncio.run(main())
-# start 1, start 2, start 3 ... (all start before any finish)
-# done 1, done 2, done 3</code></pre>
+asyncio.run(main())</code></pre>
 
   <div class="cpp-note"><strong>The trick to remember:</strong> if a function doesn't <code>await</code> anything, it blocks the whole event loop — use <code>asyncio.sleep(0)</code> to yield briefly, or push blocking work to a thread pool with <code>run_in_executor</code>.</div>
+
+  <hr>
+
+  <p><strong>Threading</strong> is like hiring multiple waiters. Each one can serve different tables at the same time — but there's only one order pad (the GIL), so they still have to take turns writing. When a waiter is just <em>waiting</em> for the kitchen they put the pad down, so someone else can grab it. That's why threading helps for I/O-bound work (lots of waiting) but not CPU-bound work (everyone needs the pad constantly).</p>
+
+  <p>A <strong>daemon thread</strong> is like the person whose job is to refill the napkin dispensers. They keep going in the background as long as the restaurant is open. When the restaurant closes for the night, they stop — you don't wait for them to finish their current round.</p>
+
+  <pre><code class="language-python">import threading, time
+
+def fetch(n):
+    time.sleep(1)    # waiting on the kitchen — pad is free for other waiters
+    return n
+
+threads = [threading.Thread(target=fetch, args=(i,)) for i in range(3)]
+for t in threads: t.start()
+for t in threads: t.join()   # ~1s wall time, not 3s</code></pre>
+
+  <hr>
+
+  <p><strong>Locks and Semaphores</strong> are about sharing one scarce resource safely.</p>
+
+  <p>A <strong>Lock</strong> is a single pen. Only one waiter can hold it at a time. If two waiters tried to write on the same ticket simultaneously, the order would be gibberish — so they queue for the pen, write, and pass it on.</p>
+
+  <p>A <strong>Semaphore</strong> is a box with N pens. Up to N waiters can write at once; the rest wait for a pen to be returned. Use it when you want to cap how many threads do something simultaneously — e.g. at most 3 waiters can place orders with the kitchen at once so they don't get overwhelmed.</p>
+
+  <pre><code class="language-python">import threading
+
+lock = threading.Lock()
+counter = 0
+
+def safe_increment():
+    global counter
+    with lock:       # grab the pen — nobody else can be here
+        counter += 1 # write — pen goes back automatically on exit</code></pre>
+
+  <hr>
+
+  <p><strong>Multiprocessing</strong> is opening multiple separate restaurants. Each has its own staff, its own kitchen, its own pen. Truly parallel — no sharing, no GIL, no queuing. Perfect when you need eight dishes cooked at the same time and each one maxes out a chef for the entire cooking time.</p>
+
+  <p>The downside: if restaurant A needs to send food to restaurant B, it can't just hand a plate across — it has to bag it up, call a courier (the Queue or Pipe), and unpack it at the other end. For small jobs the courier overhead costs more than just cooking it in one restaurant.</p>
+
+  <pre><code class="language-python">import multiprocessing
+
+def crunch(n):
+    return sum(i * i for i in range(n))
+
+if __name__ == "__main__":
+    with multiprocessing.Pool() as pool:
+        results = pool.map(crunch, [10_000_000] * 8)
+        # 8 chefs cooking 8 dishes simultaneously — ~8x faster</code></pre>
+
+  <div class="cpp-note"><strong>When to use which:</strong> asyncio for many concurrent I/O tasks in one thread &mdash; threading for simpler I/O-bound scripts that benefit from real threads &mdash; multiprocessing when you need multiple CPU cores working in parallel.</div>
 
 </div>
