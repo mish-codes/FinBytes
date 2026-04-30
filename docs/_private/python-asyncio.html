@@ -73,6 +73,52 @@ with ThreadPoolExecutor(max_workers=4) as pool:
 
   <p>Watch out: <code>join()</code> without a timeout will block forever if a thread hangs. Pass <code>timeout=</code> seconds and check <code>t.is_alive()</code> afterwards to detect stalls.</p>
 
+  <hr>
+
+  <h3>Synchronisation — Lock, RLock, Semaphore</h3>
+
+  <p>When multiple threads share mutable state, you get race conditions: two threads read-modify-write the same value and one overwrites the other's result. Synchronisation primitives coordinate access.</p>
+
+  <p><strong>Lock</strong> — a mutex: only one thread holds it at a time. Always use the context manager (<code>with lock:</code>) so the lock is released even if an exception is raised. A thread that calls <code>lock.acquire()</code> while another holds it blocks until the lock is released.</p>
+
+  <p><strong>RLock</strong> (reentrant lock) — like <code>Lock</code> but the same thread can acquire it multiple times without deadlocking. Useful when a locked method calls another method that acquires the same lock on the same object.</p>
+
+  <p><strong>Semaphore</strong> — allows up to <em>N</em> threads through simultaneously. The canonical use is rate-limiting: cap concurrent API calls or database connections to avoid overwhelming a downstream resource.</p>
+
+  <p><strong>Deadlock</strong> — thread A holds lock 1 and waits for lock 2; thread B holds lock 2 and waits for lock 1. Neither can proceed. Prevention: always acquire multiple locks in the same order across all threads, or use <code>lock.acquire(timeout=5)</code> and back off on failure.</p>
+
+  <pre><code class="language-python">import threading
+import time
+
+# Lock — fix a race condition on a shared counter
+counter = 0
+lock = threading.Lock()
+
+def increment():
+    global counter
+    for _ in range(100_000):
+        with lock:           # only one thread inside at a time
+            counter += 1     # safe — no lost updates
+
+threads = [threading.Thread(target=increment) for _ in range(5)]
+for t in threads: t.start()
+for t in threads: t.join()
+print(counter)               # always 500_000
+
+# Semaphore — limit to 3 concurrent API calls
+sem = threading.Semaphore(3)
+
+def call_api(n):
+    with sem:                # blocks if 3 threads are already inside
+        print(f"calling {n}")
+        time.sleep(0.5)
+
+threads = [threading.Thread(target=call_api, args=(i,)) for i in range(10)]
+for t in threads: t.start()
+for t in threads: t.join()</code></pre>
+
+  <p>Watch out: acquiring two locks in different orders in different code paths will eventually deadlock. If you need multiple locks, always acquire them in the same fixed order everywhere.</p>
+
 </div>
 
 <div id="tab-elia12" class="ql-tab-content" style="display:none">
