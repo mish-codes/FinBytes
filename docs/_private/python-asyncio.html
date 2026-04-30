@@ -31,6 +31,48 @@ asyncio.run(main())</code></pre>
 
   <p>Watch out: <code>asyncio.gather()</code> runs coroutines concurrently within the event loop, but they still execute one at a time — if any coroutine contains a blocking call with no <code>await</code>, it starves the others for the entire duration of that call.</p>
 
+  <hr>
+
+  <h3>threading — concurrent I/O with real threads</h3>
+
+  <p><code>threading.Thread</code> runs a Python function in a separate OS thread. Unlike asyncio, thread switching is handled by the OS and the GIL — you don't write <code>await</code>. Create a thread with <code>target</code> and optional <code>args</code>, call <code>start()</code> to launch it, and <code>join()</code> to block until it finishes.</p>
+
+  <p><strong>Daemon threads.</strong> A thread created with <code>daemon=True</code> is killed automatically when the main thread exits — you don't wait for it. Use this for background housekeeping (heartbeat pings, log flushers, cache warmers) where it is acceptable for the work to be cut short. Non-daemon threads keep the process alive until they finish.</p>
+
+  <p>The GIL is released during I/O waits, so threading delivers real concurrency for network-bound or file-bound work. For CPU-bound work it provides no speedup — threads still take turns on the GIL. Use <code>ThreadPoolExecutor</code> from <code>concurrent.futures</code> for a higher-level API that handles pool sizing and result collection.</p>
+
+  <pre><code class="language-python">import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+
+def fetch(n):
+    print(f"start {n}")
+    time.sleep(1)          # simulates I/O — GIL released here
+    print(f"done {n}")
+    return n
+
+# Manual threads
+threads = [threading.Thread(target=fetch, args=(i,)) for i in range(3)]
+for t in threads:
+    t.start()
+for t in threads:
+    t.join()               # wait for all to finish; ~1s wall time, not 3s
+
+# Daemon thread — lives in the background, dies when main thread exits
+def heartbeat():
+    while True:
+        print("ping")
+        time.sleep(5)
+
+t = threading.Thread(target=heartbeat, daemon=True)
+t.start()                  # no join needed; killed automatically on exit
+
+# ThreadPoolExecutor — same concurrency, higher-level API
+with ThreadPoolExecutor(max_workers=4) as pool:
+    results = list(pool.map(fetch, range(4)))</code></pre>
+
+  <p>Watch out: <code>join()</code> without a timeout will block forever if a thread hangs. Pass <code>timeout=</code> seconds and check <code>t.is_alive()</code> afterwards to detect stalls.</p>
+
 </div>
 
 <div id="tab-elia12" class="ql-tab-content" style="display:none">
