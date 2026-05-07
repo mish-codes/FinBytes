@@ -36,10 +36,41 @@
       "Bash(git branch:*)",
       "Bash(git mv:*)",
       "Bash(ls dashboard/pages/99*)",
-      "Bash(ls dashboard/tests/test_*.py)"
+      "Bash(ls dashboard/tests/test_*.py)",
+      "Bash(curl -s \"https://unpkg.com/@deck.gl/jupyter-widget@9.0.3/dist/index.js\")",
+      "Bash(curl -s \"https://unpkg.com/@deck.gl/core@9.0.3/dist/index.js\")",
+      "Bash(curl -sL \"https://unpkg.com/@deck.gl/core@9.0.3/dist/index.js\")",
+      "Bash(grep -oP 'sky.{0,60}')",
+      "Bash(curl -sL \"https://unpkg.com/@deck.gl/jupyter-widget@9.0.3/dist/index.js\")",
+      "Bash(grep -o ',Bd=.\\\\{200\\\\}')",
+      "Bash(grep -o '.\\\\{30\\\\}[0-9]\\\\.[0-9]\\\\+,[0-9]\\\\.[0-9]\\\\+,[0-9]\\\\.[0-9]\\\\+,1\\\\b.\\\\{30\\\\}')",
+      "Bash(grep -o ',Dd=.\\\\{600\\\\}')",
+      "Bash(python3 -)",
+      "Bash(git revert *)",
+      "Read(//c/codebase/**)",
+      "Bash(grep -c \"^---$\" c:/codebase/finbytes_git/docs/_posts/2026-04-02-fastapi-your-first-financial-api.html)",
+      "WebFetch(domain:mish-codes.github.io)",
+      "Bash(git -C \"c:/codebase/finbytes_git\" log --oneline -10)",
+      "Bash(git -C \"c:/codebase/finbytes_git\" status)",
+      "Bash(git -C \"c:/codebase/finbytes_git\" rm \"docs/superpowers/plans/2026-04-21-python-reference-posts.md\" \"docs/superpowers/plans/2026-04-22-python-reference-elia12-tabs.md\" \"docs/superpowers/specs/2026-04-21-python-reference-posts-design.md\" \"docs/superpowers/specs/2026-04-22-python-reference-elia12-tabs-design.md\")",
+      "Bash(git -C c:/codebase/finbytes_git commit -m ' *)",
+      "Bash(git -C \"c:/codebase/finbytes_git\" push origin working)",
+      "Bash(git -C \"c:/codebase/finbytes_git\" checkout master)",
+      "Bash(git -C \"c:/codebase/finbytes_git\" merge working --no-verify -m \"chore: delete completed Python reference plan and spec files\")",
+      "Bash(git -C \"c:/codebase/finbytes_git\" push origin master)",
+      "Bash(git -C \"c:/codebase/finbytes_git\" checkout working)",
+      "Bash(git -C \"c:/codebase/finbytes_git\" log --oneline --all)",
+      "Bash(git -C \"c:/codebase/finbytes_git\" diff 367d44a~1..0a627fb -- docs/_layouts/python-reference-post.html \"docs/_private/python-*.html\")",
+      "Bash(grep -E \"\\\\.py$\")",
+      "Bash(git -C \"c:/codebase/quant_lab\" status)",
+      "Bash(git -C \"c:/codebase/quant_lab\" add dashboard/lib/page_init.py dashboard/lib/cached_data.py dashboard/lib/stock_inputs.py dashboard/pages/10_Credit_Card_Calculator.py dashboard/pages/11_Loan_Amortization.py dashboard/pages/12_Loan_Comparison.py dashboard/pages/13_Retirement_Calculator.py dashboard/pages/14_Investment_Planner.py dashboard/pages/15_Budget_Tracker.py dashboard/pages/20_Currency_Dashboard.py dashboard/pages/21_Stock_Tracker.py dashboard/pages/22_Stock_Analysis.py dashboard/pages/23_Crypto_Portfolio.py dashboard/pages/24_Personal_Finance.py dashboard/pages/25_ESG_Tracker.py dashboard/pages/26_Financial_Reporting.py dashboard/pages/30_VaR_CVaR.py dashboard/pages/31_Time_Series.py dashboard/pages/32_Sentiment_Analysis.py dashboard/pages/33_Anomaly_Detection.py dashboard/pages/34_Loan_Default.py dashboard/pages/35_Clustering.py dashboard/pages/36_Portfolio_Optimization.py dashboard/pages/37_Algo_Trading.py dashboard/pages/38_Stock_Prediction.py dashboard/pages/39_Market_Insights.py dashboard/pages/40_Benchmark_Rates.py dashboard/tests/conftest.py)",
+      "Bash(git -C c:/codebase/quant_lab commit -m ' *)",
+      "Bash(npm --version)"
     ],
     "additionalDirectories": [
-      "C:\\codebase\\quant_lab\\dashboard\\pages"
+      "C:\\codebase\\quant_lab\\dashboard\\pages",
+      "c:\\codebase\\finbytes_git\\docs\\superpowers\\specs",
+      "c:\\codebase\\finbytes_git\\docs\\superpowers\\plans"
     ]
   }
 }
