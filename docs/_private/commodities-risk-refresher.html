@@ -29,6 +29,8 @@ permalink: /private/commodities-risk-refresher/
   <button class="cm-tab-btn active" data-tab="eli10">ELI10</button>
   <button class="cm-tab-btn" data-tab="greeks">Greeks</button>
   <button class="cm-tab-btn" data-tab="products">Products</button>
+  <button class="cm-tab-btn" data-tab="trades">Trade types</button>
+  <button class="cm-tab-btn" data-tab="markets">Power &amp; gas</button>
   <button class="cm-tab-btn" data-tab="data">Market data</button>
   <button class="cm-tab-btn" data-tab="hard">Why it's hard</button>
   <button class="cm-tab-btn" data-tab="quick">Quick hits</button>
@@ -116,6 +118,73 @@ permalink: /private/commodities-risk-refresher/
     <li><strong>VaR / scenario P&amp;L</strong> — revalue the book under historical or hypothetical shocks to the curve and vol surface.</li>
     <li><strong>Intrinsic vs extrinsic value</strong> — especially for storage/swing: intrinsic = lock-in against today's curve; extrinsic = the optionality on top.</li>
     <li><strong>Basis</strong> — the spread between related points (location basis, e.g. one hub vs another; calendar basis between tenors).</li>
+  </ul>
+</div>
+
+<div class="cm-tab-pane" id="cm-trades">
+  <h2>Different kinds of trades</h2>
+  <p>Beyond the instrument itself, "kinds of trade" usually means the <em>intent</em> and the <em>structure</em>.</p>
+  <h3>By intent</h3>
+  <ul>
+    <li><strong>Hedging</strong> — offset an existing exposure (a generator selling power forward; an airline buying fuel forward).</li>
+    <li><strong>Proprietary / speculative</strong> — take a directional view to profit from price moves.</li>
+    <li><strong>Arbitrage</strong> — lock a near-risk-free profit from a pricing inconsistency (location, calendar, exchange-vs-OTC).</li>
+    <li><strong>Market-making</strong> — quote bid/offer continuously, earn the spread, manage the inventory risk it leaves.</li>
+  </ul>
+  <h3>By structure</h3>
+  <ul>
+    <li><strong>Outright (directional)</strong> — a single long or short position in one contract.</li>
+    <li><strong>Calendar spread</strong> — long one tenor, short another (buy winter / sell summer): a bet on curve <em>shape</em>, not level. Storage is essentially a calendar-spread play.</li>
+    <li><strong>Location / basis spread</strong> — same commodity, two delivery points (TTF vs NBP; one power zone vs another).</li>
+    <li><strong>Inter-commodity spread</strong> — two commodities: <em>spark</em> (power − gas), <em>dark</em> (power − coal), <em>crack</em> (refined product − crude).</li>
+    <li><strong>Strip</strong> — buy/sell a run of consecutive contracts as one trade (a Cal-27 strip = every month of 2027).</li>
+    <li><strong>Swap</strong> — exchange a floating index (e.g. monthly average) for a fixed price; the standard financial hedge.</li>
+    <li><strong>Options</strong> — vanilla or exotic (Asian, swing) for non-linear / optional exposure.</li>
+  </ul>
+  <h3>Physical vs financial · venue</h3>
+  <ul>
+    <li><strong>Physical</strong> — settles by actual delivery at a hub (you nominate volumes, deal with grid/pipeline).</li>
+    <li><strong>Financial</strong> — cash-settled against an index/settlement price; no delivery.</li>
+    <li><strong>Exchange-traded</strong> — standardised and centrally cleared (margin, no bilateral credit risk).</li>
+    <li><strong>OTC / bilateral</strong> — bespoke; may be cleared or carry counterparty risk (ISDA/CSA).</li>
+    <li><strong>Block / broker trade</strong> — large size done off the order book, then often given up to clearing.</li>
+  </ul>
+</div>
+
+<div class="cm-tab-pane" id="cm-markets">
+  <h2>Power &amp; gas — markets, exchanges, clearing</h2>
+  <h3>Power</h3>
+  <p>Electricity is (mostly) <strong>not storable</strong>, so supply and demand must balance in real time. That shapes the timeline:</p>
+  <ul>
+    <li><strong>Forwards / futures</strong> — months, quarters, seasons, calendar years ahead.</li>
+    <li><strong>Day-ahead</strong> — an auction setting a price for each hour of tomorrow (the reference market).</li>
+    <li><strong>Intraday</strong> — continuous trading up to close to real time, to fine-tune positions.</li>
+    <li><strong>Balancing / imbalance</strong> — run by the grid operator (TSO) to keep the system stable; imbalance prices penalise being off-position.</li>
+  </ul>
+  <p>Products quote as <strong>baseload</strong> (all hours), <strong>peak</strong> (e.g. 08:00–20:00) and <strong>off-peak</strong>, at hourly/half-hourly granularity. Exchanges: <strong>EPEX SPOT</strong> (day-ahead/intraday, Central-West Europe), <strong>Nord Pool</strong> (Nordics+), <strong>EEX</strong> (power futures), <strong>ICE</strong>. In the US, ISOs/RTOs run the markets: <strong>PJM, MISO, CAISO, ERCOT</strong>.</p>
+  <h3>Gas</h3>
+  <p>Gas <em>is</em> storable (storage fields, LNG), so the curve reflects seasonality and storage economics. Trading happens at virtual <strong>hubs</strong> in a pipeline network:</p>
+  <ul>
+    <li><strong>TTF</strong> (Netherlands) — the European benchmark.</li>
+    <li><strong>NBP</strong> (UK).</li>
+    <li><strong>Henry Hub</strong> (US benchmark, NYMEX).</li>
+  </ul>
+  <p>Exchanges: <strong>ICE</strong> (TTF, NBP), <strong>EEX</strong>, <strong>CME/NYMEX</strong> (Henry Hub). LNG increasingly links regional gas markets toward one global market.</p>
+  <h3>Clearing houses (CCPs)</h3>
+  <p>A clearing house stands <em>between</em> buyer and seller — by <strong>novation</strong> it becomes the counterparty to both, so neither faces the other's credit. It nets exposures and collects <strong>margin</strong>:</p>
+  <ul>
+    <li><strong>Initial margin</strong> — collateral up front to cover potential future loss on default.</li>
+    <li><strong>Variation margin</strong> — daily mark-to-market cash flows as prices move.</li>
+    <li><strong>Default fund / waterfall</strong> — mutualised backstop if a member defaults.</li>
+  </ul>
+  <p>Examples: <strong>ECC</strong> (European Commodity Clearing — clears EEX/EPEX), <strong>ICE Clear Europe</strong>, <strong>LCH</strong>, <strong>CME Clearing</strong>. Exchange trades are centrally cleared; OTC can be bilateral or cleared.</p>
+  <h3>Basic concepts</h3>
+  <ul>
+    <li><strong>Spot vs forward</strong> — near-term delivery vs an agreed future date.</li>
+    <li><strong>Hub / delivery point</strong> — where the commodity is delivered and priced.</li>
+    <li><strong>TSO / grid operator</strong> — runs the physical network and balancing.</li>
+    <li><strong>Tenor &amp; granularity</strong> — how far out, and how finely (hour / day / month / season / year).</li>
+    <li><strong>Mark-to-market &amp; margin</strong> — revalue daily; post collateral against the moves.</li>
   </ul>
 </div>
 </div>
