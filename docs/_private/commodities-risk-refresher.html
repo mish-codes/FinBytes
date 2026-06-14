@@ -8,6 +8,17 @@ permalink: /private/commodities-risk-refresher/
 
 <p>A fast sanity-check on the products and the risk language for a commodities risk / risk-systems conversation. The recurring theme: a commodity isn't a single price — it's a <strong>forward curve</strong>, so almost everything (delta, vol, P&amp;L) is bucketed along that curve rather than collapsed to one number.</p>
 
+<h2>ELI10 — the lemonade-stand version</h2>
+<p>Imagine you run a lemonade stand and you've promised to buy lemons every month for the next year. The price of lemons isn't <em>one</em> number — it's a different price for each month (cheap in summer, dear in winter). That list of monthly prices is the <strong>forward curve</strong>, and it's the heart of everything.</p>
+<ul>
+  <li><strong>Delta</strong> — if lemon prices nudge up, how much do you gain or lose? And because every month has its own price, you track each month separately — that's "bucketed along the curve."</li>
+  <li><strong>Gamma</strong> — how quickly that gain/loss <em>changes</em>: gentle slope, or about to fall off a cliff?</li>
+  <li><strong>Vega</strong> — you also care how <em>jumpy</em> prices are, not just where they are. A calm market vs a wild one. Vega is how much a wilder market changes the value of your promises.</li>
+  <li><strong>Theta</strong> — options are like ice cubes: they melt a little every day that passes.</li>
+</ul>
+<p><strong>The deals:</strong> sometimes you lock a price now (a <em>future/forward</em>); sometimes you buy the <em>right but not the obligation</em> to buy (an <em>option</em>); sometimes you settle on the <em>average</em> price over the whole month instead of one day (an <em>Asian option</em> — common for oil cargoes); sometimes you can choose how many lemons to take within limits (a <em>swing</em> deal); sometimes you keep lemons in the fridge to sell later (<em>storage</em>); and sometimes you bet on the <em>gap</em> between two prices — like lemonade minus lemons (a <em>spread</em>; in power, electricity minus gas is the <em>spark spread</em>).</p>
+<p><strong>Why it's hard for the computers:</strong> there are many months, many "fruits" (gas, power, oil…), and risk teams keep asking "what if?" thousands of times (what if a heatwave? a frost?). Each question redoes the maths for every month and every fruit — so you end up with a <em>mountain</em> of numbers to crunch and store, fast.</p>
+
 <h2>Greeks — the commodities flavour</h2>
 <ul>
   <li><strong>Delta</strong> — sensitivity to the underlying <em>forward</em> price. Crucially, in commodities delta is usually <strong>bucketed along the forward curve</strong> (a sensitivity to each tenor) rather than one figure. <strong>Seasonality matters</strong> — gas and power have strong seasonal shape, so winter and summer tenors move differently and are risk-managed separately.</li>
