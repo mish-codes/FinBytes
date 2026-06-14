@@ -1,0 +1,90 @@
+---
+layout: post
+title: "Parquet — Quick Refresher"
+date: 2026-06-14
+tags: [refresher, parquet, data, columnar, arrow, analytics, interview]
+permalink: /private/parquet-refresher/
+---
+
+<p>A fast refresher on Apache Parquet — what it is, why it's fast, and the bits that come up in interviews. Parquet is an open, <strong>columnar</strong>, binary on-disk format for analytical data: store columns together, not rows, so analytical queries read only what they need and compress hard.</p>
+
+<h2>Why columnar</h2>
+<ul>
+  <li><strong>Projection pushdown</strong> — read only the columns a query touches (skip the rest entirely). A row format (CSV, JSON, Avro) must read every row in full.</li>
+  <li><strong>Compression</strong> — a column holds one data type with similar values, so encodings and codecs work far better than on mixed rows.</li>
+  <li><strong>Vectorized reads</strong> — contiguous same-type values feed columnar engines (Arrow, DuckDB, Spark) efficiently.</li>
+</ul>
+
+<h2>Physical layout</h2>
+<p>A Parquet file is a sequence of <strong>row groups</strong>, each split into one <strong>column chunk</strong> per column, each chunk made of <strong>pages</strong>, with a <strong>footer</strong> holding the schema and all metadata at the end of the file:</p>
+<pre><code>File
+ ├─ Row group 0
+ │   ├─ Column chunk: col_a  → pages (+ min/max stats)
+ │   ├─ Column chunk: col_b  → pages
+ │   └─ ...
+ ├─ Row group 1
+ │   └─ ...
+ └─ Footer  (schema, row-group offsets, per-column statistics)  + magic "PAR1"</code></pre>
+<ul>
+  <li><strong>Row group</strong> — a horizontal slice of rows (commonly ~128 MB). The unit of parallelism and of skipping.</li>
+  <li><strong>Column chunk</strong> — one column's data within a row group.</li>
+  <li><strong>Page</strong> — the smallest encoded/compressed unit; carries its own encoding.</li>
+  <li><strong>Footer</strong> — read first (it's at the end): gives the schema and the offsets/stats so a reader can jump straight to the columns and row groups it needs.</li>
+</ul>
+
+<h2>What makes it small &amp; fast</h2>
+<ul>
+  <li><strong>Encodings</strong> — <em>dictionary</em> (map repeated values to small ints; great for low-cardinality strings), <em>run-length + bit-packing</em> (RLE), and <em>delta</em> encodings. Chosen per column/page.</li>
+  <li><strong>Compression codecs</strong> — applied on top of encoding: <code>snappy</code> (default, fast), <code>zstd</code> (better ratio, now common), <code>gzip</code>, <code>lz4</code>.</li>
+  <li><strong>Statistics + predicate pushdown</strong> — each row group/page stores <strong>min/max/null counts</strong> per column. A filter like <code>WHERE date &gt; X</code> lets the reader <strong>skip whole row groups</strong> whose max &lt; X without decoding them. (Sort your data on the filter column to make this powerful.)</li>
+</ul>
+
+<h2>Partitioning</h2>
+<p>Hive-style <strong>directory partitioning</strong> encodes a column's value in the path, so the engine prunes whole folders before opening any file:</p>
+<pre><code>data/year=2026/month=06/part-0.parquet</code></pre>
+<p>Partition on low-cardinality columns you filter on (date, region). Over-partitioning creates the <strong>small-files problem</strong> — thousands of tiny files kill read performance (per-file overhead, tiny row groups). Aim for reasonably large files/row groups.</p>
+
+<h2>Nested data</h2>
+<p>Parquet stores nested/repeated structures (structs, lists, maps) by shredding them into columns using <strong>definition levels</strong> (is this optional field null, and at what depth) and <strong>repetition levels</strong> (where a repeated element starts) — the Dremel model. You rarely touch this directly, but it's why Parquet handles JSON-like data without storing rows.</p>
+
+<h2>Schema &amp; evolution</h2>
+<ul>
+  <li>Schema lives in the footer; types are explicit (unlike CSV).</li>
+  <li><strong>Evolution:</strong> adding columns and reading a subset is easy; renames/type changes are not safe. Readers match by name.</li>
+  <li>Parquet is <strong>immutable</strong> — no in-place updates. "Updates" mean rewriting files; that's what table formats (Delta Lake, Iceberg, Hudi) add on top of Parquet.</li>
+</ul>
+
+<h2>Reading/writing (pyarrow + pandas)</h2>
+<pre><code class="language-python">import pyarrow.parquet as pq
+import pandas as pd
+
+# write
+df.to_parquet("trades.parquet", engine="pyarrow",
+              compression="zstd", index=False)
+
+# read only two columns, with a row-group-skipping filter
+df = pd.read_parquet("trades.parquet",
+                     columns=["symbol", "pnl"],
+                     filters=[("date", ">=", "2026-01-01")])
+
+# inspect without loading data
+md = pq.read_metadata("trades.parquet")
+print(md.num_rows, md.num_row_groups)
+print(md.row_group(0).column(0).statistics)   # min/max/nulls</code></pre>
+
+<h2>Parquet vs … (one-liners)</h2>
+<ul>
+  <li><strong>vs CSV/JSON</strong> — typed, columnar, compressed, with stats; orders of magnitude less I/O for analytics. CSV wins only for tiny/human-readable data.</li>
+  <li><strong>vs Avro</strong> — Avro is <em>row</em>-oriented, great for streaming/write-heavy and record-at-a-time; Parquet is for columnar analytical reads.</li>
+  <li><strong>vs ORC</strong> — sibling columnar format (Hadoop/Hive world); very similar trade-offs, Parquet has the wider ecosystem.</li>
+  <li><strong>vs Arrow</strong> — Arrow is the <em>in-memory</em> columnar format; Parquet is the <em>on-disk</em> one. They're designed to convert cheaply.</li>
+</ul>
+
+<h2>Interview pitfalls</h2>
+<ul>
+  <li>Thinking compression alone makes it fast — the bigger win is reading <em>fewer columns and fewer row groups</em>.</li>
+  <li>Forgetting that <strong>sort order</strong> drives how well min/max stats prune row groups.</li>
+  <li>The small-files problem from over-partitioning.</li>
+  <li>Expecting row-level updates — Parquet files are immutable; use a table format for ACID/upserts.</li>
+  <li>Assuming the footer is at the start — it's at the <em>end</em> (so readers do a seek-to-end first).</li>
+</ul>
