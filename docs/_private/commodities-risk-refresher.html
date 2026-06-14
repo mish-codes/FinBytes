@@ -71,14 +71,15 @@ permalink: /private/commodities-risk-refresher/
 <div class="cm-tab-pane" id="cm-greeks">
   <h2>Greeks — the commodities flavour</h2>
   <h3>ELI10</h3>
-  <p>The "Greeks" just measure <strong>how your money reacts</strong> when one thing about the market changes. Picture a sled on a hilly track:</p>
+  <p>Say you have a <strong>coupon</strong> that lets you buy a chocolate bar next month for <strong>£1</strong> — whatever it actually costs by then. That coupon is an <em>option</em>. The Greeks just describe how the coupon's worth changes as things move:</p>
   <ul>
-    <li><strong>Delta = which way you slide.</strong> If the price (the hill) tips up a bit, how much do you slide, and which way? In commodities the hill has a <em>different steepness every month</em>, so you measure your slide month by month.</li>
-    <li><strong>Gamma = how fast the slide speeds up.</strong> The hill isn't a straight ramp — it curves. Gamma says whether a small tip barely moves you or suddenly sends you racing. Big gamma = your exposure changes quickly.</li>
-    <li><strong>Vega = how much "wobbliness" matters.</strong> Some bets pay off when prices swing around a lot. Vega is how much your bet's value changes when the market gets more jittery — even if today's price hasn't actually moved.</li>
-    <li><strong>Theta = the melting ice cube.</strong> An option is valuable because something <em>might</em> happen before it expires. Each quiet day, a little of that "maybe" melts away — that daily drip is theta.</li>
-    <li><strong>Rho = the gentle nudge from interest rates.</strong> Usually a small side-effect here, not the main story.</li>
+    <li><strong>Delta — does the coupon gain when chocolate gets pricier?</strong> If chocolate rises £1.00 → £1.10, your "buy at £1" coupon is worth more. Delta ≈ how many pennies the coupon gains per penny chocolate rises. A coupon that's already a steal moves almost penny-for-penny (delta near 1); one that looks useless barely reacts (delta near 0).</li>
+    <li><strong>Gamma — how fast does that reaction grow?</strong> As chocolate climbs toward £1, the coupon suddenly starts reacting much more strongly (delta 0.2 → 0.5 → 0.8). Gamma is the <em>speed</em> of that change — biggest right around the £1 mark.</li>
+    <li><strong>Theta — the coupon expires.</strong> Even if chocolate's price sits perfectly still, the coupon is worth a little less each day, because there's less time left for a price jump to help you. That daily bleed is theta.</li>
+    <li><strong>Vega — how wild do people expect things to get?</strong> If everyone suddenly expects chocolate prices to swing wildly before the deadline, your coupon is worth more (better chance it leaps past £1). Vega is the gain when <em>expected</em> wildness (volatility) rises — even with today's price unchanged.</li>
+    <li><strong>Rho</strong> — interest rates give a tiny nudge; usually just a footnote here.</li>
   </ul>
+  <p><strong>The commodities twist:</strong> you don't hold one coupon — you hold a coupon for <em>each delivery month</em>, so you track delta and vega for every month separately (and winter behaves differently from summer).</p>
   <p>And the same four, precisely:</p>
   <ul>
     <li><strong>Delta</strong> — sensitivity to the underlying <em>forward</em> price. Crucially, in commodities delta is usually <strong>bucketed along the forward curve</strong> (a sensitivity to each tenor) rather than one figure. <strong>Seasonality matters</strong> — gas and power have strong seasonal shape, so winter and summer tenors move differently and are risk-managed separately.</li>
@@ -87,6 +88,20 @@ permalink: /private/commodities-risk-refresher/
     <li><strong>Theta</strong> — time decay.</li>
     <li><strong>Rho / rate sensitivity</strong> — usually secondary in commodities (discounting matters, but the curve and vol are the story).</li>
   </ul>
+  <h3>Value ranges &amp; signs (per vanilla option)</h3>
+  <table style="border-collapse:collapse;font-size:0.85rem;width:100%;margin:0.5rem 0;">
+    <thead><tr style="text-align:left;border-bottom:2px solid #d1d5db;">
+      <th style="padding:6px 8px;">Greek</th><th style="padding:6px 8px;">Range / sign</th><th style="padding:6px 8px;">Biggest when</th><th style="padding:6px 8px;">Measured per</th>
+    </tr></thead>
+    <tbody>
+      <tr style="border-bottom:1px solid #eaeaea;"><td style="padding:6px 8px;"><strong>Delta</strong></td><td style="padding:6px 8px;">call 0 → +1, put −1 → 0 (ATM ≈ ±0.5)</td><td style="padding:6px 8px;">deep in-the-money → ±1</td><td style="padding:6px 8px;">£1 move in the underlying</td></tr>
+      <tr style="border-bottom:1px solid #eaeaea;"><td style="padding:6px 8px;"><strong>Gamma</strong></td><td style="padding:6px 8px;">≥ 0 if long (short = negative)</td><td style="padding:6px 8px;">at-the-money, near expiry</td><td style="padding:6px 8px;">change in delta per £1</td></tr>
+      <tr style="border-bottom:1px solid #eaeaea;"><td style="padding:6px 8px;"><strong>Vega</strong></td><td style="padding:6px 8px;">≥ 0 if long (short = negative)</td><td style="padding:6px 8px;">at-the-money, longer-dated</td><td style="padding:6px 8px;">1 vol point (1%)</td></tr>
+      <tr style="border-bottom:1px solid #eaeaea;"><td style="padding:6px 8px;"><strong>Theta</strong></td><td style="padding:6px 8px;">≤ 0 if long (short = positive)</td><td style="padding:6px 8px;">at-the-money, near expiry</td><td style="padding:6px 8px;">one day passing</td></tr>
+      <tr><td style="padding:6px 8px;"><strong>Rho</strong></td><td style="padding:6px 8px;">call +, put − (small, short-dated)</td><td style="padding:6px 8px;">longer-dated</td><td style="padding:6px 8px;">1% rate move</td></tr>
+    </tbody>
+  </table>
+  <p><strong>Rule of thumb:</strong> own an option → <em>+gamma, +vega, −theta</em> (you pay theta to own gamma and vega); selling flips every sign. A plain future/forward has <strong>delta ≈ 1</strong> and essentially zero gamma/vega/theta.</p>
 </div>
 
 <div class="cm-tab-pane" id="cm-products">
