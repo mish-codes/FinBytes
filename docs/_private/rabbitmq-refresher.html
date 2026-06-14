@@ -1,0 +1,78 @@
+---
+layout: post
+title: "RabbitMQ — Quick Refresher"
+date: 2026-06-14
+tags: [refresher, rabbitmq, messaging, amqp, infra, interview]
+permalink: /private/rabbitmq-refresher/
+---
+
+<p>A fast refresher on RabbitMQ — the model, the durability/reliability knobs, and the things that come up in interviews. RabbitMQ is a <strong>broker</strong> that speaks AMQP 0-9-1: a "smart broker, dumb consumer" design where routing logic lives in the broker.</p>
+
+<h2>The core model</h2>
+<p>A producer never publishes straight to a queue. It publishes to an <strong>exchange</strong>, which routes to one or more <strong>queues</strong> via <strong>bindings</strong>, and consumers read from queues:</p>
+<pre><code>producer → exchange → (binding + routing key) → queue(s) → consumer(s)</code></pre>
+
+<h3>Exchange types</h3>
+<ul>
+  <li><strong>direct</strong> — route to queues whose binding key exactly equals the message's routing key.</li>
+  <li><strong>topic</strong> — pattern match on dotted routing keys with wildcards: <code>*</code> = one word, <code>#</code> = zero or more. e.g. binding <code>orders.*.eu</code> matches <code>orders.new.eu</code>.</li>
+  <li><strong>fanout</strong> — ignore the routing key, broadcast to every bound queue (pub/sub).</li>
+  <li><strong>headers</strong> — route on message header attributes instead of the routing key (rarely used).</li>
+</ul>
+
+<h2>Durability &amp; what actually survives a restart</h2>
+<p>Three independent things must all be set or messages are lost on broker restart:</p>
+<ul>
+  <li><strong>Durable queue</strong> — the queue definition survives.</li>
+  <li><strong>Durable exchange</strong> — the exchange survives.</li>
+  <li><strong>Persistent message</strong> — <code>delivery_mode=2</code> so the message is written to disk.</li>
+</ul>
+<p>A persistent message in a non-durable queue still dies with the queue. Persistence is also not a hard guarantee on its own — a message can be in flight (in memory) when the node dies. Pair it with <strong>publisher confirms</strong> for real assurance.</p>
+
+<h2>Reliability knobs</h2>
+<ul>
+  <li><strong>Acknowledgements</strong> — consumers <code>ack</code> after processing. <code>nack</code>/<code>reject</code> can requeue or discard. <strong>Auto-ack is dangerous</strong>: the broker drops the message the moment it's delivered, so a crash mid-processing loses it. Use manual ack.</li>
+  <li><strong>Prefetch (QoS)</strong> — <code>basic.qos(prefetch_count=N)</code> caps unacked messages per consumer, giving fair dispatch instead of one greedy consumer hoarding the queue. A small prefetch (e.g. 1–20) is the usual fix for uneven load.</li>
+  <li><strong>Publisher confirms</strong> — broker asynchronously acks the publisher once it has taken responsibility for a message. This is how you get reliable publishing.</li>
+  <li><strong>Dead-letter exchange (DLX)</strong> — messages that are rejected, expire (TTL), or exceed length limits get routed to a DLX. The basis for retry/parking-lot patterns and handling <strong>poison messages</strong>.</li>
+  <li><strong>TTL</strong> — per-message or per-queue time-to-live; expired messages go to the DLX (a common delayed-retry trick).</li>
+</ul>
+
+<h2>Delivery semantics</h2>
+<p>RabbitMQ gives <strong>at-least-once</strong> delivery with manual acks (a redelivery can happen after a crash before the ack lands), so consumers must be <strong>idempotent</strong>. Ordering is only roughly preserved and breaks under requeues, multiple consumers, or prefetch &gt; 1 — don't rely on strict global ordering.</p>
+
+<h2>Availability</h2>
+<ul>
+  <li><strong>Quorum queues</strong> — the modern, Raft-based replicated queue type for HA; prefer these. Classic <em>mirrored</em> queues are deprecated.</li>
+  <li><strong>Clustering</strong> — nodes share metadata; queues live on (or are replicated across) nodes. Use a load balancer in front for client connectivity.</li>
+</ul>
+
+<h2>Minimal consumer (pika)</h2>
+<pre><code class="language-python">import pika
+
+conn = pika.BlockingConnection(pika.ConnectionParameters("localhost"))
+ch = conn.channel()
+ch.queue_declare(queue="tasks", durable=True)
+ch.basic_qos(prefetch_count=10)            # fair dispatch
+
+def on_msg(ch, method, props, body):
+    try:
+        handle(body)                       # must be idempotent
+        ch.basic_ack(method.delivery_tag)
+    except Exception:
+        ch.basic_nack(method.delivery_tag, requeue=False)  # → DLX
+
+ch.basic_consume(queue="tasks", on_message_callback=on_msg)
+ch.start_consuming()</code></pre>
+
+<h2>RabbitMQ vs Kafka (one-liner)</h2>
+<p>RabbitMQ is a <strong>message broker</strong> — rich per-message routing, acks, and queues; messages are removed once consumed. Kafka is a <strong>distributed log</strong> — consumers track their own offset, messages are retained and replayable, and throughput/streaming scale is the priority. Reach for RabbitMQ for task queues, RPC, and complex routing; Kafka for event streaming and replay.</p>
+
+<h2>Interview pitfalls</h2>
+<ul>
+  <li>Forgetting that durability needs <em>all three</em> (durable queue + durable exchange + persistent message).</li>
+  <li>Using auto-ack and claiming "guaranteed delivery".</li>
+  <li>No idempotency despite at-least-once semantics.</li>
+  <li>No DLX/retry plan for poison messages — they requeue forever and block the queue.</li>
+  <li>Assuming strict ordering with multiple consumers or prefetch &gt; 1.</li>
+</ul>

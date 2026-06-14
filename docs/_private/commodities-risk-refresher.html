@@ -1,0 +1,52 @@
+---
+layout: post
+title: "Commodities Risk — Quick Refresher"
+date: 2026-06-14
+tags: [refresher, commodities, risk, greeks, energy, derivatives, interview]
+permalink: /private/commodities-risk-refresher/
+---
+
+<p>A fast sanity-check on the products and the risk language for a commodities risk / risk-systems conversation. The recurring theme: a commodity isn't a single price — it's a <strong>forward curve</strong>, so almost everything (delta, vol, P&amp;L) is bucketed along that curve rather than collapsed to one number.</p>
+
+<h2>Greeks — the commodities flavour</h2>
+<ul>
+  <li><strong>Delta</strong> — sensitivity to the underlying <em>forward</em> price. Crucially, in commodities delta is usually <strong>bucketed along the forward curve</strong> (a sensitivity to each tenor) rather than one figure. <strong>Seasonality matters</strong> — gas and power have strong seasonal shape, so winter and summer tenors move differently and are risk-managed separately.</li>
+  <li><strong>Gamma</strong> — convexity; how delta changes as the forward moves. Again, per-bucket.</li>
+  <li><strong>Vega</strong> — sensitivity to volatility, read off a <strong>vol surface by tenor and strike</strong> (smile/skew), not a single vol.</li>
+  <li><strong>Theta</strong> — time decay.</li>
+  <li><strong>Rho / rate sensitivity</strong> — usually secondary in commodities (discounting matters, but the curve and vol are the story).</li>
+</ul>
+
+<h2>Products</h2>
+<ul>
+  <li><strong>Linear:</strong> futures, forwards, swaps.</li>
+  <li><strong>Vanilla options</strong> on the above.</li>
+  <li><strong>Exotics</strong> are common in commodities:
+    <ul>
+      <li><strong>Asian / average-price options</strong> — payoff on the average of fixings over a period. Very common in oil &amp; gas (a cargo prices off a monthly average, not a single day).</li>
+      <li><strong>Swing options</strong> — the right to take more or less volume within contractual limits (classic gas supply optionality).</li>
+      <li><strong>Storage optionality</strong> — value of injecting/withdrawing against the curve shape (calendar spread + intrinsic/extrinsic value).</li>
+      <li><strong>Spread options</strong> — payoff on the difference between two underlyings: <strong>spark spread</strong> (power − gas, a generator's margin) and <strong>dark spread</strong> (power − coal).</li>
+    </ul>
+  </li>
+</ul>
+
+<h2>Market data — the inputs</h2>
+<ul>
+  <li><strong>Forward curves</strong> — the spine of everything; one product can reference several curves.</li>
+  <li><strong>Fixings / settlements</strong> — the daily marks that feed P&amp;L (and that average-price products settle against).</li>
+  <li><strong>Vol surfaces</strong> — by tenor and strike.</li>
+  <li><strong>Correlations</strong> — essential for spread products and cross-commodity books.</li>
+</ul>
+<p>This is exactly the "curves, fixings/settlements" language you'll see in the JD.</p>
+
+<h2>Why it's hard technically</h2>
+<p>Curves have <strong>many tenors</strong>; products reference <strong>multiple curves</strong>; and risk runs over <strong>many scenarios</strong>. Those multiply together, so a single book produces <strong>large volumes of results data</strong> — the engineering challenge is computing, storing, and aggregating per-bucket sensitivities and scenario P&amp;L fast enough to be useful intraday.</p>
+
+<h2>Risk-language quick hits</h2>
+<ul>
+  <li><strong>P&amp;L attribution / explain</strong> — decompose daily P&amp;L into delta, gamma, vega, theta, new trades, and unexplained (the residual you have to justify).</li>
+  <li><strong>VaR / scenario P&amp;L</strong> — revalue the book under historical or hypothetical shocks to the curve and vol surface.</li>
+  <li><strong>Intrinsic vs extrinsic value</strong> — especially for storage/swing: intrinsic = lock-in against today's curve; extrinsic = the optionality on top.</li>
+  <li><strong>Basis</strong> — the spread between related points (location basis, e.g. one hub vs another; calendar basis between tenors).</li>
+</ul>
