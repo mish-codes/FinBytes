@@ -33,15 +33,30 @@ permalink: /notes/
   </ul>
 </div>
 
+{% assign refreshers = site.private | where_exp: "p", "p.tags contains 'refresher'" | sort: "title" %}
+{% if refreshers.size > 0 %}
+<div class="notes-section">
+  <h2>Refreshers</h2>
+  <ul class="notes-list">
+    {% for p in refreshers %}
+    <li>
+      <a href="{{ p.url | prepend: site.baseurl }}">{{ p.title | remove: " — Quick Refresher" }}</a>
+      <div class="note-tags">{% for tag in p.tags %}{% unless tag == 'refresher' or tag == 'interview' %}<span class="note-tag">{{ tag }}</span>{% endunless %}{% endfor %}</div>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
 {% assign all_posts = site.private | sort: "title" %}
 {% assign has_other = false %}
-{% for p in all_posts %}{% unless p.tags contains 'python' %}{% assign has_other = true %}{% endunless %}{% endfor %}
+{% for p in all_posts %}{% unless p.tags contains 'python' or p.tags contains 'refresher' %}{% assign has_other = true %}{% endunless %}{% endfor %}
 {% if has_other %}
 <div class="notes-section">
   <h2>Other</h2>
   <ul class="notes-list">
     {% for p in all_posts %}
-      {% unless p.tags contains 'python' %}
+      {% unless p.tags contains 'python' or p.tags contains 'refresher' %}
     <li>
       <a href="{{ p.url | prepend: site.baseurl }}">{{ p.title }}</a>
       <div class="note-tags">{% for tag in p.tags %}<span class="note-tag">{{ tag }}</span>{% endfor %}</div>
