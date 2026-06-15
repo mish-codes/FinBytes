@@ -9,12 +9,11 @@ permalink: /private/risk-reg-refresher/
 <p>Fast answers to a handful of risk / regulatory interview questions, each with a plain ELI10 version underneath.</p>
 
 <style>
-.eli10 { background: #f3f4f6; border-left: 3px solid #2563eb; padding: 0.6rem 0.9rem; margin: 0.6rem 0 1.4rem; border-radius: 0 3px 3px 0; font-size: 0.92rem; }
-.eli10 strong { color: #2563eb; }
-@media (prefers-color-scheme: dark) {
-  .eli10 { background: #1f2937; border-left-color: #60a5fa; }
-  .eli10 strong { color: #60a5fa; }
-}
+/* Self-contained colours so the callout stays readable in both light and dark
+   site themes (don't rely on prefers-color-scheme, which fights the toggle). */
+.eli10 { background: #eef2ff; border-left: 3px solid #2563eb; padding: 0.6rem 0.9rem; margin: 0.6rem 0 1.4rem; border-radius: 0 3px 3px 0; font-size: 0.92rem; color: #1f2937 !important; }
+.eli10 strong { color: #1d4ed8 !important; }
+.eli10 em { color: #1f2937 !important; }
 </style>
 
 <h2>Historical simulation vs Monte Carlo VaR — when each?</h2>
