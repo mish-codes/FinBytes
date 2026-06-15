@@ -8,14 +8,6 @@ permalink: /private/risk-reg-refresher/
 
 <p>Fast answers to a handful of risk / regulatory interview questions, each with a plain ELI10 version underneath.</p>
 
-<style>
-/* Self-contained colours so the callout stays readable in both light and dark
-   site themes (don't rely on prefers-color-scheme, which fights the toggle). */
-.eli10 { background: #eef2ff; border-left: 3px solid #2563eb; padding: 0.6rem 0.9rem; margin: 0.6rem 0 1.4rem; border-radius: 0 3px 3px 0; font-size: 0.92rem; color: #1f2937 !important; }
-.eli10 strong { color: #1d4ed8 !important; }
-.eli10 em { color: #1f2937 !important; }
-</style>
-
 <h2>Historical simulation vs Monte Carlo VaR — when each?</h2>
 <p><strong>Historical simulation (HS)</strong> replays <em>actual</em> past risk-factor moves (say the last 250–500 days) on today's portfolio, sorts the resulting P&amp;L, and reads off the percentile (e.g. the 99% loss). No distributional assumption; it captures the real fat tails and correlations exactly as they happened. Weaknesses: it can only produce scenarios that occurred in the window, reacts slowly, and assumes recent history is representative.</p>
 <p><strong>Monte Carlo (MC)</strong> assumes a model for the risk factors (distributions, vols, correlations), simulates thousands of random scenarios, revalues the book in each, and reads the percentile. It's flexible — handles heavy optionality / non-linearity, forward-looking vols, and tail scenarios history never showed — but it's model-dependent (garbage in, garbage out) and compute-heavy.</p>
@@ -23,11 +15,11 @@ permalink: /private/risk-reg-refresher/
   <li><strong>Use HS</strong> for simplicity, transparency, regulator-friendliness, and largely linear books where recent history is trusted.</li>
   <li><strong>Use MC</strong> for non-linear/optional portfolios, path-dependent products, forward-looking or custom distributions, and generating tail scenarios beyond the historical record.</li>
 </ul>
-<div class="eli10"><strong>ELI10:</strong> HS = "what would happen to my bag of stuff if the <em>last two years of weather</em> happened again, day by day?" MC = "let a dice-rolling machine invent <em>thousands of made-up but believable</em> weather days (using rules I set) and see how my stuff copes." Real history vs a rules-based imagination machine.</div>
+<p><strong>ELI10 —</strong> HS = "what would happen to my bag of stuff if the <em>last two years of weather</em> happened again, day by day?" MC = "let a dice-rolling machine invent <em>thousands of made-up but believable</em> weather days (using rules I set) and see how my stuff copes." Real history vs a rules-based imagination machine.</p>
 
 <h2>Why does FRTB move from VaR to Expected Shortfall?</h2>
 <p><strong>VaR</strong> at 99% tells you the loss you won't exceed on 99% of days — but it says <em>nothing</em> about how bad the other 1% gets. A £100 VaR is the same whether the tail loss is £150 or £10,000. VaR is also not <em>coherent</em> (not sub-additive): it can occasionally punish diversification. <strong>Expected Shortfall (ES)</strong> — FRTB uses ES at <strong>97.5%</strong> — is the <em>average</em> loss across the worst tail beyond the threshold: "given we breach, how bad on average?" It captures tail severity and is coherent. FRTB layers on liquidity horizons and stressed calibration on top.</p>
-<div class="eli10"><strong>ELI10:</strong> VaR says "I probably won't lose more than £100 on a bad day" — but it won't tell you if a <em>really</em> bad day costs £150 or £1,000. ES asks "on the genuinely bad days, how much do I lose <em>on average</em>?" — it looks past the line into the tail, so a few monster losses can't hide behind the threshold.</div>
+<p><strong>ELI10 —</strong> VaR says "I probably won't lose more than £100 on a bad day" — but it won't tell you if a <em>really</em> bad day costs £150 or £1,000. ES asks "on the genuinely bad days, how much do I lose <em>on average</em>?" — it looks past the line into the tail, so a few monster losses can't hide behind the threshold.</p>
 
 <h2>What does bitemporal data let a risk system do that a normal database can't?</h2>
 <p>Bitemporal data keeps <strong>two</strong> time axes: <em>valid time</em> (when a fact was true in the real world) and <em>transaction/system time</em> (when the system actually recorded it). That lets you ask two different questions: "what was the position/curve <em>for</em> last Tuesday?" and "what did we <em>believe</em> it to be <em>as of</em> last Tuesday when we ran the report?" Benefits:</p>
@@ -37,11 +29,11 @@ permalink: /private/risk-reg-refresher/
   <li><strong>As-of / as-at queries</strong> and clean P&amp;L explain ("how much of the change is new market vs newly-learned info?").</li>
 </ul>
 <p>A normal single-timeline database <em>overwrites</em>, so you lose what you knew at the time — you can't faithfully reproduce or defend a historical output.</p>
-<div class="eli10"><strong>ELI10:</strong> A normal database is a <em>whiteboard</em> — fix a mistake and you rub out the old number, so nobody can tell what you thought yesterday. Bitemporal is a <em>diary in pen</em>: it keeps both "what really happened on Monday" and "what I believed about Monday when I wrote it on Tuesday," so you can always rewind to exactly what you knew at any moment — perfect for audits.</div>
+<p><strong>ELI10 —</strong> A normal database is a <em>whiteboard</em> — fix a mistake and you rub out the old number, so nobody can tell what you thought yesterday. Bitemporal is a <em>diary in pen</em>: it keeps both "what really happened on Monday" and "what I believed about Monday when I wrote it on Tuesday," so you can always rewind to exactly what you knew at any moment — perfect for audits.</p>
 
 <h2>CCAR vs FDSF — one line each</h2>
 <ul>
   <li><strong>CCAR</strong> (Comprehensive Capital Analysis and Review) — the US Federal Reserve's annual stress test and capital-plan review checking that large US banks hold enough capital to survive a severe scenario.</li>
   <li><strong>FDSF</strong> (Firm Data Submission Framework) — the Bank of England / PRA's standardised UK data-submission framework that feeds its concurrent stress tests.</li>
 </ul>
-<div class="eli10"><strong>ELI10:</strong> <strong>CCAR</strong> = the American exam where the Fed checks a big bank could survive a money storm and still have cash left. <strong>FDSF</strong> = the British "fill in this giant spreadsheet" rules, so the Bank of England has the data to run its own storm-survival check.</div>
+<p><strong>ELI10 —</strong> <strong>CCAR</strong> = the American exam where the Fed checks a big bank could survive a money storm and still have cash left. <strong>FDSF</strong> = the British "fill in this giant spreadsheet" rules, so the Bank of England has the data to run its own storm-survival check.</p>
