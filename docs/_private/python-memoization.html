@@ -1,0 +1,84 @@
+---
+layout: python-reference-post
+title: "Python: memoization & caching — cache, lru_cache, cached_property"
+date: 2026-06-16
+tags: [python, reference]
+permalink: /private/python-memoization/
+---
+
+<div id="tab-concept" class="ql-tab-content">
+
+  <p><strong>Memoization</strong> caches a function's return value keyed by its arguments, so a repeat call with the same arguments returns the stored result instead of recomputing. It trades memory for speed, and only makes sense for <em>pure</em> functions (same inputs → same output, no side effects).</p>
+
+  <p><code>functools</code> gives you three tools:</p>
+  <ul>
+    <li><code>@cache</code> (3.9+) — unbounded memoization; the simplest option. Exactly <code>lru_cache(maxsize=None)</code>.</li>
+    <li><code>@lru_cache(maxsize=128)</code> — a bounded cache that evicts the <em>least-recently-used</em> entry when full. Exposes <code>.cache_info()</code> (hits/misses/maxsize/currsize) and <code>.cache_clear()</code>. <code>typed=True</code> keys <code>3</code> and <code>3.0</code> separately.</li>
+    <li><code>@cached_property</code> — computes a property once per instance and stores the result in the instance's <code>__dict__</code> (so it won't work with <code>__slots__</code> unless <code>__dict__</code> is present).</li>
+  </ul>
+
+  <pre><code class="language-python">from functools import cache, lru_cache, cached_property
+
+@cache                      # unbounded — remembers every (n) it ever sees
+def fib(n):
+    return n if n < 2 else fib(n-1) + fib(n-2)
+
+@lru_cache(maxsize=1024)    # bounded — evicts least-recently-used
+def price(symbol, date):
+    return load_from_db(symbol, date)
+
+price("BRN", "2026-06-16")
+price.cache_info()          # CacheInfo(hits=0, misses=1, maxsize=1024, currsize=1)
+price.cache_clear()         # the only built-in invalidation
+
+class Dataset:
+    @cached_property
+    def stats(self):        # runs once, then cached on the instance
+        return expensive_compute(self.rows)</code></pre>
+
+  <p><strong>Key constraints &amp; foot-guns:</strong></p>
+  <ul>
+    <li><strong>Arguments must be hashable</strong> — the args form the cache key. Passing a <code>list</code>/<code>dict</code> raises <code>TypeError</code>; convert to <code>tuple</code>/<code>frozenset</code> first.</li>
+    <li><strong>Memory &amp; lifetimes</strong> — the cache holds references to both arguments and results. <code>@cache</code> grows without bound; and caching a <em>method</em> keys on <code>self</code>, so the cache keeps every instance alive (a classic leak). Prefer <code>cached_property</code>, a bounded <code>lru_cache</code>, or a weakref-based cache for methods.</li>
+    <li><strong>Purity</strong> — never memoize functions that depend on time, randomness, I/O, or mutable global state; you'll serve stale answers.</li>
+    <li><strong>Concurrency</strong> — <code>lru_cache</code> bookkeeping is thread-safe, but it has no per-key locking, so the wrapped function can still run twice for the same key under a race.</li>
+    <li><strong>No TTL</strong> — there's no built-in expiry. For time-based eviction reach for <code>cachetools</code> (<code>TTLCache</code>, <code>LRUCache</code>, <code>LFUCache</code>), and for cross-process caching an external store like Redis.</li>
+  </ul>
+
+  <p>Rolling your own is a few lines when you need full control:</p>
+  <pre><code class="language-python">def memoize(fn):
+    store = {}
+    def wrapper(*args):
+        if args not in store:
+            store[args] = fn(*args)
+        return store[args]
+    return wrapper</code></pre>
+
+</div>
+
+<div id="tab-elia12" class="ql-tab-content" style="display:none">
+
+  <p>Memoization just means <em>remembering answers so you don't redo the work</em>. Like homework: once you've figured out 7 × 8 = 56, you write it down — next time you just read it instead of working it out again.</p>
+
+  <p>Python hands you a sticker for that. Put <code>@cache</code> above a function and it remembers each answer by its inputs:</p>
+  <ul>
+    <li><code>@cache</code> — remember <em>everything</em>, forever (careful: the notebook keeps filling up).</li>
+    <li><code>@lru_cache(maxsize=128)</code> — a notebook with limited pages; when it's full, rub out the answer you haven't used for the longest time.</li>
+    <li><code>@cached_property</code> — work something out about an object once, then keep it.</li>
+  </ul>
+
+  <pre><code class="language-python">from functools import cache
+
+@cache
+def slow_double(n):
+    print("working...")
+    return n * 2
+
+slow_double(10)   # prints "working..." then 20
+slow_double(10)   # just 20 — no "working...", it remembered</code></pre>
+
+  <p>Three rules: the inputs must be simple, fixed things (numbers, strings, tuples — <em>not</em> lists); only cache functions that always give the same answer for the same inputs (no dice-rolling, no "what time is it?"); and remember the cache uses memory — you're trading space for speed.</p>
+
+  <div class="cpp-note"><strong>The trick to remember:</strong> <code>@cache</code> is just <code>@lru_cache(maxsize=None)</code> — unbounded. If the inputs keep changing and never stop, use <code>lru_cache</code> with a <code>maxsize</code> so the notebook can't grow forever.</div>
+
+</div>
